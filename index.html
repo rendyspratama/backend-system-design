@@ -1542,6 +1542,13 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive">
         <span class="label">Key deep dive — short-code generation</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>State the actual requirement: two different long URLs must never end up with the same short code.</li>
+          <li>First instinct — generate something random. But now every write has to check "has this code been used?" before it can save, an extra round-trip on every single request.</li>
+          <li>Better instinct: if something already guarantees uniqueness — like an auto-incrementing counter — just encode <em>that</em> into a short string. Collisions become structurally impossible, not just unlikely.</li>
+          <li>New problem this creates: one shared counter across many servers is a bottleneck. Fix: hand each server its own reserved block of numbers upfront.</li>
+        </ol>
         <ul class="item-list">
           <li><strong>Counter-based:</strong> base62-encode an auto-incrementing ID. Collision-free and simple, but needs a coordinated counter — solved by pre-allocating ID ranges per app server rather than a single global lock.</li>
           <li><strong>Random-and-check:</strong> generate a random string, check the DB for a collision, retry if needed. Trivially distributed, but adds a write-path check on every request.</li>
@@ -1552,6 +1559,13 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — cache design under a 100:1 read:write ratio</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Reads massively outnumber writes, so the cache is doing almost all the real work here — its design deserves real attention, not an afterthought.</li>
+          <li>Ask the question that shapes everything else: what changes about a mapping after it's created? Nothing — a short_code points to the same long_url forever.</li>
+          <li>That answer removes a whole category of caching bugs: if nothing changes, there's no "stale data" to invalidate — the only decision left is what to evict when the cache runs out of room.</li>
+          <li>One thing can still break even a perfect cache: a single link going viral can flood one cache server while the rest of the cluster idles. That's a different problem (a hot key), needing its own fix.</li>
+        </ol>
         <p>The cache key is simply the short_code, mapping to the long_url — small values, trivially shardable across cache nodes by consistent hashing.</p>
         <ul class="item-list">
           <li><strong>No invalidation to design:</strong> a UrlMapping never changes after creation, so this is one of the rare caches that just needs an eviction policy (LRU is fine) for memory pressure — no TTL is strictly required.</li>
@@ -1562,6 +1576,13 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — recording clicks without slowing down the redirect</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>State the constraint plainly first: the redirect has to be fast, no matter what else the system needs to do.</li>
+          <li>Ask whether recording the click actually needs to happen <em>before</em> the user gets redirected. It doesn't — the user only cares that they land on the right page instantly, not when the click gets logged.</li>
+          <li>So don't make the redirect wait on it. Hand the event to a queue and return the redirect immediately — the write happens somewhere else, on its own schedule.</li>
+          <li>Go one step further: batch the downstream writes instead of one row per click. A few seconds of delay in a dashboard is invisible; writing one row per click at high volume isn't free.</li>
+        </ol>
         <p>If click analytics are in scope, they cannot sit in the redirect's critical path — every added millisecond there defeats the entire point of a URL shortener.</p>
         <ul class="item-list">
           <li><strong>Fire-and-forget:</strong> write the click event to a lightweight queue and return the 302 immediately. The redirect never waits for that write to finish.</li>
@@ -1760,6 +1781,13 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive">
         <span class="label">Key deep dive — algorithm choice</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the simplest possible idea: count requests in a fixed time window, reset the count when the window ends. Cheap, easy to reason about.</li>
+          <li>Stress-test that idea at the boundary: what happens right at the edge of a window? A burst just before reset, plus a burst right after, sails past the limit completely undetected.</li>
+          <li>Fix the boundary specifically: instead of a hard reset, slide the window continuously — weight the previous window's count instead of discarding it outright.</li>
+          <li>Consider a different framing entirely: instead of counting within a window, allow a refillable "budget" — useful when some burstiness is actually fine and shouldn't count as a violation.</li>
+        </ol>
         <ul class="item-list">
           <li><strong>Token bucket:</strong> allows controlled bursts, refills smoothly.</li>
           <li><strong>Leaky bucket:</strong> strictly smooths the output rate.</li>
@@ -1774,6 +1802,13 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — the counter as a hot key</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Ask whether sharding actually solves the traffic problem here. It spreads <em>different</em> clients across nodes — but one single client's own counter still lives on exactly one node, no matter how the cluster is sharded.</li>
+          <li>Locate the real bottleneck: a client hammering the API sends every one of those requests to the same Redis key — concentrated load that sharding can't fix, only spread other clients around it.</li>
+          <li>Reconsider what "accurate" needs to mean here. A rate limiter doesn't need to be exactly right — only roughly right, and fast to check.</li>
+          <li>Use that slack: approximate the count locally and flush to Redis periodically, instead of hitting it on every request — trading a little precision for a large drop in load on one key.</li>
+        </ol>
         <p>A single popular API key can turn its counter into an extremely hot key — thousands of increments per second hitting one Redis key, on one node, regardless of how many nodes the cluster has. Sharding by client_id spreads different clients across nodes but doesn't help a single client's own counter.</p>
         <span class="label" style="margin-top:12px;">Mitigations</span>
         <ul class="item-list">
@@ -1785,6 +1820,13 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — where in the stack to enforce the limit</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice that "where" is a separate decision from "how" — the algorithm and the physical location of the check answer two different questions.</li>
+          <li>Consider each layer's actual context: the edge sees raw traffic but knows nothing about the user; the gateway sees the full authenticated request; each service knows its own specific cost.</li>
+          <li>Realize no single layer is strictly correct — each one protects against a different kind of problem, blunt-force abuse versus precise per-operation cost.</li>
+          <li>Land on the practical answer: layer more than one — cheap and coarse where traffic first arrives, precise and business-aware closer to where the real cost happens.</li>
+        </ol>
         <p>The algorithm and the storage matter, but so does <em>where</em> the check happens — that decision changes what it can even protect against.</p>
         <ul class="item-list">
           <li><strong>At the edge/CDN:</strong> cheapest place to block clearly-abusive traffic before it costs you anything downstream, but has the least context — hard to apply per-user business rules there.</li>
@@ -1982,6 +2024,13 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive">
         <span class="label">Key deep dive — avoiding duplicate crawling at scale</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the obvious approach: check every discovered URL against the database of already-crawled URLs before crawling it.</li>
+          <li>Stress-test that at scale: billions of URLs means billions of lookups — and most of them will say "not seen" anyway, so most of that cost is wasted.</li>
+          <li>Ask whether the expensive check is even needed for the common case. It isn't — most discovered URLs really are new; the database round-trip only matters for confirming the rare case.</li>
+          <li>Add a cheap, fast, in-memory pre-check that can instantly say "definitely never seen" for most URLs, and only fall back to the slow, real check when it's genuinely uncertain.</li>
+        </ol>
         <p>Checking billions of URLs against a full database on every discovered link doesn't scale — a single Bloom filter check is O(1) and lives entirely in memory.</p>
         <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the two-stage check</span>new URL discovered
   → Bloom filter says "definitely not seen"  → crawl it, no DB hit
@@ -1994,6 +2043,13 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — politeness at scale</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>State the actual rule that needs enforcing: don't hit any single host too fast, no matter how many crawl workers are running in parallel.</li>
+          <li>Notice the risk with many independent workers sharing one queue: nothing stops two different workers from pulling URLs for the same host at the same moment.</li>
+          <li>Reframe the problem: instead of trusting every worker to remember and coordinate pacing, make violating it structurally impossible — organize the work itself by host.</li>
+          <li>Partition the queue by host, so a worker literally can't fetch from a rate-limited host — its URLs simply aren't eligible to be pulled yet.</li>
+        </ol>
         <p>Partition the Frontier by host (or a hash of the host). Each partition owns pacing for its set of domains.</p>
         <ul class="item-list">
           <li><strong>The mechanism:</strong> workers pulling from a partition enforce a per-host delay before the next fetch to that same host — a worker literally cannot fetch from a rate-limited host because that host's URLs simply aren't eligible to be pulled yet.</li>
@@ -2004,6 +2060,13 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — crawler traps and infinite URL spaces</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice this is a different problem from duplicate crawling above — that's about re-visiting a URL you've genuinely already seen; this is about a site inventing new-looking URLs faster than you can crawl them.</li>
+          <li>Recognize a dedupe filter can't catch this alone — every one of those URLs genuinely looks different (a new session ID, a different tracking param), so nothing gets flagged as "already seen."</li>
+          <li>Attack the root cause instead: most of those "different" URLs are actually the same page, decorated with noise. Strip that noise before the dedupe check even runs, so the filter sees one canonical form.</li>
+          <li>Add a backstop for whatever normalization can't catch: cap how much crawl budget any single host can consume, so one badly-behaved site can't run away with the whole crawl.</li>
+        </ol>
         <p>Some sites generate an effectively infinite number of distinct URLs — a calendar page with a "next month" link, or a session ID appended to every link — and a naive crawler will happily follow them forever. This is a different failure mode from the duplicate-crawling deep dive above: that one is about re-crawling a URL you've truly already seen; this one is about a site inventing new URLs faster than you can crawl them, which no dedupe filter alone can catch.</p>
         <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — normalize before dedupe</span>?sid=8f3a&page=2   →  normalize  →  page=2
 ?page=2&sid=91cd   →  normalize  →  page=2   (recognized as the same page)</div>
@@ -2244,6 +2307,13 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive">
         <span class="label">Key deep dive — the concurrency race for the last spot</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Walk through the naive version step by step: check if the spot is free, then mark it occupied — two separate steps.</li>
+          <li>Ask what happens if two cars run those same two steps at the exact same instant. Both checks can see "free" before either marking happens — nothing stops that.</li>
+          <li>Realize the bug isn't in either step alone — it's the gap between checking and acting. Two threads can both pass the check before either one acts.</li>
+          <li>Close the gap: make check-and-mark a single atomic operation, so no other request can slip in between them.</li>
+        </ol>
         <p>Two cars can approach the last available spot in the same level at the same instant.</p>
         <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — check-then-act race</span>Car A: checks spot → "free"
 Car B: checks spot → "free"        (both pass the check)
@@ -2257,6 +2327,13 @@ Car B: marks spot occupied         → two tickets, one physical spot</div>
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — why these specific patterns</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Before reaching for any pattern, ask what's actually likely to change. For fee calculation, that's the pricing scheme — it shifts far more often than the rest of the parking logic.</li>
+          <li>For spot status, ask a different question: does behavior genuinely differ by state? Yes — an Available spot accepts a car, an Occupied or OutOfService spot rejects one.</li>
+          <li>Match the tool to the actual shape of the problem: Strategy for "same operation, different implementation" (fee calc), State for "behavior that depends on which state you're in" (spot status).</li>
+          <li>Apply the real test before committing to either: does it delete a category of future bug, or is it just vocabulary? If it's just vocabulary, a plain conditional is more honest.</li>
+        </ol>
         <ul class="item-list">
           <li><strong>Strategy for fee calculation:</strong> pricing schemes change more often than the core parking logic — a mall might switch from hourly to flat-rate for an event without anyone touching ParkingLot.</li>
           <li><strong>State for spot status:</strong> a spot's behavior genuinely depends on what state it's in — Available accepts a car, Occupied and OutOfService both reject one — so a state object per status keeps that branching out of ParkingSpot itself, rather than the class filling up with scattered status checks.</li>
@@ -2266,6 +2343,13 @@ Car B: marks spot occupied         → two tickets, one physical spot</div>
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — notifying other systems when availability changes</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>List out who actually needs to know when a spot opens: a sign, an app, maybe a pricing service — more than one, and the list is likely to grow.</li>
+          <li>Reject the naive option first: having every interested system poll the spot's status on its own schedule works, but "who cares about this" ends up hardcoded, scattered across every one of them.</li>
+          <li>Flip the direction of the relationship: instead of others repeatedly asking "did it change?", have the spot announce "it changed" once, to whoever's listening.</li>
+          <li>Recognize the win: ParkingLot never needs to know what a "sign" or an "app" even is — it just publishes changes, and each subscriber decides what to do with them.</li>
+        </ol>
         <p>A real deployment usually has more than one thing that cares when a spot opens up — a digital sign at the entrance, a mobile app showing live availability, maybe a pricing service that raises rates as a lot fills up.</p>
         <ul class="item-list">
           <li><strong>The Observer pattern fits directly:</strong> ParkingSpot (or Level) maintains a list of observers and notifies them on every state transition, instead of every interested party polling the spot's status on its own schedule.</li>
@@ -2458,6 +2542,13 @@ Car B: marks spot occupied         → two tickets, one physical spot</div>
 
       <div class="callout keydive">
         <span class="label">Key deep dive — preventing overselling under distributed contention</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Recognize this is the same shape of bug as the parking lot's race — check then act — just spread across many service instances instead of one process.</li>
+          <li>Notice why a simple lock doesn't scale the same way here: coordinating a distributed lock across many instances adds real overhead, and a new failure mode — what happens if the lock-holder crashes?</li>
+          <li>Flip the strategy: instead of asking permission before acting, attempt the write and let the database's own atomicity decide who wins — no lock to coordinate, no lock-holder that can crash mid-hold.</li>
+          <li>Confirm this actually closes the gap: the conditional write only succeeds if the row still matches the expected state, so two simultaneous attempts can't both succeed — one gets 0 rows affected.</li>
+        </ol>
         <p>Unlike the parking lot's single-process lock, holds here are checked and set across possibly many Booking Service instances hitting the same inventory row at once. A naive "read status, then write Held" is the same check-then-act race from the parking lot, just distributed.</p>
         <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the conditional write</span>UPDATE seats SET status='held'
 WHERE id = ? AND status = 'available'
@@ -2469,6 +2560,13 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — the virtual waiting room</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Ask where the actual load comes from during a big on-sale — not from people buying seats, but from far more people just looking.</li>
+          <li>Recognize that's a fundamentally different problem than the seat-hold correctness fix — you can have a perfectly correct hold mechanism and still get crushed by read traffic before anyone even reaches it.</li>
+          <li>Reframe the goal: don't try to make the backend handle unlimited simultaneous lookers — control how many people are even allowed to reach it at once.</li>
+          <li>Admit people to the booking flow at a rate the backend can sustain, and give everyone else something better than a broken page — a queue position.</li>
+        </ol>
         <p>The actual bottleneck in a ticket on-sale usually isn't the seat-holding logic — it's that far more people want to <em>look</em> at seats than could ever buy one, and all that read traffic can crush the same database the holds depend on.</p>
         <ul class="item-list">
           <li><strong>What it decouples:</strong> "how many people are interested" from "how many people are actively contending for inventory right now," by admitting buyers to the booking flow at a fixed rate the backend can actually sustain.</li>
@@ -2479,6 +2577,13 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — bot and scalper prevention</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Ask whether the concurrency fix — the conditional write — actually solves the fairness problem, not just the correctness one. It doesn't: a script can still win hundreds of individually correct writes faster than any human could click.</li>
+          <li>Recognize this needs a different kind of defense — not "is this write correct," but "is this behavior even human."</li>
+          <li>Attack it from multiple angles, since no single check reliably distinguishes a fast human from a script: limit how much one account can hold, add friction at entry, and slow down rapid-fire attempts specifically.</li>
+          <li>Accept that none of these are airtight alone — a determined bot adapts to any single one — so layer several imperfect defenses instead of chasing one perfect check.</li>
+        </ol>
         <p>Even a perfectly correct hold-and-purchase mechanism doesn't stop a script from acquiring holds on hundreds of seats faster than any human could click — the concurrency fix prevents overselling, not unfair buying.</p>
         <ul class="item-list">
           <li><strong>Per-account purchase limits</strong> enforced at the same layer as the seat hold — one account can hold at most N seats for a given event at a time.</li>
@@ -2675,6 +2780,13 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive">
         <span class="label">Key deep dive — finding which server holds a live connection</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the normal assumption for most web services: any server behind the load balancer can handle any request. Test whether that holds here.</li>
+          <li>It doesn't — a WebSocket connection is long-lived and pinned to one specific server the moment it's established. Sending a message means finding the one server holding that person's open socket.</li>
+          <li>Solve the "which server" question with a lookup: a shared registry mapping user to gateway, checked before every send.</li>
+          <li>Decide how strict that lookup needs to be. A slightly stale answer isn't catastrophic — it just means one failed push and a safe fallback — so it needs to be fast, not strongly consistent.</li>
+        </ol>
         <p>A user's WebSocket is a stateful, long-lived connection pinned to one specific gateway server — unlike a stateless HTTP request that any instance behind a load balancer can serve.</p>
         <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the two-hop send</span>send(message, to: user_42)
   → Connection Registry: user_42 is on Gateway B
@@ -2687,6 +2799,13 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — group chat fan-out</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice the send logic built for one recipient doesn't obviously generalize — a group message needs that same online/offline decision made independently, once per participant.</li>
+          <li>Recognize the scale question that creates: for a 500-person group, that's 500 individual lookups and pushes per message, a fundamentally bigger job than a 1:1 send.</li>
+          <li>Consider the simplest option first: push to every online participant immediately. Simple, but the cost at send time now scales directly with group size.</li>
+          <li>Reconsider for the extreme case: push immediately only to people active recently, and let everyone else catch up on reconnect instead of paying the full fan-out cost upfront every time.</li>
+        </ol>
         <p>A group message needs the same online/offline delivery decision made independently for every participant, not just one recipient — for a 500-person group, sending is now closer to the fan-out problem than a single message.</p>
         <ul class="item-list">
           <li><strong>Fan-out-on-write:</strong> look up and push to every online participant's gateway immediately — keeps the read side simple but costs more at send time.</li>
@@ -2697,6 +2816,13 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — syncing one account across multiple devices</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Revisit an assumption baked into everything so far: one connection per user. Ask whether that's actually true for a real messaging app — it isn't.</li>
+          <li>Trace what breaks because of that assumption: the registry currently maps a user to one gateway — that has to become a one-to-many mapping, or a send only reaches whichever device happened to register last.</li>
+          <li>Realize sending the message isn't the only thing that needs to fan out — read status does too, or a message read on the phone won't show as read on the laptop.</li>
+          <li>Recognize this is the same mechanism as the group-chat fan-out above, just aimed at one person's own devices instead of many different people.</li>
+        </ol>
         <p>The design so far assumes one connection per user; real messaging apps need the same account open on a phone, a laptop, and a tablet at once, all showing the same messages.</p>
         <ul class="item-list">
           <li><strong>The registry needs a one-to-many mapping:</strong> user_id maps to potentially several gateway connections, not one — a send fans out to every currently-connected device for that user, not just the first one found.</li>
@@ -2886,6 +3012,13 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive">
         <span class="label">Key deep dive — finding nearby drivers fast</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the naive approach: for a given rider, check the distance to every driver and pick the closest ones. Test it against scale.</li>
+          <li>It breaks down fast — checking distance to every driver in a city means the cost of one match grows with the total number of drivers, not just the number actually nearby.</li>
+          <li>Ask whether every driver genuinely needs comparing, or just the ones that could plausibly be close. Only the latter.</li>
+          <li>Pre-organize drivers by location so "who's nearby" becomes a lookup instead of a scan — divide the map into cells, and only check drivers in the same or neighboring cells as the rider.</li>
+        </ol>
         <p>Scanning every driver's coordinates and computing distance to each one doesn't scale past a small city.</p>
         <ul class="item-list">
           <li><strong>Geohash grid:</strong> divides the map into cells identified by short string prefixes — drivers in the same or neighboring cells share a prefix, so "find drivers near this point" becomes a lookup of a handful of cells instead of a scan of every driver everywhere.</li>
@@ -2896,6 +3029,13 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — surviving the location-ping write volume</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice this path is different from most of the system: it's not triggered by a user action, it's a constant stream — every active driver, every few seconds, whether or not anyone's requesting a ride.</li>
+          <li>Recognize what that means for scale: this is very likely the highest-QPS write path in the whole system, worth explicit attention rather than assuming "writes are writes."</li>
+          <li>Ask what the actual requirement is for this specific data — does a location ping need the same durability as a completed ride record? No — matching just needs "roughly current," not "never lost."</li>
+          <li>Use that gap deliberately: route pings to a fast, in-memory index instead of durable storage, since losing one ping is a non-event when the next one arrives seconds later.</li>
+        </ol>
         <p>With every active driver writing every few seconds, this is easily the highest-QPS write path in the whole system — worth running the math toolkit on explicitly rather than assuming.</p>
         <ul class="item-list">
           <li><strong>The design move:</strong> location pings never touch the same storage as Ride records. They update an in-memory index that only needs to be "roughly current," not durably persisted per-ping.</li>
@@ -2906,6 +3046,13 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — avoiding two drivers accepting the same ride</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice the shape of what's being proposed: notify multiple nearby drivers at once to reduce rider wait time.</li>
+          <li>Recognize that's the exact same race already seen twice on this page — multiple actors, one resource, a gap between "check" and "act."</li>
+          <li>Consider the simple fix first: only ever ask one driver at a time. It avoids the race completely, but costs latency waiting on drivers who don't respond.</li>
+          <li>If speed matters more, notify several at once but apply the fix already proven for the seat hold — an atomic conditional write that lets only the first acceptance claim the ride.</li>
+        </ol>
         <p>If the Matching Service notifies more than one nearby driver at once to shorten the rider's wait, it's created the same race condition seen twice already on this page.</p>
         <ul class="item-list">
           <li><strong>Sequential offering:</strong> notify only the single nearest driver, wait briefly, move to the next if they decline. Avoids the race entirely, at the cost of added latency waiting on drivers who don't respond.</li>
@@ -2967,6 +3114,7 @@ WHERE id = ? AND status = 'available'
             <ul class="item-list">
               <li>Book a room for a specific time range.</li>
               <li>Check a room's availability before booking.</li>
+              <li>Search for available rooms across a given time range — not just check one specific room, but find any room (optionally filtered by capacity or location) that's free.</li>
               <li>Support recurring meetings (e.g. a weekly standup).</li>
               <li>Cancel or modify a booking — including a single occurrence of a recurring series.</li>
             </ul>
@@ -2976,10 +3124,11 @@ WHERE id = ? AND status = 'available'
             <ul class="item-list">
               <li>Never double-book a room — the same correctness bar as Ticketmaster, at far smaller scale.</li>
               <li>Overlap checks stay fast even for a room with a dense calendar.</li>
+              <li>Searching across many rooms for a free slot stays a single query, not one check per room.</li>
               <li>Recurring meetings shouldn't require pre-generating years of instances up front.</li>
             </ul>
           </div>
-          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: single building/timezone, or multi-office? Can one meeting need two rooms at once? We'll assume single timezone, one room per meeting.</p>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: single building/timezone, or multi-office? Can one meeting need two rooms at once? Should room search return every free match, or just the best fit? We'll assume single timezone, one room per meeting, and return every free match sorted by capacity — smallest first.</p>
         </div></div>
         <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
           <div class="mini-title">Core Entities</div>
@@ -2992,7 +3141,8 @@ WHERE id = ? AND status = 'available'
         <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
           <div class="mini-title">API</div>
           <p><span style="font-family:var(--mono)">POST /rooms/{id}/bookings {start, end, recurrence_rule?}</span> → booking id, or 409 with the conflicting slot<br>
-          <span style="font-family:var(--mono)">GET /rooms/{id}/availability?from&amp;to</span> → free/busy blocks<br>
+          <span style="font-family:var(--mono)">GET /rooms/{id}/availability?from&amp;to</span> → free/busy blocks for one room<br>
+          <span style="font-family:var(--mono)">GET /rooms/available?from&amp;to&amp;capacity_min?&amp;location?</span> → every free room matching the filters, sorted by capacity<br>
           <span style="font-family:var(--mono)">DELETE /bookings/{id}?scope=single|series</span> → cancels one occurrence or the whole series</p>
         </div></div>
         <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
@@ -3026,7 +3176,7 @@ WHERE id = ? AND status = 'available'
           <rect x="390" y="50" width="190" height="80" rx="10" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
           <text x="485" y="83" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Availability Checker</text>
           <text x="485" y="100" text-anchor="middle" font-family="Inter" font-size="10" fill="#6FE0F0">interval-overlap query</text>
-          <text x="485" y="116" text-anchor="middle" font-family="Inter" font-size="10" fill="#6FE0F0">per room, per range</text>
+          <text x="485" y="116" text-anchor="middle" font-family="Inter" font-size="10" fill="#6FE0F0">single room, or search many</text>
 
           <rect x="390" y="225" width="190" height="72" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
           <text x="485" y="255" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Bookings DB</text>
@@ -3083,6 +3233,13 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive">
         <span class="label">Key deep dive — efficient overlap detection</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Write down the overlap condition precisely: two ranges conflict when each one starts before the other ends. A simple comparison.</li>
+          <li>Test the naive way to use that comparison: check a new booking against every existing booking in the room. Ask what happens as a room's calendar fills up — the check gets slower with every booking added.</li>
+          <li>Narrow the search before comparing: an index on room and start time means only bookings anywhere near the requested window even get looked at.</li>
+          <li>Generalize the same question to many rooms at once: "which of N rooms are free" doesn't have to mean running the single-room check N separate times — express it as one query that finds rooms with no conflicting row, instead of checking room by room.</li>
+        </ol>
         <p>Two ranges [s1, e1) and [s2, e2) overlap exactly when s1 &lt; e2 AND s2 &lt; e1 — a simple comparison, but checking a new booking against every existing booking in a room is still wasteful once a room's calendar fills up.</p>
         <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration</span>Existing:   [10:00, 11:00)
 New request: [10:30, 11:30)
@@ -3090,12 +3247,28 @@ New request: [10:30, 11:30)
         <ul class="item-list">
           <li>A database index on (room_id, start_time) narrows the query to bookings starting near the requested window before applying the overlap check.</li>
           <li>For very high-traffic rooms, an in-memory interval tree per room answers "does anything overlap this range" without touching the database at all.</li>
+          <li><strong>Searching across rooms is the same predicate, applied as an anti-join:</strong> "is this one room free" is a single query; "which of N rooms are free" doesn't mean running that query N times. One query — rooms with no matching row in an overlap subquery, filtered by capacity or location — answers it in a single pass, against the exact same (room_id, start_time) index and the same materialized near-term bookings the recurring-meetings strategy below already produces.</li>
         </ul>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — one query, not one check per room</span>SELECT room.id FROM rooms room
+WHERE room.capacity >= 6 AND room.location = 'floor-3'
+AND NOT EXISTS (
+  SELECT 1 FROM bookings b
+  WHERE b.room_id = room.id
+    AND b.start_time &lt; :to AND b.end_time &gt; :from
+)
+→ every matching free room, in one round trip — not N overlap checks for N rooms</div>
         <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">The write itself still needs the same atomic conditional-write pattern as Ticketmaster's seat hold — checking for a conflict and writing are two steps, and two concurrent bookers can both pass the check before either writes unless the write itself is guarded.</p>
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — storing recurring meetings</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Consider the simplest option: generate every future occurrence the moment the series is created. Test it against "forever" — a weekly meeting with no end date means either an arbitrary cutoff or unbounded storage.</li>
+          <li>Consider the opposite extreme: store only the rule, compute occurrences on the fly whenever someone asks. Test it against the common case — now every availability check does that computation, every single time.</li>
+          <li>Notice neither extreme is right on its own — one wastes storage on meetings nobody will query yet, the other repeats the same computation on every read.</li>
+          <li>Split the difference deliberately: materialize a bounded near-term window for fast, simple queries, and only compute on demand for anything further out.</li>
+        </ol>
         <ul class="item-list">
           <li><strong>Materialize on write:</strong> generate every instance of the series up front. Simple to query, but wasteful — a weekly meeting "forever" means either an arbitrary cutoff or unbounded storage, and changing the series means rewriting every future instance.</li>
           <li><strong>Expand on read:</strong> store just the rule, compute instances when a range is queried. Cheap to store, but every availability check now does more work, and canceling a single occurrence needs an "exception" record layered on top of the rule rather than a row to simply delete.</li>
@@ -3105,6 +3278,13 @@ New request: [10:30, 11:30)
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — time zones</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>State the requirement the way someone would actually phrase it: "book the 2pm slot." Notice that's ambiguous the moment more than one office exists.</li>
+          <li>Trace what happens if a bare local time gets stored as-is — the overlap check from the earlier deep dive assumes two comparable ranges, and "2pm New York" and "2pm London" aren't comparable at all without a shared reference.</li>
+          <li>Fix it at the source, not at display: store every timestamp in one absolute format, and only convert for a human to read — never before a comparison runs.</li>
+          <li>Check for the sharp edge case this doesn't automatically solve: daylight saving shifts a recurring meeting's UTC time twice a year, so the recurrence expansion has to account for that explicitly, not just repeat a raw time-of-day.</li>
+        </ol>
         <p>"Book the 2pm slot" means something different in every office once a company has more than one, and a design that stores a bare local time will silently double-book or show the wrong availability the moment someone in a different time zone looks at the same room.</p>
         <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — always store UTC</span>"2pm Monday, New York office"  →  stored as  →  2026-03-02T19:00:00Z
 "2pm Monday, London office"    →  stored as  →  2026-03-02T14:00:00Z</div>
@@ -3122,6 +3302,7 @@ New request: [10:30, 11:30)
         <tr class="rt-head"><th>Non-functional requirement</th><th>How this design satisfies it</th></tr>
         <tr><td>Never double-book a room</td><td>Atomic conditional write gated by the overlap check — same pattern as Ticketmaster's seat hold.</td></tr>
         <tr><td>Fast overlap checks</td><td>Index on (room_id, start_time), or an in-memory interval tree for high-traffic rooms.</td></tr>
+        <tr><td>Searching many rooms stays one query</td><td>A single NOT EXISTS anti-join across rooms, filtered by capacity/location — not N separate per-room checks.</td></tr>
         <tr><td>Recurring meetings don't require years of pre-generated rows</td><td>Hybrid: materialize a near-term window, expand on demand beyond it.</td></tr>
       </table>
 </div>
@@ -3133,6 +3314,7 @@ New request: [10:30, 11:30)
 <table class="ref-table">
         <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
         <tr><td>Hybrid materialize-near-term + expand-on-read</td><td>Fast queries for the common case (near-term bookings) without unbounded storage, at the cost of maintaining two code paths and the boundary logic between them.</td></tr>
+        <tr><td>Anti-join search across all rooms vs. checking rooms one at a time</td><td>Scales far better as room count grows and stays a single round trip, but needs a solid (room_id, start_time) index to keep the query planner honest — for a large multi-building portfolio, worth partitioning by location so a search doesn't scan rooms nobody's asking about.</td></tr>
         <tr><td>In-memory interval tree per room vs. database index alone</td><td>Faster for very hot rooms, but it's an extra moving part that must be kept in sync with the database — only worth it once a room's traffic justifies it.</td></tr>
         <tr><td>One room per meeting (assumed)</td><td>A much simpler booking transaction — one row, one check — but doesn't support a meeting that genuinely needs two connected rooms, which would require an atomic multi-row transaction if added.</td></tr>
       </table>
@@ -3324,6 +3506,13 @@ result:
 
       <div class="callout keydive">
         <span class="label">Key deep dive — why not query all 30+ databases live</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the most direct-sounding idea: fan a search request out to all 30+ product databases and merge whatever comes back.</li>
+          <li>Trace what happens to latency: the response can only be as fast as the slowest of 30+ independent calls — with that many in flight, something is always slow.</li>
+          <li>Trace what happens to ownership: each product team now has to build and maintain search capability on their own schema, for a use case they don't actually own.</li>
+          <li>Realize the fix isn't "make the fan-out faster" — it's not fanning out at query time at all. Separate the write side (30+ databases, unchanged) from a single purpose-built read copy that every search hits instead.</li>
+        </ol>
         <p>The naive approach — fan a search request out to all 30+ product databases and merge the results — fails for reasons that compound as the product count grows.</p>
         <ul class="item-list">
           <li><strong>Tail latency amplification:</strong> the response is only as fast as the slowest of 30+ services on that request — with enough independent calls, <em>something</em> is always slow.</li>
@@ -3336,6 +3525,13 @@ result:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — keeping the index fresh without coupling to the source</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Given the read side is now a separate copy, ask the obvious follow-up: how does it ever find out about a new or changed invoice?</li>
+          <li>Reject the direct-call option first: if the Indexer called each product service directly, a slow or down Indexer would now be able to block someone else's invoice write — exactly the coupling CQRS was meant to remove.</li>
+          <li>Decouple the two sides properly: producers publish what happened, a consumer picks it up on its own schedule — neither side waits on the other.</li>
+          <li>Choose how the "what happened" gets published: either read it straight from each database's own change log (CDC), or have each service explicitly emit an event — both land on one shared stream either way.</li>
+        </ol>
         <p>Change Data Capture (CDC) reads each product database's write-ahead log directly, or each product service explicitly publishes an event on every invoice change — either way, changes land on one shared event stream that the Indexer consumes to keep the Search Index current.</p>
         <ul class="item-list">
           <li><strong>Same idea as a message queue:</strong> producers (30+ product services) and the consumer (the Indexer) never call each other directly, so a slow or down Indexer doesn't block anyone's invoice writes.</li>
@@ -3346,9 +3542,16 @@ result:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — enforcing subscriptions on every query</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the obvious-seeming fix: bake a <span style="font-family:var(--mono)">product_id IN (…)</span> filter into the search query itself, scoped to whatever the caller is subscribed to.</li>
+          <li>Trace the side effect of that choice: the query's result now depends on who's asking, not just what they typed — two users searching identical text get different results.</li>
+          <li>Connect that to the caching work already done: a result that differs per user can't be cached once and shared — the key has to become (user, query), which is exactly the key-space explosion already ruled out.</li>
+          <li>Move the filter instead of removing it: let the text-match stay caller-blind and shareable, then apply the subscription filter to that (usually small) result afterward, on every single request, cache hit or miss.</li>
+        </ol>
         <p>Different users subscribe to different subsets of the 30+ products, a subscription change has to take effect immediately, and losing access to a product shouldn't erase the ability to find invoices from when access was active — all while the search cache itself has to stay shared, not per-user, or it collapses under real traffic (see the <a href="#cachingplaybook">Caching Playbook</a>).</p>
         <ul class="item-list">
-          <li><strong>Filter after the fetch, not baked into the shared query:</strong> the text-match query sent to the index doesn't mention the caller at all, so its result is cacheable once and shared across every user searching similar text. The Search Service then filters that result to every product_id with any Subscription row for this user — active or lapsed — before returning anything. This runs on every request, cache hit or miss; nothing is ever skipped.</li>
+          <li><strong>Filter after the fetch, not baked into the query — on purpose:</strong> the obvious-seeming alternative is a <span style="font-family:var(--mono)">product_id IN (…)</span> clause baked into the search query itself. That works, but it makes the query's result a function of who's asking, not just what they typed — two users searching identical text get different results, so the cache key has to become (user, query), and that's exactly the key-space explosion the <a href="#cachingplaybook">Caching Playbook</a> walks through. Instead, the text-match query never mentions the caller, so it's cacheable once and shared across everyone searching similar text — and the Search Service filters that (usually small) result down to this caller's ever-subscribed products afterward, on every request, cache hit or miss, nothing skipped.</li>
           <li><strong>Tag status after filtering, not instead of it:</strong> for each product that survives the filter, a null <span style="font-family:var(--mono)">unsubscribed_at</span> means "Active"; a set one means "Subscription ended [date]." The tag is a label on an already-permitted result, not a second access check.</li>
           <li><strong>Cache the subscription history separately, keyed by user:</strong> it changes rarely relative to how often a user searches, so this specific lookup — user_id to product list — is cached (Redis, short TTL). This is the one place a user_id belongs in a cache key here; the search-result cache stays query-only and shared, precisely so it doesn't multiply by user count the way this smaller lookup safely can.</li>
         </ul>
