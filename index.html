@@ -329,6 +329,16 @@
   .tier-card ul li:last-child{ margin-bottom:0; }
   .tier-card ul li strong{ color:var(--ink); }
 
+  /* Which requirement a deep dive explains — subtle, reuses existing accent/marker colors */
+  .explains-row{ display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 14px; }
+  .explains-tag{
+    display:inline-flex; align-items:center; font-family:var(--mono); font-size:10.5px;
+    letter-spacing:.01em; padding:3px 10px; border-radius:20px; line-height:1.5;
+    background:rgba(111,224,240,0.07); border:1px solid rgba(111,224,240,0.28); color:var(--accent);
+  }
+  .explains-tag.nfr{ background:rgba(255,209,102,0.07); border-color:rgba(255,209,102,0.3); color:var(--marker); }
+  .explains-tag b{ font-weight:700; margin-right:5px; opacity:.75; }
+
   /* End-of-example result cards: NFR / Trade-offs / Tools — each gets its own
      contained card instead of floating bare on the page background. */
   .result-card{
@@ -1542,6 +1552,7 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive">
         <span class="label">Key deep dive — short-code generation</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Shorten + custom alias</span><span class="explains-tag nfr"><b>NFR</b>Codes never collide</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>State the actual requirement: two different long URLs must never end up with the same short code.</li>
@@ -1554,11 +1565,12 @@ Local cache vs. shared cache, for a key known to run hot:
           <li><strong>Random-and-check:</strong> generate a random string, check the DB for a collision, retry if needed. Trivially distributed, but adds a write-path check on every request.</li>
         </ul>
         <div class="example-panel" style="margin-top:10px; margin-bottom:0;"><span class="label">Illustration — counter-based</span>id 125,000,000  →  base62 encode  →  "8M0kX"</div>
-        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Either is defensible — the trade-off is what you're paid to articulate.</p>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Either is defensible — the trade-off is what you're paid to articulate. A custom alias skips generation entirely: it's the same uniqueness check as random-and-check, just against a user-supplied string instead of a random one — reject on collision rather than retry with a new one.</p>
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — cache design under a 100:1 read:write ratio</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Redirect</span><span class="explains-tag"><b>FR</b>Links can expire</span><span class="explains-tag nfr"><b>NFR</b>100:1 read:write</span><span class="explains-tag nfr"><b>NFR</b>&lt;100ms redirect</span><span class="explains-tag nfr"><b>NFR</b>Persist indefinitely</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Reads massively outnumber writes, so the cache is doing almost all the real work here — its design deserves real attention, not an afterthought.</li>
@@ -1570,12 +1582,14 @@ Local cache vs. shared cache, for a key known to run hot:
         <ul class="item-list">
           <li><strong>No invalidation to design:</strong> a UrlMapping never changes after creation, so this is one of the rare caches that just needs an eviction policy (LRU is fine) for memory pressure — no TTL is strictly required.</li>
           <li><strong>The one real risk — a hot key:</strong> a single link going viral can overwhelm one cache node while the rest of the cluster sits idle.</li>
+          <li><strong>If link expiration is in scope, that "no TTL" claim needs qualifying:</strong> an expired mapping has to stop resolving, so either the cache entry gets a TTL matching the link's own expiry, or every cache hit checks an expires_at field before returning the redirect. The write-once immutability argument still holds — what changes is "does this row still count," not the row's content.</li>
         </ul>
         <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">At that scale, the fix is a short-lived, per-instance local cache in front of the shared cache for the handful of keys receiving disproportionate traffic — so one hot key doesn't become a single point of failure.</p>
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — recording clicks without slowing down the redirect</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Click analytics</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>State the constraint plainly first: the redirect has to be fast, no matter what else the system needs to do.</li>
@@ -1781,6 +1795,7 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive">
         <span class="label">Key deep dive — algorithm choice</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Allow / deny a request</span><span class="explains-tag nfr"><b>NFR</b>Negligible added latency</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Start with the simplest possible idea: count requests in a fixed time window, reset the count when the window ends. Cheap, easy to reason about.</li>
@@ -1802,6 +1817,7 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — the counter as a hot key</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Correct across many instances</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Ask whether sharding actually solves the traffic problem here. It spreads <em>different</em> clients across nodes — but one single client's own counter still lives on exactly one node, no matter how the cluster is sharded.</li>
@@ -1820,6 +1836,7 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — where in the stack to enforce the limit</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Configurable per tier</span><span class="explains-tag nfr"><b>NFR</b>Negligible added latency</span><span class="explains-tag nfr"><b>NFR</b>Survives storage failure</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Notice that "where" is a separate decision from "how" — the algorithm and the physical location of the check answer two different questions.</li>
@@ -1834,6 +1851,7 @@ Local cache vs. shared cache, for a key known to run hot:
           <li><strong>Inside each service:</strong> the most precise option — a specific expensive operation can have a tighter limit than a cheap one — at the cost of implementing and maintaining the same logic in every service.</li>
         </ul>
         <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Most real systems layer more than one of these — a coarse, cheap check at the edge, and a precise, business-aware check at the gateway — rather than picking a single layer.</p>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;"><strong>What happens if Counter Store itself is unreachable</strong> is a decision worth stating out loud, not leaving implicit: <strong>fail open</strong> (let requests through) keeps the API up but briefly loses protection; <strong>fail closed</strong> (reject everything) protects the backend but turns a cache outage into a full outage. Most systems fail open for a rate limiter specifically — a few seconds of unthrottled traffic is a smaller risk than blocking every legitimate request because Redis hiccuped. Per-tier limits are just a lookup ("what's this client's configured limit") that has to be available at whichever layer above ends up enforcing the check — the tier value itself doesn't change where enforcement happens, it's an input to it.</p>
       </div>
 
       <div class="callout scale-note" style="margin-top:14px;">
@@ -2024,6 +2042,7 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive">
         <span class="label">Key deep dive — avoiding duplicate crawling at scale</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Avoid re-crawling</span><span class="explains-tag nfr"><b>NFR</b>Scale to billions of pages</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Start with the obvious approach: check every discovered URL against the database of already-crawled URLs before crawling it.</li>
@@ -2043,6 +2062,7 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — politeness at scale</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Politeness / robots.txt</span><span class="explains-tag nfr"><b>NFR</b>Resilient to host failures</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>State the actual rule that needs enforcing: don't hit any single host too fast, no matter how many crawl workers are running in parallel.</li>
@@ -2060,6 +2080,7 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — crawler traps and infinite URL spaces</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>No infinite loops / duplicate work</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Notice this is a different problem from duplicate crawling above — that's about re-visiting a URL you've genuinely already seen; this is about a site inventing new-looking URLs faster than you can crawl them.</li>
@@ -2077,9 +2098,21 @@ Local cache vs. shared cache, for a key known to run hot:
         <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">A host whose discovered-URL count grows suspiciously fast relative to its actual content is worth flagging for review rather than trusting the crawler to sort it out on its own.</p>
       </div>
 
-      <div class="callout scale-note" style="margin-top:14px;">
-        <span class="label">At 10x scale</span>
-        <p>Once a single content-hash comparison on re-crawl isn't enough to justify the fetch cost, add a priority scoring pass before pages re-enter the Frontier — pages that change often (news, forums) get shorter re-crawl intervals than pages that rarely change (documentation, archives), so crawl budget goes where freshness actually matters instead of being spent uniformly.</p>
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — extensible crawl priority</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Extensible crawl priority</span><span class="explains-tag nfr"><b>NFR</b>Bounded storage growth</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the default: every discovered URL gets crawled and re-crawled on the same schedule, no matter what kind of page it is.</li>
+          <li>Notice that wastes effort — a news homepage changes hourly, a documentation page might not change for years, but a uniform schedule treats them identically.</li>
+          <li>Ask what would let the crawler spend its budget where it actually matters: a per-page signal for "how often is this worth re-checking," not a global constant.</li>
+          <li>Attach a priority score to each Frontier entry and let it drive re-crawl frequency — pages that historically change often get shorter intervals, stable pages get longer ones.</li>
+        </ol>
+        <p>Once a single content-hash comparison on re-crawl isn't enough to justify the fetch cost, a priority scoring pass before pages re-enter the Frontier pays off — pages that change often (news, forums) get shorter re-crawl intervals than pages that rarely change (documentation, archives), so crawl budget goes where freshness actually matters instead of being spent uniformly.</p>
+        <ul class="item-list">
+          <li><strong>The signal is behavioral, not declared:</strong> track how often a page's content hash actually changes between re-crawls, and let that history — not a manually assigned category — set its priority.</li>
+          <li><strong>This is also what bounds storage growth:</strong> a page that rarely changes gets re-fetched rarely, which caps how much duplicate-content churn the Content Store absorbs over time.</li>
+        </ul>
       </div>
 
       <div class="result-card nfr-card">
@@ -2307,6 +2340,7 @@ Local cache vs. shared cache, for a key known to run hot:
 
       <div class="callout keydive">
         <span class="label">Key deep dive — the concurrency race for the last spot</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Park a vehicle</span><span class="explains-tag nfr"><b>NFR</b>Thread-safe, multiple gates</span><span class="explains-tag nfr"><b>NFR</b>No full-spot scan</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Walk through the naive version step by step: check if the spot is free, then mark it occupied — two separate steps.</li>
@@ -2322,11 +2356,13 @@ Car B: marks spot occupied         → two tickets, one physical spot</div>
         <ul class="item-list">
           <li><strong>The fix:</strong> make spot assignment atomic — either a lock scoped to the level's free-spot list held across the check-and-mark, or a compare-and-swap on the spot's status field if the runtime supports lock-free atomics.</li>
           <li><strong>The broader principle:</strong> any time two threads can both pass a check before either acts on it, you have this same bug — whether it's a parking spot, a bank balance, or the rate limiter's counter from the earlier example.</li>
+          <li><strong>This is also what avoids scanning every spot:</strong> "the level's free-spot list" in the fix above isn't incidental phrasing — each Level maintains its own small set of currently-free spots, so assignment is a lookup against that set, not a scan of every spot's status on every request.</li>
         </ul>
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — why these specific patterns</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Compute fee on exit</span><span class="explains-tag"><b>FR</b>Multiple vehicle types</span><span class="explains-tag nfr"><b>NFR</b>Extensible without rewrites</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Before reaching for any pattern, ask what's actually likely to change. For fee calculation, that's the pricing scheme — it shifts far more often than the rest of the parking logic.</li>
@@ -2343,6 +2379,7 @@ Car B: marks spot occupied         → two tickets, one physical spot</div>
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — notifying other systems when availability changes</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Report availability per level</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>List out who actually needs to know when a spot opens: a sign, an app, maybe a pricing service — more than one, and the list is likely to grow.</li>
@@ -2542,6 +2579,7 @@ Car B: marks spot occupied         → two tickets, one physical spot</div>
 
       <div class="callout keydive">
         <span class="label">Key deep dive — preventing overselling under distributed contention</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Hold a seat</span><span class="explains-tag"><b>FR</b>Confirm purchase</span><span class="explains-tag nfr"><b>NFR</b>Zero overselling</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Recognize this is the same shape of bug as the parking lot's race — check then act — just spread across many service instances instead of one process.</li>
@@ -2560,6 +2598,7 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — the virtual waiting room</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Browse / see availability</span><span class="explains-tag nfr"><b>NFR</b>Survives a traffic spike</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Ask where the actual load comes from during a big on-sale — not from people buying seats, but from far more people just looking.</li>
@@ -2577,6 +2616,7 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — bot and scalper prevention</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Fair-ish ordering under load</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Ask whether the concurrency fix — the conditional write — actually solves the fairness problem, not just the correctness one. It doesn't: a script can still win hundreds of individually correct writes faster than any human could click.</li>
@@ -2591,6 +2631,24 @@ WHERE id = ? AND status = 'available'
           <li><strong>Rate limiting the hold endpoint itself</strong> per account/IP — the same rate-limiter pattern from earlier in this framework, aimed specifically at slowing rapid-fire hold attempts.</li>
         </ul>
         <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">None of these are airtight alone — bots adapt to each one — which is why real systems layer several imperfect defenses rather than searching for one perfect one.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — releasing an expired hold</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Release hold automatically</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>State the requirement plainly: a hold nobody completes has to eventually stop blocking that seat for everyone else.</li>
+          <li>Consider a periodic sweep alone: a background job scans for expired holds and releases them. Ask what happens between expiry and the next sweep — the seat still shows as held even though the hold is already dead.</li>
+          <li>Consider checking at the point of use instead: before trusting a seat's stored status, check whether its hold has already expired.</li>
+          <li>Notice neither is complete alone — a lazy check only fires when someone looks at that exact seat again; a sweep alone leaves a staleness window. Run both.</li>
+        </ol>
+        <p>A Hold carries its own <span style="font-family:var(--mono)">expires_at</span> — nothing needs to actively cancel it for the reservation to become logically invalid the moment that time passes.</p>
+        <ul class="item-list">
+          <li><strong>Lazy check on access:</strong> whenever a seat's status is read or written, check <span style="font-family:var(--mono)">hold_expires_at</span> first — if it's passed, treat the seat as Available regardless of what the stored status literally says, and update the row opportunistically.</li>
+          <li><strong>Periodic sweep:</strong> a background job releases expired holds even for seats nobody's actively querying, so aggregate availability (the browse page) doesn't drift stale indefinitely.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">The lazy check keeps the path that matters most — someone requesting that exact seat — instantly correct without waiting on a sweep interval; the sweep keeps everything else roughly honest in the meantime. Same "correctness on the hot path, eventual consistency elsewhere" split as the URL shortener's async click recording.</p>
       </div>
 
       <div class="result-card nfr-card">
@@ -2667,7 +2725,7 @@ WHERE id = ? AND status = 'available'
           <ul class="entity-list">
             <li><strong>User</strong> <span class="fields">(id, last_seen)</span> — a participant.</li>
             <li><strong>Conversation</strong> <span class="fields">(id, participant_ids)</span> — 1:1 or group.</li>
-            <li><strong>Message</strong> <span class="fields">(id, conversation_id, sender_id, content, sent_at, status)</span> — status is Sent, Delivered, or Read.</li>
+            <li><strong>Message</strong> <span class="fields">(id, conversation_id, sender_id, content, sent_at, seq, status)</span> — status is Sent, Delivered, or Read; seq is a per-conversation monotonic counter, the actual ordering key.</li>
             <li><strong>Connection</strong> <span class="fields">(user_id, gateway_node, connected_at)</span> — which server currently holds this user's live socket, if any.</li>
           </ul>
         </div></div>
@@ -2780,6 +2838,7 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive">
         <span class="label">Key deep dive — finding which server holds a live connection</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Real-time delivery if online</span><span class="explains-tag nfr"><b>NFR</b>Sub-second online delivery</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Start from the normal assumption for most web services: any server behind the load balancer can handle any request. Test whether that holds here.</li>
@@ -2799,6 +2858,7 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — group chat fan-out</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Group chats</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Notice the send logic built for one recipient doesn't obviously generalize — a group message needs that same online/offline decision made independently, once per participant.</li>
@@ -2816,6 +2876,7 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — syncing one account across multiple devices</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Delivery status: sent/delivered/read</span><span class="explains-tag nfr"><b>NFR</b>Scale, one connection/user, globally</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Revisit an assumption baked into everything so far: one connection per user. Ask whether that's actually true for a real messaging app — it isn't.</li>
@@ -2829,6 +2890,24 @@ WHERE id = ? AND status = 'available'
           <li><strong>Status has to reconcile across devices too:</strong> a message read on the phone should show as read on the laptop, which means status changes fan out across a user's own devices, not only to the other side of the conversation.</li>
         </ul>
         <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This is the same fan-out shape as the group-chat deep dive above, just fanning out to one person's devices instead of many people — the mechanism doesn't change, only who's on the receiving end.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — no lost messages, correct order</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>No message loss</span><span class="explains-tag nfr"><b>NFR</b>Correct ordering</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Ask what "no message loss" actually rules out: a delivery attempt is allowed to fail — a gateway can crash mid-push — but the message itself must never disappear because of that.</li>
+          <li>Locate the one step that has to be non-negotiable: the message must be durably written before the system does anything else with it, including trying to deliver it.</li>
+          <li>Once that's true, delivery becomes a retry problem, not a data-loss problem — a failed push just means try again from the durable copy, not "the message is gone."</li>
+          <li>For ordering, don't assume it's free: two messages sent close together can arrive at the store slightly out of send order, so ordering needs its own explicit key, not just "whichever wrote first."</li>
+        </ol>
+        <p>Both guarantees come from the same discipline: the Message Store is written to first, before any delivery attempt, and every message gets an ordering key that doesn't depend on when a push happened to succeed.</p>
+        <ul class="item-list">
+          <li><strong>Write before you push:</strong> a message is durably persisted the moment it's accepted, before the system attempts the WebSocket push or the offline path. A crashed gateway or a failed push is retried against the durable copy — it never means the message itself was lost.</li>
+          <li><strong>Order by a monotonic key, not wall-clock time alone:</strong> a per-conversation sequence number (or a timestamp with a tie-breaking id) survives clock skew and near-simultaneous sends; sorting purely by <span style="font-family:var(--mono)">sent_at</span> from different servers can't guarantee that.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Same instinct as Ticketmaster's seat hold and the URL shortener's click recording: identify the one write that has to be correct and durable, and let everything after it — delivery, retries, display — be the part that's allowed to be eventually consistent.</p>
       </div>
 
       <div class="result-card nfr-card">
@@ -3012,6 +3091,7 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive">
         <span class="label">Key deep dive — finding nearby drivers fast</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Match with nearby driver</span><span class="explains-tag nfr"><b>NFR</b>Match in seconds</span><span class="explains-tag nfr"><b>NFR</b>Nearby search stays fast</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Start with the naive approach: for a given rider, check the distance to every driver and pick the closest ones. Test it against scale.</li>
@@ -3029,6 +3109,7 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — surviving the location-ping write volume</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Rider requests from current location</span><span class="explains-tag nfr"><b>NFR</b>High-volume location stream</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Notice this path is different from most of the system: it's not triggered by a user action, it's a constant stream — every active driver, every few seconds, whether or not anyone's requesting a ride.</li>
@@ -3046,6 +3127,7 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — avoiding two drivers accepting the same ride</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Match with nearby driver</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Notice the shape of what's being proposed: notify multiple nearby drivers at once to reduce rider wait time.</li>
@@ -3059,6 +3141,24 @@ WHERE id = ? AND status = 'available'
           <li><strong>Notify several, take the first accept:</strong> faster for the rider, but needs the same atomic conditional write as Ticketmaster's seat hold — the Ride record only transitions to Matched for whichever driver's acceptance lands first; every other acceptance is rejected because the row no longer matches the expected state.</li>
         </ul>
         <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Third time this exact shape has shown up on this page — a parking spot, a seat, and now a ride request are all the same problem: two actors racing to claim one thing.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — tracking a ride in real time</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Track progress in real time</span><span class="explains-tag"><b>FR</b>Clear ride lifecycle</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice this splits into two different questions that get conflated easily: how does a status change reach both people, and what are the actual valid statuses to move between?</li>
+          <li>For delivery, recognize this is the exact same problem WhatsApp already solved — pushing an update to a specific online user's device. Reuse that, don't re-invent it.</li>
+          <li>For the states themselves, list what's actually possible: a ride can't go from Requested straight to Completed, and once Completed it can't go anywhere. That's not a free-text status field, it's a constrained set of transitions.</li>
+          <li>Model that constraint directly — a state machine — so an invalid transition (marking a Requested ride as Completed) is rejected by the model itself, not caught by a scattered if-check somewhere in application code.</li>
+        </ol>
+        <p>Rider and driver apps both need to see the ride move through its states as they happen — not by polling, and not by re-deriving delivery from scratch.</p>
+        <ul class="item-list">
+          <li><strong>Delivery reuses WhatsApp's push mechanism:</strong> each status change (Matched, driver arriving, InProgress, Completed) is a small message pushed to both the rider's and driver's live connections — the same connection-registry lookup and gateway push from the WhatsApp example, aimed at ride events instead of chat messages.</li>
+          <li><strong>The lifecycle is a state machine, not a status string:</strong> Requested → Matched → InProgress → Completed is an explicit set of allowed transitions. The Ride Record only accepts a write that moves it to a state reachable from its current one — the same discipline as the parking spot's status field, applied to a longer chain.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Splitting these apart matters: the state machine is about what changes are even valid; the push mechanism is about how a valid change reaches the people who need to see it. Conflating them tends to produce code where an invalid state transition and a failed notification look like the same kind of bug.</p>
       </div>
 
       <div class="result-card nfr-card">
@@ -3233,6 +3333,7 @@ WHERE id = ? AND status = 'available'
 
       <div class="callout keydive">
         <span class="label">Key deep dive — efficient overlap detection</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Book a room</span><span class="explains-tag"><b>FR</b>Check availability</span><span class="explains-tag"><b>FR</b>Search available rooms</span><span class="explains-tag nfr"><b>NFR</b>Never double-book</span><span class="explains-tag nfr"><b>NFR</b>Fast overlap checks</span><span class="explains-tag nfr"><b>NFR</b>Room search stays one query</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Write down the overlap condition precisely: two ranges conflict when each one starts before the other ends. A simple comparison.</li>
@@ -3262,6 +3363,7 @@ AND NOT EXISTS (
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — storing recurring meetings</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Recurring meetings</span><span class="explains-tag"><b>FR</b>Cancel/modify a single occurrence</span><span class="explains-tag nfr"><b>NFR</b>No pre-generating years of instances</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Consider the simplest option: generate every future occurrence the moment the series is created. Test it against "forever" — a weekly meeting with no end date means either an arbitrary cutoff or unbounded storage.</li>
@@ -3271,13 +3373,14 @@ AND NOT EXISTS (
         </ol>
         <ul class="item-list">
           <li><strong>Materialize on write:</strong> generate every instance of the series up front. Simple to query, but wasteful — a weekly meeting "forever" means either an arbitrary cutoff or unbounded storage, and changing the series means rewriting every future instance.</li>
-          <li><strong>Expand on read:</strong> store just the rule, compute instances when a range is queried. Cheap to store, but every availability check now does more work, and canceling a single occurrence needs an "exception" record layered on top of the rule rather than a row to simply delete.</li>
+          <li><strong>Expand on read:</strong> store just the rule, compute instances when a range is queried. Cheap to store, but every availability check now does more work, and modifying or canceling a single occurrence needs an "exception" record layered on top of the rule — either "this date is cancelled" or "this date is rescheduled to X" — rather than a row to simply edit or delete.</li>
         </ul>
         <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Most real systems land on a hybrid: materialize a bounded near-term window (say, the next 90 days) for fast queries, and expand on demand beyond that — the same instinct as the crawler's priority scoring, spending effort where it's actually needed.</p>
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — time zones</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Never double-book</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>State the requirement the way someone would actually phrase it: "book the 2pm slot." Notice that's ambiguous the moment more than one office exists.</li>
@@ -3506,6 +3609,7 @@ result:
 
       <div class="callout keydive">
         <span class="label">Key deep dive — why not query all 30+ databases live</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Results grouped by product</span><span class="explains-tag"><b>FR</b>Products keep owning writes</span><span class="explains-tag nfr"><b>NFR</b>No coupling to write paths</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Start with the most direct-sounding idea: fan a search request out to all 30+ product databases and merge whatever comes back.</li>
@@ -3525,6 +3629,7 @@ result:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — keeping the index fresh without coupling to the source</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>No coupling to write paths</span><span class="explains-tag nfr"><b>NFR</b>Reasonably fresh results</span><span class="explains-tag nfr"><b>NFR</b>Search stays fast at scale</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Given the read side is now a separate copy, ask the obvious follow-up: how does it ever find out about a new or changed invoice?</li>
@@ -3542,6 +3647,7 @@ result:
 
       <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — enforcing subscriptions on every query</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Only subscribed products in results</span><span class="explains-tag"><b>FR</b>Lapsed subscriptions still findable</span><span class="explains-tag nfr"><b>NFR</b>Subscription changes take effect immediately</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
           <li>Start with the obvious-seeming fix: bake a <span style="font-family:var(--mono)">product_id IN (…)</span> filter into the search query itself, scoped to whatever the caller is subscribed to.</li>
