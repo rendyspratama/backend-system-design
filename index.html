@@ -495,6 +495,11 @@
       <a class="nav-link" href="#usecase-uber"><span class="num">G</span>Uber</a>
       <a class="nav-link" href="#usecase-meetingroom"><span class="num">H</span>Meeting Room Booking</a>
       <a class="nav-link" href="#usecase-invoicesearch"><span class="num">I</span>Multi-Product Invoice Search</a>
+      <a class="nav-link" href="#usecase-newsfeed"><span class="num">J</span>News Feed</a>
+      <a class="nav-link" href="#usecase-collabedit"><span class="num">K</span>Collaborative Document Editing</a>
+      <a class="nav-link" href="#usecase-gamesync"><span class="num">L</span>Multiplayer Game State Sync</a>
+      <a class="nav-link" href="#usecase-viewcount"><span class="num">M</span>Video View Count</a>
+      <a class="nav-link" href="#usecase-snowflake"><span class="num">N</span>Global Unique ID Generator</a>
     </div>
 
     <div class="nav-group">
@@ -3714,6 +3719,1309 @@ result:
         <tr><td>Search Index</td><td><span class="tool-tag">Elasticsearch</span>, <span class="tool-tag">OpenSearch</span></td></tr>
         <tr><td>Cache</td><td><span class="tool-tag">Redis</span></td></tr>
         <tr><td>Subscriptions</td><td><span class="tool-tag">PostgreSQL</span> as source of truth, <span class="tool-tag">Redis</span> for the cached user_id → product_ids lookup</td></tr>
+      </table>
+</div>
+      </div>
+    </section>
+
+
+    <section class="section" id="usecase-newsfeed">
+      <div class="eyebrow">Worked Example J — Fan-out at Uneven Scale</div>
+      <div class="usecase-head">
+        <h2 class="section-title">Design a News Feed</h2>
+        <span class="uc-tag">fan-out-on-write vs. fan-out-on-read · the celebrity problem</span>
+      </div>
+      <p style="max-width:680px;">"Design a system where a user posts content, and anyone following them sees it in their home feed." A read-heavy, write-light system on the surface — but the follower graph is wildly uneven: most accounts have a few hundred followers, a handful have tens of millions. Any design that assumes uniform fan-out breaks on that handful.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>Post content (text, optionally media) to your own timeline.</li>
+              <li>Follow and unfollow other users.</li>
+              <li>View a home feed — a merged, reverse-chronological stream of posts from everyone you follow.</li>
+              <li>Paginate through the feed without seeing duplicate or missing posts as new content arrives while scrolling.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>Feed loads fast (low hundreds of ms) even for a user following thousands of accounts.</li>
+              <li>Posting must not get slower or block based on how many followers the poster has — a celebrity's post can't take minutes to "finish."</li>
+              <li>New posts should reach followers' feeds within seconds, not necessarily instantly.</li>
+              <li>Storage for materialized feeds can't grow without bound per user.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: strictly reverse-chronological, or ranked/algorithmic? We'll design for chronological — ranking is a scoring function bolted onto the same pipeline, not a different architecture.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>User</strong> <span class="fields">(id, username, follower_count)</span> — follower_count is the single number that decides which fan-out path a post takes.</li>
+            <li><strong>Follow</strong> <span class="fields">(follower_id, followee_id)</span> — the graph edge; who follows whom.</li>
+            <li><strong>Post</strong> <span class="fields">(id, author_id, content, created_at)</span> — the source of truth for content, written once.</li>
+            <li><strong>Timeline entry</strong> <span class="fields">(user_id, post_id, created_at)</span> — a materialized, pre-computed row in one follower's feed; this is what fan-out-on-write actually writes.</li>
+          </ul>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p><span style="font-family:var(--mono)">POST /posts {content}</span> → post id<br>
+          <span style="font-family:var(--mono)">POST /follows {followee_id}</span> → follow relationship created<br>
+          <span style="font-family:var(--mono)">GET /feed?cursor</span> → a page of posts for the caller's home feed, oldest-shown-first cursor for stable pagination</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>A post is written once to the Posts table — the source of truth, regardless of the author's follower count.</li>
+            <li>A "new post" event is published — the write path never waits on what happens next.</li>
+            <li>A Fan-out Worker consumes the event and checks the author's follower_count against a threshold.</li>
+            <li><strong>Below the threshold:</strong> write a Timeline entry into every follower's materialized feed — the normal, common case.</li>
+            <li><strong>Above the threshold:</strong> skip fan-out entirely. The post is discoverable only by the read path checking "posts from accounts I follow with a high follower count" directly, at read time.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>Two fan-out paths diverge right after the post is written, based on one number — diagrammed and walked through below.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Three below: <strong>(a)</strong> fan-out-on-write vs. fan-out-on-read and the celebrity problem, <strong>(b)</strong> keeping the materialized timeline bounded, and <strong>(c)</strong> pagination that stays correct while new posts keep arriving.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 1100 460" style="width:100%; min-width:760px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="nf-arrow-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="nf-arrow-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="nf-arrow-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="nf-arrow-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+          </defs>
+
+          <!-- Author -->
+          <rect x="20" y="60" width="130" height="70" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="85" y="100" text-anchor="middle" font-family="JetBrains Mono" font-size="13.5" font-weight="700" fill="#EAF4FF">Author</text>
+
+          <!-- Post Service -->
+          <rect x="215" y="60" width="150" height="70" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="290" y="93" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Post Service</text>
+          <text x="290" y="110" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">writes Posts, publishes event</text>
+
+          <!-- Posts DB -->
+          <rect x="215" y="195" width="150" height="65" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="290" y="224" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Posts DB</text>
+          <text x="290" y="241" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">source of truth</text>
+
+          <!-- Event Stream -->
+          <rect x="440" y="60" width="150" height="70" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="515" y="93" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Event Stream</text>
+          <text x="515" y="110" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">new-post events</text>
+
+          <!-- Fan-out Worker -->
+          <rect x="440" y="195" width="150" height="80" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="515" y="225" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Fan-out Worker</text>
+          <text x="515" y="242" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">checks follower_count</text>
+          <text x="515" y="257" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">against a threshold</text>
+
+          <!-- Timeline Store -->
+          <rect x="665" y="120" width="170" height="75" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="750" y="150" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Timeline Store</text>
+          <text x="750" y="167" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">per-user, capped, fast reads</text>
+
+          <!-- Follow Graph -->
+          <rect x="665" y="255" width="170" height="65" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="750" y="284" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Follow Graph</text>
+          <text x="750" y="301" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">who follows whom</text>
+
+          <!-- Feed Service -->
+          <rect x="900" y="185" width="160" height="80" rx="10" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="980" y="215" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Feed Service</text>
+          <text x="980" y="232" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">reads + merges</text>
+          <text x="980" y="247" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">both paths</text>
+
+          <!-- Reader -->
+          <rect x="900" y="330" width="160" height="65" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="980" y="359" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Follower</text>
+          <text x="980" y="376" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">GET /feed</text>
+
+          <!-- flows -->
+          <line x1="150" y1="95" x2="212" y2="95" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#nf-arrow-ink)"/>
+          <text x="181" y="83" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9FC1E0">1</text>
+
+          <line x1="290" y1="130" x2="290" y2="192" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#nf-arrow-ink)"/>
+          <line x1="365" y1="95" x2="437" y2="95" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#nf-arrow-ink)"/>
+          <text x="401" y="83" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9FC1E0">2</text>
+
+          <line x1="515" y1="130" x2="515" y2="192" stroke="#FFD166" stroke-width="1.5" marker-end="url(#nf-arrow-amber)"/>
+          <text x="545" y="165" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">3</text>
+
+          <path d="M 590,220 C 630,190 640,175 662,158" fill="none" stroke="#FFD166" stroke-width="1.6" marker-end="url(#nf-arrow-amber)"/>
+          <text x="640" y="200" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">4a · below threshold: write</text>
+
+          <line x1="590" y1="245" x2="662" y2="270" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#nf-arrow-ink)"/>
+          <text x="580" y="270" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">4b · above threshold: skip</text>
+
+          <line x1="835" y1="165" x2="897" y2="210" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#nf-arrow-cyan)"/>
+          <text x="880" y="185" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">5a</text>
+
+          <path d="M 900,240 C 850,270 810,260 750,318" fill="none" stroke="#6FE0F0" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#nf-arrow-cyan)"/>
+          <text x="985" y="290" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">5b · live check</text>
+
+          <line x1="980" y1="265" x2="980" y2="327" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#nf-arrow-cyan)"/>
+          <text x="1010" y="300" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">6</text>
+
+          <!-- legend -->
+          <line x1="30" y1="430" x2="60" y2="430" stroke="#FFD166" stroke-width="2"/>
+          <text x="68" y="434" font-family="Inter" font-size="11" fill="#9FC1E0">Write / fan-out path</text>
+          <line x1="230" y1="430" x2="260" y2="430" stroke="#6FE0F0" stroke-width="2"/>
+          <text x="268" y="434" font-family="Inter" font-size="11" fill="#9FC1E0">Read path</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">Every post lands in Posts DB the same way — what diverges is fan-out. Below the follower threshold, the Fan-out Worker writes into every follower's Timeline Store. Above it, nothing is written; the Feed Service checks that author directly at read time instead.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col">
+          <div class="flow-title">Write path (post)</div>
+          <ol>
+            <li>Author posts; Post Service writes it to Posts DB and publishes a "new post" event — the write returns immediately, before any fan-out happens.</li>
+            <li>The Fan-out Worker consumes the event and checks the author's follower_count against a fixed threshold (say, 10,000).</li>
+            <li>Below the threshold: look up every follower from the Follow Graph and write a Timeline entry into each of their materialized feeds.</li>
+            <li>Above the threshold: do nothing further — the post is discoverable only through the read path's live check.</li>
+          </ol>
+        </div>
+        <div class="flow-col">
+          <div class="flow-title">Read path (feed)</div>
+          <ol>
+            <li>Follower opens the app; Feed Service reads that follower's materialized Timeline Store — already sorted, a fast lookup.</li>
+            <li>Separately, it checks whether the follower follows any high-follower-count accounts, and if so, queries their recent posts from Posts DB directly.</li>
+            <li>The two result sets are merged by timestamp into one reverse-chronological page.</li>
+            <li>A cursor based on the oldest post shown is returned, so the next page picks up exactly where this one left off — even if new posts arrived in between.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — fan-out-on-write vs. fan-out-on-read, and the celebrity problem</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>View home feed</span><span class="explains-tag nfr"><b>NFR</b>Feed loads fast</span><span class="explains-tag nfr"><b>NFR</b>Posting isn't follower-count-dependent</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the option that makes reads trivially fast: precompute every user's feed at post time, so a read is just "fetch my already-built list."</li>
+          <li>Stress-test it against the extreme case: an account with 50 million followers posts. That's 50 million writes triggered by one action — the post "hangs" while fan-out grinds through a queue, or the write path itself gets dragged into that cost.</li>
+          <li>Try the opposite extreme instead: don't precompute anything, merge the feed live from everyone the reader follows at read time. Test it against the common case — a normal user following 300 accounts now does a 300-way merge on every single feed load.</li>
+          <li>Notice neither extreme is right for both kinds of accounts, because the actual variable is follower count, which spans many orders of magnitude. Split the strategy by that number instead of picking one for everyone.</li>
+        </ol>
+        <p>The two pure strategies are each right for a different, common case — the fix is choosing per-author, not picking one architecture for the whole system.</p>
+        <ul class="item-list">
+          <li><strong>Fan-out-on-write (push):</strong> write a Timeline entry to every follower's feed the moment someone posts. Reads become a single fast lookup — the cost is paid once, at write time, and shared across every future read of that feed.</li>
+          <li><strong>Fan-out-on-read (pull):</strong> store nothing extra; merge posts from followed accounts live, at read time. Writes stay cheap and instant regardless of follower count — the cost is paid on every single read instead.</li>
+          <li><strong>The hybrid:</strong> fan-out-on-write for accounts under a follower threshold (the overwhelming majority), fan-out-on-read for the small number above it. A normal user's feed is a fast Timeline Store lookup; a celebrity's posts are picked up live by the read path, merged in only for the followers actually reading their feed right now.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This is the same instinct as Uber's location pings getting their own storage path separate from ride records — identify the one input whose scale characteristics are wildly different from everything else, and give it a different path instead of forcing one design to survive both extremes.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — keeping the materialized timeline bounded</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Storage can't grow unbounded per user</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice fan-out-on-write has a quiet cost the read-speed win doesn't mention: every follow relationship now implies a growing set of stored rows, forever, for every active user.</li>
+          <li>Ask how much of that stored history actually gets read. Almost none of it — people scroll back a few dozen or hundred posts, essentially never to the bottom of a feed that's years old.</li>
+          <li>Notice the asymmetry: paying storage cost for content that's rarely if ever read is waste, not correctness.</li>
+          <li>Cap it deliberately: keep only the most recent N entries materialized per user, and treat anything older as reconstructible on demand rather than permanently stored.</li>
+        </ol>
+        <p>A Timeline Store entry exists for every (follower, post) pair from a fanned-out write — for an active user following hundreds of accounts, that's an unbounded, ever-growing list with no natural cap.</p>
+        <ul class="item-list">
+          <li><strong>Cap each user's materialized timeline</strong> to the most recent N entries (a few hundred to a couple thousand) — old entries are trimmed, not kept forever.</li>
+          <li><strong>Falling off the cap isn't data loss:</strong> Posts DB is still the source of truth. A user who scrolls past the materialized window falls back to a live, fan-out-on-read-style query for anything older — rare enough in practice that it doesn't need to be fast.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Same shape as the crawler's bounded storage growth — cap the common, fast path deliberately, and let the rare, slow path fall back to the source of truth instead of trying to make everything permanently fast.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — pagination that stays correct while new posts keep arriving</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Paginate without duplicates/gaps</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the obvious pagination approach: page 1 is the first 20 rows, page 2 is the next 20, using offset and limit.</li>
+          <li>Trace what happens if three new posts arrive between loading page 1 and page 2: everything shifts down by three. Page 2, requested by offset, now starts three rows earlier than the reader expects — the last three posts they already saw on page 1 repeat.</li>
+          <li>Notice the real problem: an offset is a position in a list that's actively changing underneath the reader, not a stable reference to anything.</li>
+          <li>Reference content instead of position: ask for "everything older than the last post I actually saw," not "whatever's at position 20 right now."</li>
+        </ol>
+        <p>A naive offset-based page ("give me results 21–40") silently breaks the moment new posts land between two page loads — everything shifts, and the reader sees duplicates or skips posts entirely.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — offset breaks, cursor doesn't</span>Page 1 loaded: posts ranked 1-20 (newest first)
+3 new posts arrive
+Page 2 by OFFSET 20:  now shows what used to be ranks 18-37  → 3 duplicates
+
+Page 2 by CURSOR (oldest post_id/timestamp shown on page 1):
+  "give me posts older than that"  → always correct, regardless of what's arrived since</div>
+        <ul class="item-list">
+          <li><strong>Cursor-based pagination:</strong> the cursor is the timestamp (or id) of the last post shown, not a row count. "Older than this" is a stable reference no matter how many new posts have landed since.</li>
+          <li><strong>The merged-source complication:</strong> since a page can be assembled from both the Timeline Store and a live celebrity check, the cursor has to be comparable across both — a plain timestamp works for this; an opaque per-source offset would not.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This is a narrow instance of a general rule: any paginated view over data that changes while it's being read needs a stable reference point, not a position — the same reason a database cursor scans by key, not by row number.</p>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>Fast feed loads at any follower-count scale</td><td>Materialized Timeline Store for the common case; live merge only for the small set of high-follower accounts a reader follows.</td></tr>
+        <tr><td>Posting isn't slowed by follower count</td><td>The write returns immediately after publishing an event — fan-out (if any) happens asynchronously, off the critical path.</td></tr>
+        <tr><td>Bounded per-user storage</td><td>Timeline entries capped to the most recent N; older content falls back to Posts DB on demand.</td></tr>
+        <tr><td>Stable pagination under concurrent writes</td><td>Cursor keyed on timestamp/id, not row offset — immune to new posts landing mid-scroll.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Fan-out-on-write vs. fan-out-on-read</td><td>Push makes reads a single fast lookup at the cost of write amplification per follower; pull keeps writes flat at the cost of an expensive merge on every read — neither is right alone across a real follower-count distribution.</td></tr>
+        <tr><td>Hybrid with a fixed follower threshold</td><td>Solves the celebrity problem cleanly, but the threshold itself is a tuning knob — set it too low and too many accounts pay the read-time merge cost; too high and a large-but-not-celebrity account still causes a fan-out spike.</td></tr>
+        <tr><td>Capped materialized timeline vs. unbounded history</td><td>Keeps storage and fan-out cost predictable, at the cost of a slower fallback path for the rare reader who scrolls past the cap.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>Event Stream</td><td><span class="tool-tag">Kafka</span></td></tr>
+        <tr><td>Fan-out Worker</td><td>a Kafka consumer service, horizontally scaled</td></tr>
+        <tr><td>Timeline Store</td><td><span class="tool-tag">Redis</span> (sorted sets, capped per key), or <span class="tool-tag">Cassandra</span> for larger retention</td></tr>
+        <tr><td>Posts DB</td><td><span class="tool-tag">PostgreSQL</span>, <span class="tool-tag">DynamoDB</span></td></tr>
+        <tr><td>Follow Graph</td><td><span class="tool-tag">PostgreSQL</span> for moderate scale; a graph-oriented store at very large scale</td></tr>
+      </table>
+</div>
+      </div>
+    </section>
+
+
+    <section class="section" id="usecase-collabedit">
+      <div class="eyebrow">Worked Example K — Merge, Don't Reject</div>
+      <div class="usecase-head">
+        <h2 class="section-title">Design Collaborative Document Editing</h2>
+        <span class="uc-tag">operational transformation · concurrent edits, no losers</span>
+      </div>
+      <p style="max-width:680px;">"Design a system where multiple people can type into the same document at the same time, and everyone converges on the same result." Every other worked example on this page solves contention the same way — one actor wins, everyone else is rejected and retries. This one is the opposite shape: two people typing in the same paragraph at the same instant both succeed, and the system's whole job is making their edits merge into something coherent, not picking a winner.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>Multiple users edit the same document simultaneously; every keystroke is visible to everyone else within roughly a second.</li>
+              <li>Every collaborator's editor eventually shows the exact same document content — no permanent divergence.</li>
+              <li>A user who was offline (laptop closed, network drop) can reconnect and have their local edits merged in, not discarded.</li>
+              <li>Cursor position and text selection are preserved correctly for a user even while someone else's edit lands above them in the document.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>Local edits feel instant — a keystroke must never wait on a round trip to the server before appearing in the typer's own editor.</li>
+              <li>Convergence: given the same set of edits, every client ends up with identical document content, regardless of the order edits were received in.</li>
+              <li>No edit is ever silently dropped, even under concurrent, conflicting edits at the same document position.</li>
+              <li>Reconnecting after an extended offline period doesn't require re-downloading the whole edit history.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: rich text (bold, formatting, embedded images) or plain text? We'll design for plain text — insert/delete on a character sequence. Rich formatting is the same core algorithm with a richer operation set, not a different architecture.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>Document</strong> <span class="fields">(id, content, revision)</span> — the current text and a monotonic version number; revision is what every operation is transformed against.</li>
+            <li><strong>Operation</strong> <span class="fields">(doc_id, client_id, base_revision, type, position, value)</span> — a single insert or delete, tagged with the revision it was created against, not the revision it lands on.</li>
+            <li><strong>Session</strong> <span class="fields">(client_id, doc_id, connection_state)</span> — one collaborator's live connection to a document.</li>
+          </ul>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p>Not a request/response API in the usual sense — a persistent connection carrying a continuous operation stream in both directions:<br>
+          <span style="font-family:var(--mono)">→ send: {type: insert|delete, position, value, base_revision}</span> — a local edit, the moment it happens<br>
+          <span style="font-family:var(--mono)">← receive: {op, transformed_against: revision}</span> — another collaborator's edit, already transformed to apply cleanly to this client's current state<br>
+          <span style="font-family:var(--mono)">GET /docs/{id}/snapshot</span> → current content + revision, for a client joining or reconnecting</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>A user types; the character is applied to their local editor state immediately — before any network round trip.</li>
+            <li>The edit is sent to the server as an operation tagged with the revision the client was looking at when they made it.</li>
+            <li>The server transforms the incoming operation against every operation it has received since that base revision, producing a version that applies cleanly to the current server state.</li>
+            <li>The transformed operation is applied to the server's document and broadcast to every other connected client, each of which transforms it again against their own local pending edits before applying it.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>Every client keeps a full local copy of the document and applies its own edits instantly; the server's job is transforming and ordering, not being the only place edits happen — diagrammed below.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Three below: <strong>(a)</strong> why last-write-wins and locking both fail here, <strong>(b)</strong> operational transformation, the actual mechanism, and <strong>(c)</strong> offline edits and reconnection.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 1080 400" style="width:100%; min-width:760px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="ce-arrow-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="ce-arrow-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="ce-arrow-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="ce-arrow-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+          </defs>
+
+          <!-- Client A -->
+          <rect x="20" y="40" width="160" height="80" rx="10" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="100" y="73" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Client A</text>
+          <text x="100" y="90" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">local doc copy</text>
+          <text x="100" y="105" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">applies own edits instantly</text>
+
+          <!-- Client B -->
+          <rect x="20" y="270" width="160" height="80" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="100" y="303" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Client B</text>
+          <text x="100" y="320" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">local doc copy</text>
+          <text x="100" y="335" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">applies own edits instantly</text>
+
+          <!-- OT Server -->
+          <rect x="440" y="140" width="200" height="105" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.6" stroke-width="1.5"/>
+          <text x="540" y="172" text-anchor="middle" font-family="JetBrains Mono" font-size="13.5" font-weight="700" fill="#EAF4FF">Transform Server</text>
+          <text x="540" y="190" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">transforms each op against</text>
+          <text x="540" y="204" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">ops since its base revision</text>
+          <text x="540" y="225" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">applies, assigns next revision</text>
+
+          <!-- Op Log -->
+          <rect x="440" y="20" width="200" height="65" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="540" y="49" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Operation Log</text>
+          <text x="540" y="66" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">ordered history, per revision</text>
+
+          <!-- Document Store -->
+          <rect x="440" y="290" width="200" height="70" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="540" y="320" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Document Store</text>
+          <text x="540" y="337" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">periodic snapshot, not per-keystroke</text>
+
+          <!-- Client C -->
+          <rect x="900" y="40" width="160" height="80" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="980" y="73" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Client C</text>
+          <text x="980" y="90" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">local doc copy</text>
+          <text x="980" y="105" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">receives transformed ops</text>
+
+          <!-- Reconnecting Client -->
+          <rect x="900" y="270" width="160" height="80" rx="10" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3"/>
+          <text x="980" y="303" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Client D</text>
+          <text x="980" y="320" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">was offline</text>
+          <text x="980" y="335" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">replays queued ops on reconnect</text>
+
+          <!-- flows -->
+          <line x1="180" y1="80" x2="437" y2="175" stroke="#6FE0F0" stroke-width="1.6" marker-end="url(#ce-arrow-cyan)"/>
+          <text x="300" y="115" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">1 · op(base_rev=41)</text>
+
+          <line x1="180" y1="310" x2="437" y2="215" stroke="#FFD166" stroke-width="1.6" marker-end="url(#ce-arrow-amber)"/>
+          <text x="300" y="280" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">2 · op(base_rev=41)</text>
+
+          <line x1="540" y1="140" x2="540" y2="88" stroke="#9FC1E0" stroke-width="1.3" marker-end="url(#ce-arrow-ink)"/>
+
+          <line x1="640" y1="200" x2="897" y2="90" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#ce-arrow-cyan)"/>
+          <text x="800" y="130" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">3a · transformed(rev=43)</text>
+
+          <line x1="640" y1="220" x2="897" y2="305" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ce-arrow-ink)"/>
+          <text x="800" y="270" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">3b · queued for D</text>
+
+          <line x1="540" y1="245" x2="540" y2="287" stroke="#7CE0A8" stroke-width="1.3" marker-end="url(#ce-arrow-green)"/>
+
+          <!-- legend -->
+          <line x1="30" y1="382" x2="60" y2="382" stroke="#6FE0F0" stroke-width="2"/>
+          <text x="68" y="386" font-family="Inter" font-size="11" fill="#9FC1E0">Online client, live op stream</text>
+          <line x1="300" y1="382" x2="330" y2="382" stroke="#94B8D4" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="338" y="386" font-family="Inter" font-size="11" fill="#9FC1E0">Offline / reconnecting</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">Every client holds a full local copy and applies its own edits instantly — the server never blocks a client's own typing. Its job is transforming each incoming operation against everything that landed since that client last synced, then broadcasting the transformed result.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col">
+          <div class="flow-title">A user types (the common case)</div>
+          <ol>
+            <li>Client A applies the keystroke to its own local document immediately — the character appears with zero network latency.</li>
+            <li>The operation is sent to the Transform Server, tagged with the revision A's copy was at when the edit was made.</li>
+            <li>The server transforms it against any operations received since that revision (from other clients), producing a version that applies cleanly to the server's current state.</li>
+            <li>The server applies it, assigns the next revision number, and broadcasts the transformed operation to every other connected client.</li>
+          </ol>
+        </div>
+        <div class="flow-col">
+          <div class="flow-title">Two people edit concurrently</div>
+          <ol>
+            <li>Client A and Client B both start from revision 41 and each make an edit at nearly the same instant, before either has heard from the server.</li>
+            <li>A's operation arrives first; the server applies it as-is, revision becomes 42.</li>
+            <li>B's operation, still tagged base_revision=41, gets transformed against A's now-applied edit — its position is adjusted to account for A's insertion — then applied as revision 43.</li>
+            <li>Both A and B end up with identical final content: A sees B's transformed edit arrive; B's own local copy already applied its edit and now reconciles against A's, arriving in the other order but converging on the same text.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — why last-write-wins and locking both fail here</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Edit simultaneously</span><span class="explains-tag nfr"><b>NFR</b>No edit silently dropped</span><span class="explains-tag nfr"><b>NFR</b>Convergence</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Reach for the pattern that's worked everywhere else on this page: when two writers conflict, let one win. Try applying it here — the server keeps whichever edit arrives last.</li>
+          <li>Trace what "arrives last" actually does to the loser: it doesn't get rejected and retried like a failed seat hold — it's just gone. The user who typed it sees their own words vanish.</li>
+          <li>Try the other classic fix instead: lock the document, or the paragraph, while someone's editing it. Test it against how people actually use a shared doc.</li>
+          <li>Notice locking doesn't solve concurrent editing, it prevents it — the whole premise of the product is that two people type in the same document at once, and a lock makes one of them wait.</li>
+        </ol>
+        <p>Every other worked example on this page resolves contention by making one writer win and rejecting the rest — a seat hold, a parking spot, a ride acceptance. Try that same instinct here and it breaks the product's actual premise.</p>
+        <ul class="item-list">
+          <li><strong>Last-write-wins silently destroys work:</strong> if the server just keeps whichever operation arrives last, the other user's edit isn't rejected-and-retried the way a failed conditional write is — it's discarded outright, with no signal to anyone that it happened.</li>
+          <li><strong>Locking prevents the actual use case:</strong> a pessimistic lock on a paragraph or the whole document stops the exact behavior the product exists for — two people typing in the same place at once.</li>
+          <li><strong>The reframe:</strong> this isn't a contention problem with one correct winner. It's a merge problem — both edits are valid, and the system's job is producing one document that reflects both, not picking between them.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">That reframe is the whole reason this example doesn't fit the "atomic conditional write" pattern from Ticketmaster, Uber, and the parking lot — there's no single row to guard, because there's no single correct outcome to guard it toward.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — operational transformation, the actual mechanism</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Instant local edits</span><span class="explains-tag nfr"><b>NFR</b>Convergence</span><span class="explains-tag nfr"><b>NFR</b>Edits feel instant</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Restate the actual goal precisely: two edits made against the same starting document, in some order, should produce the same final document regardless of which order they're applied in.</li>
+          <li>Notice naively applying both edits at their original positions doesn't do that — an insertion earlier in the text shifts every position after it, so the second edit's original position is now pointing at the wrong place.</li>
+          <li>The fix has to adjust the second operation's position based on what the first operation actually did — not apply it blindly, and not discard it.</li>
+          <li>Formalize that adjustment as a function: given two concurrent operations, transform one against the other so it still does what the user intended, on top of the other's result.</li>
+        </ol>
+        <p>Operational Transformation (OT) is the algorithm Google Docs actually uses — not CRDTs, despite that being the more commonly cited answer in interviews. The core idea: don't just apply a remote operation as-is — adjust it based on what's changed locally since it was created.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — why a raw position breaks, and what transform fixes</span>Starting text: "HELLO WORLD"          (revision 41)
+
+Client A inserts "X" at position 5 → "HELLX O WORLD"    (their local view)
+Client B inserts "Y" at position 8 → "HELLO WOYRLD"     (their local view)
+
+Server applies A first: "HELLX O WORLD" is now revision 42.
+B's op says "insert Y at position 8" — but position 8 in the OLD text
+is no longer position 8 now that A inserted a character before it.
+
+transform(B's op, against A's applied op):
+  A inserted before B's position → shift B's position right by 1
+  → insert "Y" at position 9 → "HELLX O WOYRLD"   (correct, on both sides)</div>
+        <ul class="item-list">
+          <li><strong>The transform function is the whole algorithm:</strong> given two operations that both started from the same revision, produce an adjusted version of one that, applied after the other, yields the same result no matter the order — this property is what convergence actually means, made concrete.</li>
+          <li><strong>Every client re-derives this, not just the server:</strong> when Client A receives B's operation, A also transforms it — against A's own pending local edits — before applying it locally. The server and every client are running the same transform logic independently.</li>
+          <li><strong>This is why edits feel instant:</strong> a client never waits for the server's permission to show a keystroke — it applies locally first, and reconciles with the server's transformed version afterward, in the background.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">CRDTs solve the same convergence problem with a different trade-off — no central transform step, but a data structure with more per-character metadata overhead. OT keeps the document itself lightweight at the cost of needing a server (or an agreed-upon peer) to do the transforming — the right trade-off for a product where a server's already in the loop for storage and access control anyway.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — offline edits and reconnection</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Offline edits merge on reconnect</span><span class="explains-tag nfr"><b>NFR</b>No full re-download on reconnect</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Ask what actually changes when a client goes offline for a while: nothing about the transform logic — the gap is just "how many operations happened while this client was gone."</li>
+          <li>Consider making the client re-fetch the whole document on reconnect. Test it against a long meeting-room doc with hours of edit history — that's a lot of data for what might be a five-minute gap.</li>
+          <li>Notice the client already has almost everything — its own last-known revision and its own queued local edits. What it's actually missing is just the delta.</li>
+          <li>Treat reconnection as "catch up on what you missed," not "start over" — replay only the operations since the client's last known revision, transformed against each other the same way live concurrent edits already are.</li>
+        </ol>
+        <p>A client that was offline is really just a client whose last-known revision is far behind — the same transform mechanism that handles two people typing a second apart handles someone reconnecting after an hour, just with more operations to transform against.</p>
+        <ul class="item-list">
+          <li><strong>The client queues its own edits locally while offline</strong> — they're still applied instantly to its local copy, exactly as if the server were reachable, just not yet sent anywhere.</li>
+          <li><strong>On reconnect, the client sends its queued operations tagged with its last-known revision</strong> — the server transforms the entire queued batch against everything that happened since, the same operation used for any concurrent edit, just applied more times in a row.</li>
+          <li><strong>The Operation Log doesn't need to be replayed from the beginning:</strong> a periodic snapshot in Document Store means "catch up" only needs operations since the last snapshot before the client's revision, not the document's entire history.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Treating "offline for an hour" as a large version of the same problem as "offline for a millisecond between two keystrokes" is what keeps this from needing a separate reconciliation system — it's the identical transform, run more times.</p>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>Edits feel instant</td><td>Applied to the local copy immediately, before any server round trip — the network is never on the typing critical path.</td></tr>
+        <tr><td>Convergence across clients</td><td>Every client runs the same transform function against the same operation history, guaranteeing identical results regardless of arrival order.</td></tr>
+        <tr><td>No edit silently dropped</td><td>Concurrent operations are transformed and merged, never discarded — the "one writer wins" pattern from elsewhere on this page doesn't apply here.</td></tr>
+        <tr><td>Offline edits merge on reconnect</td><td>Queued local operations are transformed against everything missed, the same mechanism as live concurrent edits, just applied over a longer gap.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Operational Transformation vs. CRDTs</td><td>OT keeps the document representation simple and lightweight, but every operation must pass through a central transform authority (or an agreed transform protocol between peers) — CRDTs remove that central dependency at the cost of more per-character metadata and harder-to-reason-about merge semantics.</td></tr>
+        <tr><td>Apply locally first vs. wait for server confirmation</td><td>Applying locally makes typing feel instant, but means a client is always briefly showing content the server hasn't agreed to yet — a rare transform edge case could require a visible local correction.</td></tr>
+        <tr><td>Periodic snapshot vs. replaying the full operation history</td><td>Snapshots keep reconnection and cold starts fast, at the cost of the extra logic and storage to generate and retain them — without one, a very old document could mean replaying thousands of operations for every new join.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>Transform Server</td><td>a stateful WebSocket service — <span class="tool-tag">ShareDB</span> and <span class="tool-tag">Yjs</span> (CRDT-based alternative) are the well-known open-source implementations</td></tr>
+        <tr><td>Op transport</td><td><span class="tool-tag">WebSocket</span>, same connection pattern as the WhatsApp example</td></tr>
+        <tr><td>Operation Log</td><td><span class="tool-tag">PostgreSQL</span> or <span class="tool-tag">DynamoDB</span>, append-only</td></tr>
+        <tr><td>Document Store (snapshots)</td><td><span class="tool-tag">PostgreSQL</span>, or blob storage for very large documents</td></tr>
+      </table>
+</div>
+      </div>
+    </section>
+
+
+    <section class="section" id="usecase-gamesync">
+      <div class="eyebrow">Worked Example L — Real-Time State Under Real-World Lag</div>
+      <div class="usecase-head">
+        <h2 class="section-title">Design Multiplayer Game State Sync</h2>
+        <span class="uc-tag">client-side prediction · server reconciliation · lag compensation</span>
+      </div>
+      <p style="max-width:680px;">"Design the system that keeps every player's view of a fast-paced multiplayer game (a shooter, a racer) in sync, despite each player having a different, constantly-changing amount of network lag to the server." Every other real-time example on this page treats the server's word as final the moment it arrives — a message is delivered, an operation is transformed and applied. This one is different: the client is deliberately allowed to be wrong for a fraction of a second, on purpose, because waiting for the truth would feel worse than briefly guessing.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>A player's own movement responds instantly to their input, regardless of their connection latency to the server.</li>
+              <li>Every player sees every other player's position and actions, converging on one consistent game world.</li>
+              <li>The server is the final authority on outcomes — did a shot land, is a player actually where they claim to be.</li>
+              <li>A cheating or malfunctioning client cannot force an outcome the server wouldn't otherwise allow.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>Input-to-screen latency for a player's own actions must feel instant (well under 50ms) even when their real round trip to the server is 150ms or more.</li>
+              <li>The game must stay playable and fair for players with meaningfully different latencies to the same server, at the same time.</li>
+              <li>State updates for a fast-moving match (dozens of players, tens of updates per second each) can't saturate available bandwidth.</li>
+              <li>A brief network hiccup should degrade gracefully — a stutter, not a disconnect.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: authoritative server, or peer-to-peer with one player's client as host? We'll assume a dedicated authoritative server — it's the only model that satisfies "a client can't force an outcome," which most competitive real-time games require.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>PlayerState</strong> <span class="fields">(player_id, position, velocity, tick)</span> — the authoritative truth for one player, as of a specific server tick.</li>
+            <li><strong>Input</strong> <span class="fields">(player_id, sequence_num, keys_pressed, client_tick)</span> — one frame of a player's raw input, tagged with a number the client can later match against the server's response.</li>
+            <li><strong>WorldSnapshot</strong> <span class="fields">(tick, player_states[])</span> — the full authoritative game state at one server tick; what the server actually reasons about and what it broadcasts.</li>
+          </ul>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p>A persistent connection carrying continuous, small, frequent messages in both directions — not a request/response API:<br>
+          <span style="font-family:var(--mono)">→ send: {sequence_num, keys_pressed, client_tick}</span> — a player's input, sent roughly every frame<br>
+          <span style="font-family:var(--mono)">← receive: {tick, player_states[], last_processed_sequence_num}</span> — the authoritative world snapshot, broadcast at a fixed server tick rate<br>
+          The <span style="font-family:var(--mono)">last_processed_sequence_num</span> is what lets a client know which of its own predicted inputs the server has already accounted for.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>A player presses a key; the client applies its effect to its own local view immediately, and separately sends the raw input to the server.</li>
+            <li>The client keeps every unacknowledged input it's sent, in order, in a small local buffer.</li>
+            <li>The server receives inputs from every player, advances the authoritative simulation by one tick, and broadcasts the resulting world snapshot to everyone.</li>
+            <li>Each client receives the snapshot, discards any of its own buffered inputs the server confirms it already processed, and replays whatever inputs are left on top of the server's authoritative position — correcting its local prediction if it was wrong.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>Client and server run the same simulation in parallel, deliberately out of sync by design — the client races ahead on guesses, the server catches it up to the truth — diagrammed below.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Three below: <strong>(a)</strong> client-side prediction and server reconciliation, <strong>(b)</strong> lag compensation for hit detection, and <strong>(c)</strong> keeping state updates bandwidth-cheap.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 1080 400" style="width:100%; min-width:760px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="gs-arrow-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="gs-arrow-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="gs-arrow-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="gs-arrow-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+          </defs>
+
+          <!-- Player A client -->
+          <rect x="20" y="40" width="190" height="105" rx="10" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="115" y="70" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Player A Client</text>
+          <text x="115" y="88" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">predicts own movement</text>
+          <text x="115" y="103" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">instantly, before server reply</text>
+          <text x="115" y="124" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">buffers unacked inputs</text>
+
+          <!-- Player B client -->
+          <rect x="20" y="255" width="190" height="105" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="115" y="285" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Player B Client</text>
+          <text x="115" y="303" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">renders A's position</text>
+          <text x="115" y="318" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">slightly in the past</text>
+          <text x="115" y="339" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">(interpolation buffer)</text>
+
+          <!-- Game Server -->
+          <rect x="440" y="130" width="200" height="115" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.6" stroke-width="1.5"/>
+          <text x="540" y="163" text-anchor="middle" font-family="JetBrains Mono" font-size="13.5" font-weight="700" fill="#EAF4FF">Game Server</text>
+          <text x="540" y="181" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">runs the one true simulation</text>
+          <text x="540" y="196" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">at a fixed tick rate</text>
+          <text x="540" y="217" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">rewinds history for hit checks</text>
+
+          <!-- Input Buffer -->
+          <rect x="440" y="20" width="200" height="65" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="540" y="49" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Recent Tick History</text>
+          <text x="540" y="66" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">short rolling buffer, for rewind</text>
+
+          <!-- World Snapshot -->
+          <rect x="440" y="290" width="200" height="70" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="540" y="320" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">World Snapshot</text>
+          <text x="540" y="337" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">broadcast every tick, delta-compressed</text>
+
+          <!-- Player C client -->
+          <rect x="870" y="40" width="190" height="105" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="965" y="70" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Player C Client</text>
+          <text x="965" y="88" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">predicts own movement</text>
+          <text x="965" y="103" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">reconciles on each snapshot</text>
+          <text x="965" y="124" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">high-latency connection</text>
+
+          <!-- Player D client -->
+          <rect x="870" y="255" width="190" height="105" rx="10" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3"/>
+          <text x="965" y="285" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Player D Client</text>
+          <text x="965" y="303" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">fires at C, sees C's</text>
+          <text x="965" y="318" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">delayed position on screen</text>
+          <text x="965" y="339" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">server rewinds to check the shot</text>
+
+          <!-- flows -->
+          <line x1="210" y1="90" x2="437" y2="165" stroke="#6FE0F0" stroke-width="1.6" marker-end="url(#gs-arrow-cyan)"/>
+          <text x="325" y="120" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">1 · input(seq=118)</text>
+
+          <line x1="540" y1="130" x2="540" y2="88" stroke="#9FC1E0" stroke-width="1.3" marker-end="url(#gs-arrow-ink)"/>
+
+          <line x1="640" y1="220" x2="867" y2="90" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#gs-arrow-green)"/>
+          <text x="770" y="150" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">2 · snapshot(tick, last_seq=118)</text>
+
+          <line x1="210" y1="310" x2="437" y2="230" stroke="#FFD166" stroke-width="1.6" marker-end="url(#gs-arrow-amber)"/>
+          <text x="325" y="280" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">3 · input + fire event</text>
+
+          <line x1="640" y1="230" x2="867" y2="310" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#gs-arrow-ink)"/>
+          <text x="770" y="290" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">4 · rewind-checked result</text>
+
+          <line x1="540" y1="245" x2="540" y2="287" stroke="#7CE0A8" stroke-width="1.3" marker-end="url(#gs-arrow-green)"/>
+
+          <!-- legend -->
+          <line x1="30" y1="382" x2="60" y2="382" stroke="#6FE0F0" stroke-width="2"/>
+          <text x="68" y="386" font-family="Inter" font-size="11" fill="#9FC1E0">Input, prediction</text>
+          <line x1="230" y1="382" x2="260" y2="382" stroke="#7CE0A8" stroke-width="2"/>
+          <text x="268" y="386" font-family="Inter" font-size="11" fill="#9FC1E0">Authoritative snapshot</text>
+          <line x1="460" y1="382" x2="490" y2="382" stroke="#94B8D4" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="498" y="386" font-family="Inter" font-size="11" fill="#9FC1E0">Rewind / hit check</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">Every client predicts its own movement instantly and reconciles against the server's periodic authoritative snapshot. Hit detection is the one place the server looks backward — rewinding to what the shooter actually saw, not what's true on the server right now.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col">
+          <div class="flow-title">A player moves (the common case)</div>
+          <ol>
+            <li>Player A presses a movement key; the client applies it to A's local view immediately and stores the input in a local buffer, tagged with a sequence number.</li>
+            <li>The same input is sent to the Game Server, which won't process it until the next tick — A's screen is already ahead of what the server has seen.</li>
+            <li>The server advances its simulation and broadcasts a snapshot including the last input sequence number it processed for A.</li>
+            <li>A's client discards buffered inputs up to that sequence number, then replays any newer ones (sent since) on top of the server's confirmed position — correcting itself if its guess was wrong, ideally by an amount too small to notice.</li>
+          </ol>
+        </div>
+        <div class="flow-col">
+          <div class="flow-title">Player D shoots at Player C (lag compensation)</div>
+          <ol>
+            <li>D's screen is showing C's position from roughly D's round-trip-time ago — everything D sees is already slightly in the past.</li>
+            <li>D fires at where C appears to be; the client sends the fire event with the client_tick D was looking at.</li>
+            <li>The server, instead of checking against C's current authoritative position, rewinds its short tick history to that earlier tick and checks the shot against where C actually was then.</li>
+            <li>If it would have hit at that moment in the past, the server counts it as a hit — from D's perspective, the shot they saw land actually lands, even though the server's "right now" state has already moved on.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — client-side prediction and server reconciliation</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Own movement responds instantly</span><span class="explains-tag nfr"><b>NFR</b>Input-to-screen latency &lt;50ms</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the naive, "obviously correct" design: the client sends input, waits for the server's response, and only then updates what the player sees.</li>
+          <li>Compute what that actually costs a player with 150ms round-trip latency: every keypress takes 150ms to even start appearing on screen. In a fast-paced game, that reads as broken, unresponsive controls.</li>
+          <li>Realize the fix isn't making the network faster — it's not waiting on it at all for the player's own actions. Apply the input locally, immediately, as a guess.</li>
+          <li>A guess can be wrong, so there has to be a way to correct it cheaply when the server's real answer arrives — replay whatever's changed since, instead of discarding and restarting.</li>
+        </ol>
+        <p>Waiting for a server round trip before showing the effect of your own keypress is the naive design — and it's the one thing this system cannot do, no matter how it's built.</p>
+        <ul class="item-list">
+          <li><strong>Client-side prediction:</strong> apply input to the local simulation the instant it happens, without waiting for the server. The player's own actions always feel instant, because they are — the client isn't waiting on anything.</li>
+          <li><strong>Server reconciliation:</strong> when the authoritative snapshot arrives, it may say the player ended up somewhere slightly different than the client guessed — maybe they clipped a wall the client didn't account for. The client discards its confirmed-processed inputs and replays only the unconfirmed ones on top of the server's real position, correcting the small error.</li>
+          <li><strong>Why this doesn't look like OT's client/server split:</strong> in the collaborative-editing example, the server transforms and every valid edit survives — there's no "wrong" outcome, only different orderings. Here the server can flatly overrule the client's guess. Prediction is a UX technique for hiding latency, not a claim that the client's guess was also valid.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">The correction is usually invisible: most of the time the client's guess and the server's real answer match closely enough that "replay the last few inputs" produces no visible snap — it only becomes noticeable under packet loss or a genuinely surprising interaction (another player blocking a path the client didn't know about yet).</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — lag compensation for hit detection</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Server is final authority on outcomes</span><span class="explains-tag nfr"><b>NFR</b>Fair across different latencies</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>State the naive rule plainly: when a shot is fired, check it against the target's current position on the server, right now.</li>
+          <li>Realize "right now" on the server and "what the shooter actually saw" are two different moments — the shooter's screen was already showing a slightly-past position because of their own latency.</li>
+          <li>Trace the consequence: a shot that looked, on the shooter's own screen, like it clearly landed gets called a miss, because by the time it reached the server the target had already moved past that point.</li>
+          <li>Fix the mismatch directly: don't check the shot against the present. Check it against the exact moment the shooter was actually looking at, using history the server already has.</li>
+        </ol>
+        <p>The naive rule — check a shot against the target's current server-side position — is fair in theory and infuriating in practice, because "current" on the server isn't what the shooter was actually looking at.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — why the server rewinds</span>D's round-trip latency: 100ms
+D sees C's position as of: server_tick - 100ms   (always slightly stale)
+
+D fires at what looks, on D's screen, like a clean hit on C.
+Naive check: is C at that position RIGHT NOW on the server?  → C has moved → MISS (feels wrong to D)
+Lag-compensated check: rewind to server_tick - 100ms, check THERE → HIT (matches what D actually saw)</div>
+        <ul class="item-list">
+          <li><strong>The server keeps a short rolling history</strong> of recent world states — just long enough to cover the highest latency the game tolerates, not the whole match.</li>
+          <li><strong>Every fire event carries the client's tick,</strong> so the server knows exactly which moment in its own history to rewind to before checking the shot.</li>
+          <li><strong>The trade-off this creates:</strong> from the target's perspective, they can be shot after they've already ducked behind cover on their own screen — "shot behind the wall" is the well-known player complaint this technique causes, in exchange for shots that feel fair to the person pulling the trigger.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">There's no version of this that's fair to both players simultaneously — favoring the shooter (rewind) or favoring the target (no rewind) are both defensible defaults, and most competitive shooters pick the shooter, because a miss that looked like a hit reads as more broken than a hit that looked like a miss.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — keeping state updates bandwidth-cheap</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Every player converges on one world</span><span class="explains-tag nfr"><b>NFR</b>Doesn't saturate bandwidth</span><span class="explains-tag nfr"><b>NFR</b>Graceful degradation on hiccup</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the simplest broadcast: send every player's full state to every other player, every tick.</li>
+          <li>Compute the cost as player count grows: the data sent per tick grows with the square of the player count — everyone's full state, to everyone — and most of that data hasn't actually changed since the last tick.</li>
+          <li>Notice most of any given tick is redundant: a player standing still sends the same position over and over, identical to the last update.</li>
+          <li>Send only what changed since the last tick a given client has already acknowledged, instead of the full state every time.</li>
+        </ol>
+        <p>Broadcasting every player's complete state to every other player, every tick, scales quadratically with player count and wastes most of its bandwidth on data that hasn't changed since the last tick.</p>
+        <ul class="item-list">
+          <li><strong>Delta compression:</strong> send only the fields that changed since the last snapshot the receiving client has acknowledged — a stationary player contributes almost nothing to that tick's payload.</li>
+          <li><strong>Interpolation on the receiving end:</strong> other players' positions are deliberately rendered slightly in the past (a small buffer, e.g. 100ms behind), smoothly interpolated between the last two received snapshots — this hides the gaps between discrete network updates as smooth motion, instead of visible teleporting.</li>
+          <li><strong>Graceful degradation:</strong> a brief dropped packet just means one tick's delta is missing — the next tick's delta is computed against the last state the client actually has, so a short hiccup causes a small stutter, not a desync that needs a full resync.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Prediction hides latency for a player's own actions; interpolation hides latency for everyone else's — the same underlying problem (the network is never instant), solved with the opposite technique depending on whether the player controls what they're looking at.</p>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>Own actions feel instant regardless of latency</td><td>Client-side prediction applies input locally before any server round trip; reconciliation quietly corrects small errors when the real answer arrives.</td></tr>
+        <tr><td>Fair across players with different latencies</td><td>Lag-compensated hit detection rewinds to what the shooter actually saw, rather than checking against the server's present state.</td></tr>
+        <tr><td>Bandwidth stays bounded as player count grows</td><td>Delta compression sends only what changed; unchanged state costs nothing per tick.</td></tr>
+        <tr><td>Graceful degradation under packet loss</td><td>A missing tick's delta just computes against the client's last acknowledged state next time — a stutter, not a desync.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Client-side prediction vs. always waiting for the server</td><td>Makes a player's own actions feel instant at any latency, at the cost of occasional visible corrections when a prediction turns out wrong — a small, usually unnoticeable snap, in exchange for controls that don't feel broken.</td></tr>
+        <tr><td>Lag-compensated (rewind) hit detection vs. checking present-state only</td><td>Makes shots feel fair to the person shooting, at the direct cost of the target sometimes being hit after they've already visibly taken cover on their own screen — favoring one side of every exchange, by design.</td></tr>
+        <tr><td>Interpolation delay for other players vs. showing their latest known position immediately</td><td>Smooth, believable motion for everyone else, at the cost of always looking at them slightly in the past — the same trade the lag-compensation deep dive above is built to correct for.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>Client-server transport</td><td><span class="tool-tag">UDP</span> with a custom reliability layer — TCP's guaranteed-in-order delivery adds latency this genre can't afford</td></tr>
+        <tr><td>Game Server</td><td>a dedicated, stateful process per match — <span class="tool-tag">Agones</span> or similar for orchestrating many short-lived match servers</td></tr>
+        <tr><td>Matchmaking / server allocation</td><td>a separate service pairing players and spinning up a Game Server instance, out of scope for this diagram</td></tr>
+        <tr><td>Recent Tick History</td><td>in-memory ring buffer on the Game Server itself, not a database — needs to be fast, not durable</td></tr>
+      </table>
+</div>
+      </div>
+    </section>
+
+
+    <section class="section" id="usecase-viewcount">
+      <div class="eyebrow">Worked Example M — Precision You Don't Actually Need</div>
+      <div class="usecase-head">
+        <h2 class="section-title">Design a Video View Count System</h2>
+        <span class="uc-tag">approximate counting · write batching · bot resistance</span>
+      </div>
+      <p style="max-width:680px;">"Design a system that counts and displays view counts for videos, at a scale where a single popular video can be viewed millions of times an hour." It reads like a trivial counter — <span style="font-family:var(--mono)">count = count + 1</span> — until the volume makes that literal implementation impossible, and the count itself becomes a target worth gaming. The interesting design decision isn't how to count; it's how precise the count actually needs to be, and what's allowed to lag behind reality in exchange for surviving the write volume.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>Record a view whenever a user watches a video past some minimum threshold (not just loading the page).</li>
+              <li>Display a view count on the video, visible to anyone.</li>
+              <li>Support both a single popular video (millions of views/hour) and millions of unpopular videos (near-zero traffic) in the same system.</li>
+              <li>Resist trivial inflation — refreshing the page or replaying the same video repeatedly shouldn't meaningfully move the count.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>Recording a view must never add latency to, or risk failing, the actual video playback path.</li>
+              <li>The displayed count doesn't need to be exact or instant — "roughly right, updated within a minute or so" is the actual bar.</li>
+              <li>A single viral video can't be allowed to create a hot-key write bottleneck that degrades the system for everyone else.</li>
+              <li>The system should be measurably resistant to bot-driven view inflation, not just organic double-counting.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: does the count need to be exact for creator payout/analytics purposes, separate from the public-facing number? We'll assume the public count can be eventually-consistent and approximate; a separate, slower, exact pipeline for billing-grade numbers is a different system built on the same raw events.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>ViewEvent</strong> <span class="fields">(video_id, viewer_id_or_session, watched_seconds, client_timestamp)</span> — one raw signal that a view might have happened; not yet trusted as a counted view.</li>
+            <li><strong>Video</strong> <span class="fields">(id, title, view_count)</span> — view_count is a denormalized, approximate, eventually-updated field, not the source of truth for what happened.</li>
+            <li><strong>ViewCounterShard</strong> <span class="fields">(video_id, shard_id, count)</span> — one partition of a hot video's count, so no single row absorbs the full write rate.</li>
+          </ul>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p><span style="font-family:var(--mono)">POST /videos/{id}/view {watched_seconds, client_timestamp}</span> → 202 accepted, fire-and-forget, no count returned<br>
+          <span style="font-family:var(--mono)">GET /videos/{id}</span> → video metadata including the current (approximate) view_count, served from cache<br>
+          The view-recording call is deliberately asynchronous and unauthoritative — it's a signal, not a transaction.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>The video player fires a view event once watch-time crosses the minimum threshold — not on page load, not on every re-watch.</li>
+            <li>The event is written to a queue immediately; the client gets an instant acknowledgment regardless of anything downstream.</li>
+            <li>A stream processor consumes events in small time windows, deduplicates and validates them, and increments an in-memory counter per video — not a database write per view.</li>
+            <li>Every few seconds, the batched counter deltas are flushed to persistent storage as one aggregated increment per video, not one write per individual view.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>The write path never touches a database per view — it aggregates in memory first and flushes in batches, diagrammed below.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Three below: <strong>(a)</strong> why a database increment per view doesn't survive real traffic, <strong>(b)</strong> what counts as a real view, and <strong>(c)</strong> resisting bots without blocking real viewers.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 1100 400" style="width:100%; min-width:760px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="vc-arrow-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="vc-arrow-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="vc-arrow-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="vc-arrow-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+          </defs>
+
+          <!-- Viewer -->
+          <rect x="20" y="150" width="140" height="70" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="90" y="190" text-anchor="middle" font-family="JetBrains Mono" font-size="13.5" font-weight="700" fill="#EAF4FF">Viewer</text>
+
+          <!-- Event Queue -->
+          <rect x="230" y="150" width="160" height="70" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="310" y="180" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Event Queue</text>
+          <text x="310" y="197" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">raw view events</text>
+
+          <!-- Stream Processor -->
+          <rect x="450" y="140" width="190" height="90" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="545" y="170" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Stream Processor</text>
+          <text x="545" y="188" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">dedupe, validate,</text>
+          <text x="545" y="203" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">aggregate in memory</text>
+
+          <!-- In-Memory Counters -->
+          <rect x="450" y="30" width="190" height="65" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="545" y="59" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Sharded Counters</text>
+          <text x="545" y="76" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">per video, split for hot ones</text>
+
+          <!-- View Count DB -->
+          <rect x="700" y="140" width="190" height="90" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="795" y="172" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">View Count Store</text>
+          <text x="795" y="190" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">batched increments,</text>
+          <text x="795" y="205" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">not one write per view</text>
+
+          <!-- CDN / Cache -->
+          <rect x="700" y="270" width="190" height="70" rx="10" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="795" y="300" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Cache</text>
+          <text x="795" y="317" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">what readers actually see</text>
+
+          <!-- Reader -->
+          <rect x="940" y="270" width="140" height="70" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="1010" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="13.5" font-weight="700" fill="#EAF4FF">Reader</text>
+
+          <!-- flows -->
+          <line x1="160" y1="185" x2="227" y2="185" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#vc-arrow-ink)"/>
+          <text x="193" y="173" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9FC1E0">1</text>
+
+          <line x1="390" y1="185" x2="447" y2="185" stroke="#FFD166" stroke-width="1.5" marker-end="url(#vc-arrow-amber)"/>
+          <text x="418" y="173" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#FFD166">2</text>
+
+          <line x1="545" y1="140" x2="545" y2="98" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#vc-arrow-ink)"/>
+          <text x="575" y="122" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">3 · increment</text>
+
+          <line x1="640" y1="60" x2="890" y2="145" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#vc-arrow-green)"/>
+          <text x="740" y="90" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">4 · flush batch, every few sec</text>
+
+          <line x1="795" y1="230" x2="795" y2="267" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#vc-arrow-cyan)"/>
+          <text x="825" y="252" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">5</text>
+
+          <line x1="890" y1="305" x2="937" y2="305" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#vc-arrow-cyan)"/>
+          <text x="913" y="293" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6FE0F0">6</text>
+
+          <!-- legend -->
+          <line x1="30" y1="370" x2="60" y2="370" stroke="#FFD166" stroke-width="2"/>
+          <text x="68" y="374" font-family="Inter" font-size="11" fill="#9FC1E0">Write / aggregation path</text>
+          <line x1="260" y1="370" x2="290" y2="370" stroke="#6FE0F0" stroke-width="2"/>
+          <text x="298" y="374" font-family="Inter" font-size="11" fill="#9FC1E0">Read path</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">No step between a view and the stored count is a per-view database write. Events are aggregated in memory and flushed as batched increments — the displayed count is always a few seconds to a minute behind reality, on purpose.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col">
+          <div class="flow-title">Write path (a view happens)</div>
+          <ol>
+            <li>Playback crosses the minimum watch-time threshold; the client fires a view event to the Event Queue and moves on — no response is waited for.</li>
+            <li>The Stream Processor consumes events in small windows, deduplicating by viewer/session and discarding events that don't pass basic validation.</li>
+            <li>Valid events increment an in-memory counter for that video — for a hot video, one of several shards of that counter, not a single shared number.</li>
+            <li>Every few seconds, each counter's accumulated delta (not its running total) is flushed to the View Count Store as one batched increment — thousands of individual views can collapse into a single write.</li>
+          </ol>
+        </div>
+        <div class="flow-col">
+          <div class="flow-title">Read path (viewing a count)</div>
+          <ol>
+            <li>A reader loads a video page; the displayed count comes from Cache, not a live read of the View Count Store.</li>
+            <li>Cache is refreshed on a short interval (seconds, not sub-second) from the store's latest aggregated total, including summing any active shards for a hot video.</li>
+            <li>The number shown is always slightly behind the true count — by design, not by accident — trading exactness for a read path that never touches a write-heavy store directly.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — why a database increment per view doesn't survive real traffic</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Popular + unpopular videos together</span><span class="explains-tag nfr"><b>NFR</b>Never adds latency to playback</span><span class="explains-tag nfr"><b>NFR</b>No hot-key bottleneck</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the literal reading of the requirement: every view does <span style="font-family:var(--mono)">UPDATE videos SET view_count = view_count + 1</span>.</li>
+          <li>Test it against the stated scale: a single viral video getting a million views an hour is roughly 300 writes per second, to one row, sustained — the exact hot-key shape the rate limiter's counter deep dive already covers, just for a different resource.</li>
+          <li>Notice this is strictly worse than that earlier problem: a rate limiter's counter only needs to be roughly right for a few seconds; a view count is a row every reader hits on every page load, so the hot row is contended by writes and reads simultaneously.</li>
+          <li>Apply the same two fixes already established elsewhere on this page, together: aggregate before writing (don't write per-event, batch the deltas), and split a single hot row into shards so no one row absorbs the full write rate.</li>
+        </ol>
+        <p>A literal per-view increment against one row is the same hot-key problem as the rate limiter's counter — except contended by simultaneous reads (every page load) as well as writes, which makes it worse, not equivalent.</p>
+        <ul class="item-list">
+          <li><strong>Aggregate before writing:</strong> the Stream Processor holds an in-memory running count per video and only flushes the accumulated delta every few seconds — a million individual increments can become a handful of batched writes.</li>
+          <li><strong>Shard the hot video's counter:</strong> instead of one row per video, a viral video's count is split across several counter shards, written to round-robin — the same key-splitting technique from the Caching Playbook's hot-key section, applied to a counter instead of a cache entry.</li>
+          <li><strong>The read path never touches this directly:</strong> readers see Cache, refreshed on an interval — the write-heavy aggregation path and the read-heavy display path don't contend for the same resource at all.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This only works because the requirement explicitly allows it: the count doesn't need to be exact or instant. If it had to be exact-to-the-view in real time, none of this would be available, and the system would need a fundamentally different, much more expensive design.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — what counts as a real view</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Only past a watch threshold</span><span class="explains-tag nfr"><b>NFR</b>Roughly right, not exact</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the naive definition: a view is a page load. Test it against how people actually use the site — a page can load and the user leaves in half a second, or refreshes twice by accident.</li>
+          <li>Notice "page load" measures interest in loading a page, not interest in the video — the two aren't the same thing, and the count is supposed to represent the second one.</li>
+          <li>Move the trigger further into actual behavior: fire the event only once real watch-time crosses a threshold, so a bounce or an accidental double-load can't inflate the count on its own.</li>
+          <li>Recognize a threshold alone doesn't stop deliberate replay — someone re-watching the same video five times in a row shouldn't count as five views, so identity and a time window matter too, not just watch duration.</li>
+        </ol>
+        <p>"A view" sounds self-evident until it has to be encoded as a precise rule — page load, video start, and some meaningful watch duration are three different, defensible definitions, and the choice has real consequences for how easy the count is to inflate.</p>
+        <ul class="item-list">
+          <li><strong>Trigger on watch-time, not page load:</strong> the client fires the event only after playback crosses a minimum duration (a common real-world choice is around 30 seconds, or completion for shorter videos) — a bounce never generates an event at all.</li>
+          <li><strong>Deduplicate by viewer and time window in the Stream Processor:</strong> the same viewer_id/session replaying the same video within a short window (say, the same day) collapses into at most one counted view, without needing a synchronous check against a database on every single event.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This definition question has to be settled before any of the scaling work above matters — a perfectly scalable system that counts the wrong thing just produces a wrong number very efficiently.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — resisting bots without blocking real viewers</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Resist trivial inflation</span><span class="explains-tag nfr"><b>NFR</b>Measurably resistant to bot inflation</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice the watch-time threshold from the previous deep dive stops accidental inflation, not deliberate inflation — a script can trivially fake "watched 30 seconds" without ever decoding a frame of video.</li>
+          <li>Recognize this needs the same posture as the ticketmaster bot-prevention deep dive: no single check reliably tells a script from a person, so no single fix will be airtight.</li>
+          <li>Attack it from more than one angle: make individual fake events costly to generate at scale, and make suspicious aggregate patterns detectable after the fact even when individual events look fine.</li>
+          <li>Keep the two concerns separate: catching a bot in real time protects the count as it's written; catching a bot pattern retrospectively lets the count be corrected even after some bad data got in.</li>
+        </ol>
+        <p>A watch-time threshold stops accidental double-counting; it does nothing against a script that simply claims to have watched 30 seconds thousands of times. Bot resistance is a different, additional problem layered on top.</p>
+        <ul class="item-list">
+          <li><strong>Rate limit view events per client/IP</strong> — the same rate-limiter pattern used elsewhere on this page, aimed at the view-recording endpoint specifically.</li>
+          <li><strong>Look for signals a real player naturally produces</strong> that a naive script doesn't bother faking — realistic watch-time distributions, player-state events at plausible intervals, not just a single "watched=true" event immediately after play started.</li>
+          <li><strong>Retrospective anomaly detection:</strong> a video whose view count spikes far outside its normal pattern, or whose views cluster suspiciously by IP range or timing, gets flagged for review — this can correct the count after the fact, something the real-time path alone can't do.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Same lesson as the ticketmaster deep dive it mirrors: none of these are individually airtight, and a determined attacker adapts to any single one — which is exactly why real systems layer several imperfect defenses instead of searching for one perfect check.</p>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>Never adds latency to playback</td><td>View recording is fire-and-forget to a queue — the player never waits on it.</td></tr>
+        <tr><td>Survives a single video going viral</td><td>In-memory aggregation collapses many views into few writes; sharding splits a hot counter across several rows.</td></tr>
+        <tr><td>Count is roughly right, not exact</td><td>Cache refreshed on a short interval from batched, eventually-consistent totals — never a live read of the write path.</td></tr>
+        <tr><td>Resistant to inflation</td><td>Watch-time threshold plus dedup stops accidental inflation; rate limiting plus retrospective anomaly detection layers on top for deliberate abuse.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Approximate, eventually-consistent count vs. exact real-time count</td><td>Survives massive write volume cheaply, at the cost of the displayed number always lagging reality by seconds to a minute — unacceptable if the count needs to be billing-grade, which is why that case gets a separate, slower, exact pipeline instead of straining this one.</td></tr>
+        <tr><td>Sharded counters for hot videos vs. one row per video</td><td>Prevents any single video from bottlenecking on one row, at the cost of the read path needing to sum across shards for hot videos instead of a single lookup.</td></tr>
+        <tr><td>Real-time bot heuristics vs. retrospective-only detection</td><td>Real-time checks stop obvious abuse before it's ever counted, but add complexity to the hot write path; retrospective detection catches subtler patterns without touching write latency, at the cost of a temporarily-inflated count until the correction runs.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>Event Queue</td><td><span class="tool-tag">Kafka</span></td></tr>
+        <tr><td>Stream Processor</td><td><span class="tool-tag">Flink</span>, <span class="tool-tag">Kafka Streams</span></td></tr>
+        <tr><td>Sharded Counters</td><td><span class="tool-tag">Redis</span> (atomic INCR per shard, summed on read)</td></tr>
+        <tr><td>View Count Store</td><td><span class="tool-tag">Cassandra</span>, or a data warehouse for retrospective analytics</td></tr>
+        <tr><td>Cache</td><td><span class="tool-tag">Redis</span>, or CDN-edge caching for the video page itself</td></tr>
+      </table>
+</div>
+      </div>
+    </section>
+
+
+    <section class="section" id="usecase-snowflake">
+      <div class="eyebrow">Worked Example N — Uniqueness Without Asking Anyone</div>
+      <div class="usecase-head">
+        <h2 class="section-title">Design a Global Unique ID Generator</h2>
+        <span class="uc-tag">zero-coordination · Snowflake-style · sortable by time</span>
+      </div>
+      <p style="max-width:680px;">"Design a service that generates unique 64-bit IDs, at a rate of hundreds of thousands per second, across many servers in multiple data centers, with no two servers ever producing the same ID." The URL shortener already solved a version of "generate a unique ID" — by pre-allocating number ranges from one coordinating counter. That trick doesn't survive here: a request every few microseconds across data centers hundreds of milliseconds apart makes "check out a range first" itself the bottleneck. The real constraint is <em>zero</em> coordination, not less coordination — and the answer is encoding uniqueness into the structure of the number itself.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>Generate a unique ID on request, with no perceptible latency — this sits on the critical path of every write in whatever system calls it.</li>
+              <li>IDs are usable as primary keys — comparable, indexable, and (ideally) roughly sortable by creation time.</li>
+              <li>Any server, in any data center, can generate IDs independently at any moment.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>Two different generator instances must never produce the same ID, under any circumstances — including a server restarting or briefly losing network connectivity.</li>
+              <li>No coordination between generator instances on the critical path — not a lock, not a database round trip, not a check against any other server, per ID.</li>
+              <li>Sustain a very high generation rate (hundreds of thousands of IDs/sec, aggregate) with each individual instance operating entirely independently.</li>
+              <li>IDs fit in 64 bits — small enough to be a practical, indexable primary key at scale, unlike a UUID's 128 bits.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: does the ID need to hide creation time (privacy, avoiding a predictable sequence competitors could infer volume from), or is embedding timestamp for sortability actually desired? We'll assume sortability is a feature, not a leak — this is the common case for a primary key, and obfuscation is a separate, addressable concern if it's actually required.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>SnowflakeID</strong> <span class="fields">(timestamp_ms, datacenter_id, machine_id, sequence)</span> — not a stored row; a 64-bit number whose bits <em>are</em> these four fields, packed together.</li>
+            <li><strong>GeneratorInstance</strong> <span class="fields">(datacenter_id, machine_id)</span> — a fixed, unique identity assigned to each running generator at startup — the one piece of configuration the whole scheme depends on.</li>
+          </ul>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p><span style="font-family:var(--mono)">generate_id() → int64</span> — an in-process function call, not a network API. This is the entire interface: a library embedded in every service that needs an ID, running locally, calling nothing else to produce a result.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — deliberately doesn't exist</div>
+          <p class="skip">There is no data flow to trace — that absence is the entire design. Generating an ID touches no network, no database, no other server; it reads the local clock and an in-memory counter and returns. The interesting engineering is entirely in the bit layout below, not in any request path.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>64 bits, four fields, packed once and never coordinated — the bit layout below <em>is</em> the design.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Three below: <strong>(a)</strong> the bit layout, and why each field is sized the way it is, <strong>(b)</strong> clock drift and the one failure mode that actually threatens uniqueness, and <strong>(c)</strong> assigning machine IDs without a coordinator.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 1080 340" style="width:100%; min-width:760px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="sf-arrow-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+          </defs>
+
+          <text x="30" y="40" font-family="Inter" font-size="12" fill="#9FC1E0">64 bits total, packed left to right — one number, four embedded fields:</text>
+
+          <!-- bit layout bar -->
+          <rect x="30" y="70" width="20" height="60" rx="4" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.3"/>
+          <text x="40" y="105" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#94B8D4">1</text>
+
+          <rect x="50" y="70" width="440" height="60" rx="4" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="270" y="105" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">41 bits — timestamp (ms)</text>
+
+          <rect x="490" y="70" width="90" height="60" rx="4" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="535" y="97" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#EAF4FF">5 bits</text>
+          <text x="535" y="112" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">datacenter</text>
+
+          <rect x="580" y="70" width="90" height="60" rx="4" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="625" y="97" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#EAF4FF">5 bits</text>
+          <text x="625" y="112" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">machine</text>
+
+          <rect x="670" y="70" width="180" height="60" rx="4" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="760" y="97" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">12 bits</text>
+          <text x="760" y="112" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">per-ms sequence</text>
+
+          <text x="40" y="150" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">sign</text>
+          <text x="270" y="150" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">orders IDs roughly by creation time</text>
+          <text x="605" y="150" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">1,024 possible generator instances</text>
+          <text x="760" y="150" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">4,096 IDs/ms per instance</text>
+
+          <!-- two instances generating concurrently -->
+          <rect x="30" y="200" width="230" height="90" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="145" y="230" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Instance (dc=1, m=7)</text>
+          <text x="145" y="248" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">reads local clock</text>
+          <text x="145" y="263" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">+ local sequence counter</text>
+          <text x="145" y="280" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">no network call</text>
+
+          <rect x="420" y="200" width="230" height="90" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="535" y="230" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Instance (dc=2, m=3)</text>
+          <text x="535" y="248" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">reads local clock</text>
+          <text x="535" y="263" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">+ local sequence counter</text>
+          <text x="535" y="280" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">no network call</text>
+
+          <rect x="810" y="200" width="240" height="90" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="930" y="230" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Guaranteed unique</text>
+          <text x="930" y="248" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">different (dc, machine) bits</text>
+          <text x="930" y="263" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">→ different numbers, by</text>
+          <text x="930" y="278" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">construction, every time</text>
+
+          <line x1="260" y1="245" x2="807" y2="245" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#sf-arrow-ink)"/>
+          <line x1="650" y1="245" x2="807" y2="245" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="4 3"/>
+        </svg>
+      </div>
+      <div class="diagram-caption">Uniqueness is a property of the bit layout, not of coordination. Two instances generating at the exact same millisecond still produce different IDs, because their (datacenter, machine) bits are baked in at startup and can never collide — there is nothing to synchronize.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col">
+          <div class="flow-title">Generating one ID</div>
+          <ol>
+            <li>Read the current time in milliseconds; subtract a fixed "epoch" (a custom start date) so the timestamp fits in fewer bits than the raw Unix epoch would need.</li>
+            <li>Compare it to the last timestamp this instance used. If the clock has moved forward, reset the local sequence counter to 0.</li>
+            <li>If the clock hasn't moved forward (multiple IDs requested within the same millisecond), increment the local sequence counter.</li>
+            <li>Pack timestamp, this instance's fixed datacenter_id and machine_id, and the sequence into one 64-bit integer using bit shifts, and return it — no call to anything outside this process.</li>
+          </ol>
+        </div>
+        <div class="flow-col">
+          <div class="flow-title">Two instances, same millisecond</div>
+          <ol>
+            <li>Instance A (datacenter 1, machine 7) and Instance B (datacenter 2, machine 3) each receive a request in the same millisecond.</li>
+            <li>Both compute the identical 41-bit timestamp value — this part of their IDs genuinely matches.</li>
+            <li>Their datacenter_id and machine_id bits differ, because those values were fixed and made unique at startup, before either instance ever generated an ID.</li>
+            <li>The resulting 64-bit numbers are different by construction — no comparison against each other ever happened, and none was needed.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — the bit layout, and why each field is sized the way it is</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Sortable by creation time</span><span class="explains-tag nfr"><b>NFR</b>Fits in 64 bits</span><span class="explains-tag nfr"><b>NFR</b>Zero coordination</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the actual constraint: uniqueness has to come from the number's structure alone, since no coordination is allowed. That means the number needs enough distinct "identity" baked into it that two honest instances literally cannot produce the same one.</li>
+          <li>List what's known and fixed about any given generator before it ever runs: which data center it's in, which specific machine it is. That's already two axes of guaranteed distinctness, for free, decided once at startup.</li>
+          <li>Notice fixed identity alone isn't enough — the same instance, asked twice, needs its own two calls to differ too. Something has to vary within one instance's own output.</li>
+          <li>Use time for that: it naturally increases, needs no coordination to read, and comes with a valuable side effect — a timestamp-prefixed number sorts roughly by creation order for free. Add a small counter only to break ties within the same millisecond.</li>
+        </ol>
+        <p>A Snowflake-style ID packs four fields into one 64-bit integer via bit shifts — each field's size is a deliberate trade against how long the scheme lasts and how many machines it supports, not an arbitrary split.</p>
+        <ul class="item-list">
+          <li><strong>41 bits, timestamp in milliseconds since a custom epoch:</strong> the raw Unix epoch (1970) would waste decades of range before this system existed. A custom epoch (the scheme's own launch date) gets roughly 69 years of millisecond-resolution timestamps out of 41 bits — Unix time would need the same 41 bits to reach only until 2039.</li>
+          <li><strong>5 + 5 bits, datacenter_id + machine_id:</strong> 32 possible data centers, 32 machines each — 1,024 total generator instances active at once. Sized to the actual expected fleet, not maximized; more bits here means fewer bits left for timestamp or sequence.</li>
+          <li><strong>12 bits, sequence:</strong> resets to 0 every millisecond, incremented for each additional ID requested within that same millisecond — 4,096 IDs per instance per millisecond, or roughly 4 million IDs/sec per instance before this field would overflow.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This is the opposite trade-off from the URL shortener's counter-based ID: that scheme achieves uniqueness through one shared source of truth (a coordinated counter, or pre-allocated ranges from one); this scheme achieves it by making every instance's identity mathematically distinct from every other's, so there's no shared anything to coordinate.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — clock drift and the one failure mode that actually threatens uniqueness</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Never produce a duplicate ID</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Audit the design for its one unverified assumption: everything above relies on each instance's local clock only ever moving forward.</li>
+          <li>Ask what actually violates that in the real world — not a hypothetical, a known operational event: NTP clock synchronization can occasionally step a system clock backward to correct drift.</li>
+          <li>Trace the consequence directly: if the clock goes backward, this instance could generate a timestamp it's already used, with a sequence counter that's already been through those same values — a genuine, concrete risk of a duplicate ID from the same machine.</li>
+          <li>Since the fix can't be "make clocks never move backward" (not this system's to control), make the generator itself detect the condition and refuse to produce a possibly-duplicate ID rather than silently risk one.</li>
+        </ol>
+        <p>Every field above assumes local clocks only move forward. That assumption can be violated — NTP synchronization occasionally steps a clock backward to correct drift — and this is the one failure mode that can actually produce a duplicate.</p>
+        <ul class="item-list">
+          <li><strong>Detect it explicitly:</strong> on every ID generation, compare the current time to the last timestamp this instance used. If the current time is <em>earlier</em>, the clock has gone backward.</li>
+          <li><strong>Refuse rather than risk it:</strong> a well-implemented generator throws an error or blocks briefly rather than silently generating an ID with a timestamp it may have already used — a short, rare unavailability is a far smaller cost than a duplicate primary key reaching a database.</li>
+          <li><strong>Bound the blast radius:</strong> because datacenter_id and machine_id are fixed per instance, a clock issue on one machine can only ever risk colliding with that <em>same</em> machine's own past output — it can never collide with any other instance, anywhere.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This is the honest caveat worth stating plainly in an interview: "zero coordination" describes the common path, not an unconditional guarantee — the design still needs an explicit response to the one scenario where its core assumption can be violated.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — assigning machine IDs without a coordinator</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Any server, any data center, independently</span><span class="explains-tag nfr"><b>NFR</b>No coordination on the critical path</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice a gap in the design so far: it assumes every instance already has a unique machine_id, but never says how an instance gets one — and getting that wrong would break every uniqueness guarantee built on top of it.</li>
+          <li>Consider a coordinator that hands out machine IDs on request. Test it against the whole point of this system — that's exactly the coordination being avoided, just moved to startup instead of per-request.</li>
+          <li>Realize the constraint is actually softer than "no coordination ever" — it's specifically "no coordination on the hot path." A coordination step that happens once, at startup, is a completely different cost than one happening on every single ID.</li>
+          <li>Choose a mechanism for that one-time step: something that already exists in most deployments and guarantees uniqueness on its own — a service registry, or simply a fixed value baked into configuration per deployment.</li>
+        </ol>
+        <p>The whole scheme depends on every instance having a genuinely unique (datacenter_id, machine_id) pair — getting that wrong is the one mistake that defeats everything else, so it deserves as much attention as the bit layout itself.</p>
+        <ul class="item-list">
+          <li><strong>This coordination happens once, at startup — not per-request, which is the actual constraint:</strong> "no coordination" describes generating an ID, not configuring the generator. A single lookup when a process boots is a fundamentally different cost than a lookup on every ID.</li>
+          <li><strong>Common real-world approaches:</strong> register with a coordination service (ZooKeeper, etcd) on startup to claim an unused machine_id and hold it via a lease; or, simpler, bake a fixed machine_id into each server's deployment configuration if the fleet is stable enough to manage that by hand.</li>
+          <li><strong>The failure mode to design for:</strong> if two instances are ever misconfigured with the same machine_id (a deployment mistake, not a runtime one), every uniqueness guarantee in this system silently breaks — worth a startup-time sanity check (claim-and-verify against a registry) rather than trusting static configuration alone at real scale.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">"Zero coordination" is true of the hot path and false of bootstrapping — being precise about which one a claim applies to is exactly the kind of distinction worth making explicit rather than leaving implied.</p>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>Never a duplicate, across any two instances</td><td>Fixed, unique (datacenter, machine) bits per instance make collision structurally impossible for two different instances, regardless of timing.</td></tr>
+        <tr><td>Zero coordination per ID</td><td>Generation reads only the local clock and a local counter — no network call, no lock, no shared state touched per request.</td></tr>
+        <tr><td>Sustains a very high generation rate</td><td>4,096 IDs/ms per instance, across up to 1,024 instances — scales by adding instances, each fully independent.</td></tr>
+        <tr><td>Roughly sortable by creation time</td><td>Timestamp occupies the highest bits, so numeric order closely tracks creation order.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Structural uniqueness (Snowflake) vs. coordinated counter (URL shortener's approach)</td><td>True zero coordination per ID and works across data centers with real latency between them, at the cost of a fixed fleet-size ceiling (1,024 instances here) baked into the bit layout — the coordinated-counter approach has no such ceiling but can't survive high-latency, cross-datacenter generation at this rate.</td></tr>
+        <tr><td>64-bit Snowflake-style ID vs. a 128-bit UUID</td><td>Half the storage and index footprint, plus meaningful time-ordering, at the cost of the ID revealing approximate creation time and generator identity — a UUID reveals neither, at double the size and with no inherent sort order.</td></tr>
+        <tr><td>Refuse-on-clock-rollback vs. silently generating anyway</td><td>Guarantees the uniqueness promise holds even under a rare clock anomaly, at the cost of a brief unavailability on the affected instance during that window — the alternative risks a duplicate ID reaching a database, which is a strictly worse failure.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>The generator itself</td><td>an embedded library, not a service — Twitter's original <span class="tool-tag">Snowflake</span>, Instagram's and Discord's published variants</td></tr>
+        <tr><td>Machine ID assignment (startup only)</td><td><span class="tool-tag">ZooKeeper</span> or <span class="tool-tag">etcd</span> for dynamic claim-and-lease; static config for a stable, hand-managed fleet</td></tr>
+        <tr><td>Clock source</td><td>the host OS clock, disciplined by <span class="tool-tag">NTP</span> or <span class="tool-tag">chrony</span></td></tr>
       </table>
 </div>
       </div>
