@@ -187,6 +187,8 @@
   .flow-col .flow-title{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:12px; }
   .flow-col.read .flow-title{ color:var(--accent); }
   .flow-col.write .flow-title{ color:var(--marker); }
+  .flow-col.read ol li::marker{ color:var(--accent); font-weight:700; }
+  .flow-col.write ol li::marker{ color:var(--marker); font-weight:700; }
   .flow-col.pipeline .flow-title{ color:var(--optional); }
   .flow-col ol{ margin:0; padding-left:18px; }
   .flow-col ol li{ font-size:13.5px; color:var(--ink-dim); margin-bottom:9px; line-height:1.55; }
@@ -328,6 +330,28 @@
   .tier-card ul li{ font-size:12.5px; color:var(--ink-dim); margin-bottom:5px; line-height:1.5; }
   .tier-card ul li:last-child{ margin-bottom:0; }
   .tier-card ul li strong{ color:var(--ink); }
+
+  /* Two-column contrast — for a deep dive that's genuinely "two opposite treatments,"
+     not a list of related techniques. Color itself carries the meaning: warm/active vs. cool/dormant. */
+  .contrast-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:14px 0 0; }
+  @media (max-width:700px){ .contrast-grid{ grid-template-columns:1fr; } }
+  .contrast-card{ border-radius:10px; padding:16px 18px; border:1px solid; }
+  .contrast-card.hot{ background:var(--marker-soft); border-color:rgba(255,209,102,0.35); }
+  .contrast-card.cold{ background:rgba(111,224,240,0.045); border-color:rgba(111,224,240,0.22); }
+  .contrast-card .contrast-title{
+    font-family:var(--mono); font-weight:700; font-size:13px; margin-bottom:8px;
+    display:flex; align-items:center; gap:7px;
+  }
+  .contrast-card.hot .contrast-title{ color:var(--marker); }
+  .contrast-card.cold .contrast-title{ color:var(--accent); }
+  .contrast-card .contrast-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .contrast-card.hot .contrast-dot{ background:var(--marker); box-shadow:0 0 8px rgba(255,209,102,0.6); }
+  .contrast-card.cold .contrast-dot{ background:var(--accent); }
+  .contrast-card p{ font-size:13px; margin:0 0 10px; color:var(--ink-dim); }
+  .contrast-card ul{ margin:0; padding-left:16px; }
+  .contrast-card ul li{ font-size:12.5px; color:var(--ink-dim); margin-bottom:6px; line-height:1.55; }
+  .contrast-card ul li:last-child{ margin-bottom:0; }
+  .contrast-card ul li strong{ color:var(--ink); }
 
   /* Which requirement a deep dive explains — subtle, reuses existing accent/marker colors */
   .explains-row{ display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 14px; }
@@ -500,6 +524,7 @@
       <a class="nav-link" href="#usecase-gamesync"><span class="num">L</span>Multiplayer Game State Sync</a>
       <a class="nav-link" href="#usecase-viewcount"><span class="num">M</span>Video View Count</a>
       <a class="nav-link" href="#usecase-snowflake"><span class="num">N</span>Global Unique ID Generator</a>
+      <a class="nav-link" href="#usecase-pricealert"><span class="num">O</span>Stock Price Alert System</a>
     </div>
 
     <div class="nav-group">
@@ -5024,6 +5049,416 @@ Lag-compensated check: rewind to server_tick - 100ms, check THERE → HIT (match
         <tr><td>Clock source</td><td>the host OS clock, disciplined by <span class="tool-tag">NTP</span> or <span class="tool-tag">chrony</span></td></tr>
       </table>
 </div>
+      </div>
+    </section>
+
+
+    <section class="section" id="usecase-pricealert">
+      <div class="eyebrow">Worked Example O — A Query Reframe Hiding Inside a Scale Problem</div>
+      <div class="usecase-head">
+        <h2 class="section-title">Design a Stock Price Alert System</h2>
+        <span class="uc-tag">crossing detection, not point match · hot vs. illiquid tickers</span>
+      </div>
+      <p style="max-width:680px;">"Any of 10–20M users can set a price alert on any of thousands of tickers — user A wants to know when BBCA crosses 3,000, user B wants to know when it crosses 3,100. When the price moves, every relevant alert has to fire, fast, exactly once, correctly." It reads like a fan-out problem, and partly is — but the sharper issue hides one level down: a price doesn't visit every value on its way up, and "does the new price equal this threshold" is the wrong question to be asking at all.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>Set an alert: ticker + threshold + operator (<span style="font-family:var(--mono)">&gt;, &lt;, =, &gt;=, &lt;=</span>).</li>
+              <li>An alert fires exactly once when the price satisfies its operator against the threshold, then deactivates.</li>
+              <li>A fired alert delivers a simple in-app push notification to the user's registered device.</li>
+              <li>A user can view and cancel their own active alerts.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>Sub-second latency from a price tick to a crossing being identified — conditioned on a tick actually occurring, not a promise about tickers that aren't trading.</li>
+              <li>Scales to 10–20M users and thousands of tickers, each ticker receiving wildly uneven update frequency.</li>
+              <li>No missed crossings — a price that gaps straight across a threshold without ever equaling it still has to fire.</li>
+              <li>Listing or canceling a user's own alerts is a fast indexed lookup, never a scan across all alerts.</li>
+              <li>An offline user doesn't silently lose a fired alert forever, but staleness has a defined limit.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: does <span style="font-family:var(--mono)">=</span> mean the price must land on that exact tick (rare, could go long stretches never firing on a fast-moving stock), or "reached this level from either direction"? We'll assume the latter — it turns out to be the same range-query mechanism as every other operator, just with the range collapsed to a single point, not a separate code path.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>Alert</strong> <span class="fields">(id, user_id, ticker, threshold, operator, status)</span> — operator is one of &gt;, &lt;, =, &gt;=, &lt;=; status is Active or Triggered. Every write to this entity has to maintain two separate indexes, not one.</li>
+            <li><strong>PriceTick</strong> <span class="fields">(ticker, price, timestamp)</span> — arrives on the Ingestion stream, partitioned by ticker symbol; not stored long-term, just the trigger for a range query.</li>
+            <li><strong>TickerActivityState</strong> <span class="fields">(ticker, tier, last_tick_at)</span> — tier is Hot or Cold, decided by recent trading activity, not a fixed property of the ticker.</li>
+            <li><strong>DeviceToken</strong> <span class="fields">(user_id, push_token, platform)</span> — the registered push token for the user's device, obtained once at app install/login; this is what delivery actually calls, not a live connection this system tracks itself.</li>
+          </ul>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p><span style="font-family:var(--mono)">POST /alerts {ticker, threshold, operator}</span> → alert id<br>
+          <span style="font-family:var(--mono)">GET /alerts</span> → the caller's own active alerts — served from the user_id index, never a scan<br>
+          <span style="font-family:var(--mono)">DELETE /alerts/{id}</span> → cancels an active alert<br>
+          Price ticks arrive on an internal stream, not through this API — this service consumes them, it doesn't expose a way to post one.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>A price tick for a ticker is published to the Ingestion stream, keyed by ticker symbol — every tick for that ticker always lands on the same partition, in order.</li>
+            <li>The Detector instance assigned to that partition consumes the tick and looks up that ticker's sorted threshold index, asking for every threshold satisfying the relevant operators between the old price and the new price.</li>
+            <li>Each matching Alert is marked Triggered — removed from the detection index so it can never fire twice.</li>
+            <li>A trigger event is published to a separate queue — detection never waits on what happens next.</li>
+            <li>A Delivery Worker consumes the event, looks up the user's push token, and calls the push provider — independently of how fast or slow that specific delivery turns out to be.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>Detection and delivery are two different systems connected by a queue, ingestion is partitioned before detection ever sees a tick, and every alert lives in two different indexes at once — diagrammed below.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Five below: <strong>(a)</strong> crossing detection as a range query, not a point match, <strong>(b)</strong> partitioning the market feed so one Detector doesn't see every tick, <strong>(c)</strong> decoupling detection from push delivery, <strong>(d)</strong> hot tickers and illiquid tickers need opposite treatments, and <strong>(e)</strong> whether the User Alert Index actually holds up at 10–20M users.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 1300 440" style="width:100%; min-width:860px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="pa-arrow-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="pa-arrow-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="pa-arrow-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="pa-arrow-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+          </defs>
+
+          <!-- Price feed -->
+          <rect x="20" y="150" width="140" height="70" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="90" y="180" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Price Feed</text>
+          <text x="90" y="197" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">every liquid ticker, at once</text>
+
+          <!-- Ingestion (Kafka, partitioned by ticker) -->
+          <rect x="190" y="140" width="180" height="90" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="280" y="168" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Ingestion</text>
+          <text x="280" y="186" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">Kafka, partitioned by ticker</text>
+          <text x="280" y="200" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">hot ticker → own partition</text>
+
+          <!-- Detector -->
+          <rect x="410" y="140" width="180" height="90" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="500" y="172" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Detector</text>
+          <text x="500" y="190" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">range query per operator,</text>
+          <text x="500" y="205" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">old price → new price</text>
+
+          <!-- Threshold Index (sharded, by ticker) -->
+          <rect x="410" y="30" width="180" height="75" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="500" y="58" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Threshold Index</text>
+          <text x="500" y="75" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">sorted set, per ticker</text>
+          <text x="500" y="89" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">split into shards for hot tickers</text>
+
+          <!-- User Alert Index -->
+          <rect x="410" y="290" width="180" height="75" rx="10" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="500" y="318" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">User Alert Index</text>
+          <text x="500" y="335" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">keyed by user_id</text>
+          <text x="500" y="349" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">for GET /alerts, unrelated to detection</text>
+
+          <!-- Trigger Queue -->
+          <rect x="650" y="140" width="170" height="90" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="735" y="175" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Trigger Queue</text>
+          <text x="735" y="193" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">one event per fired alert</text>
+          <text x="735" y="208" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">detection never waits here</text>
+
+          <!-- Delivery Worker -->
+          <rect x="890" y="140" width="170" height="90" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="975" y="172" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Delivery Worker</text>
+          <text x="975" y="190" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">looks up push token,</text>
+          <text x="975" y="205" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">calls the push provider</text>
+
+          <!-- DeviceToken Store -->
+          <rect x="890" y="30" width="170" height="65" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="975" y="58" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">DeviceToken Store</text>
+          <text x="975" y="75" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">user_id → push token, set once</text>
+
+          <!-- User device -->
+          <rect x="1130" y="140" width="120" height="90" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="1190" y="175" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Device</text>
+          <text x="1190" y="192" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">via APNs/FCM,</text>
+          <text x="1190" y="207" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">push arrives</text>
+
+          <!-- flows -->
+          <line x1="160" y1="185" x2="187" y2="185" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#pa-arrow-ink)"/>
+          <text x="173" y="173" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9FC1E0">1</text>
+
+          <line x1="370" y1="185" x2="407" y2="185" stroke="#FFD166" stroke-width="1.5" marker-end="url(#pa-arrow-amber)"/>
+          <text x="388" y="173" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#FFD166">2</text>
+
+          <line x1="500" y1="140" x2="500" y2="108" stroke="#FFD166" stroke-width="1.5" marker-end="url(#pa-arrow-amber)"/>
+          <text x="535" y="122" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">query range</text>
+
+          <line x1="500" y1="230" x2="500" y2="287" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#pa-arrow-ink)"/>
+          <text x="550" y="262" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">mark Triggered, remove</text>
+
+          <line x1="590" y1="185" x2="647" y2="185" stroke="#FFD166" stroke-width="1.5" marker-end="url(#pa-arrow-amber)"/>
+          <text x="618" y="173" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#FFD166">3</text>
+
+          <line x1="820" y1="185" x2="887" y2="185" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#pa-arrow-green)"/>
+          <text x="853" y="173" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#7CE0A8">4</text>
+
+          <line x1="975" y1="140" x2="975" y2="98" stroke="#9FC1E0" stroke-width="1.3" marker-end="url(#pa-arrow-ink)"/>
+          <text x="1025" y="122" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">lookup</text>
+
+          <line x1="1060" y1="185" x2="1127" y2="185" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#pa-arrow-green)"/>
+          <text x="1093" y="173" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#7CE0A8">5</text>
+
+          <!-- legend -->
+          <line x1="30" y1="405" x2="60" y2="405" stroke="#FFD166" stroke-width="2"/>
+          <text x="68" y="409" font-family="Inter" font-size="11" fill="#9FC1E0">Ingestion + detection path</text>
+          <line x1="260" y1="405" x2="290" y2="405" stroke="#7CE0A8" stroke-width="2"/>
+          <text x="298" y="409" font-family="Inter" font-size="11" fill="#9FC1E0">Delivery path</text>
+          <line x1="420" y1="405" x2="450" y2="405" stroke="#94B8D4" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="458" y="409" font-family="Inter" font-size="11" fill="#9FC1E0">Index maintenance</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">Ingestion partitions the raw market feed by ticker symbol before the Detector ever sees it — every tick for one ticker always lands on the same partition, in order, so a Detector instance can keep that ticker's Threshold Index warm without contending with every other ticker in the market. Two indexes, one write, two purposes: the Threshold Index answers "which alerts does this price move affect" (detection); the User Alert Index answers "what alerts does this user have" (listing).</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col write">
+          <div class="flow-title">A price crosses a threshold</div>
+          <ol>
+            <li>BBCA ticks 3,095 → 3,120. The Detector queries the Threshold Index for every alert between the two — a range, not a single value.</li>
+            <li>User B's alert at 3,100 (crosses above) matches, even though 3,100 was never the exact tick.</li>
+            <li>That alert is marked Triggered and removed from the index — it can't match twice, and stops taking up space in a structure about to be queried again.</li>
+            <li>A trigger event publishes to the Trigger Queue. The Detector moves on immediately, not waiting on anything downstream.</li>
+          </ol>
+        </div>
+        <div class="flow-col read">
+          <div class="flow-title">A user checks their alerts</div>
+          <ol>
+            <li>The user opens the app; the client calls GET /alerts.</li>
+            <li>Served entirely from the User Alert Index, keyed by user_id — a fast, indexed lookup, unrelated to detection's Threshold Index.</li>
+            <li>Canceling an alert removes it from both indexes at once — it has to stop being detectable, not just stop being listed.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — crossing detection as a range query, not a point match</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>No missed crossings</span><span class="explains-tag nfr"><b>NFR</b>Sub-second detection</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the check that sounds obviously correct: on every price tick, compare it to every alert's threshold — <span style="font-family:var(--mono)">if new_price == threshold, fire</span>.</li>
+          <li>Test it against a real price move: 2,990 to 3,120 in one tick, on a fast-moving or illiquid stock. An alert at 3,100 is never equal to either endpoint — the naive check silently never fires, and nothing about the system flags that as wrong.</li>
+          <li>Reframe the actual question: it was never "does the price equal this threshold," it was always "did the price pass through this threshold between the last tick and this one" — a range, not a point.</li>
+          <li>Once it's a range question, the fix is a data-structure choice, not a smarter comparison: keep each ticker's active thresholds in a structure that answers "what's between X and Y" cheaply — a sorted set, not a list to loop over.</li>
+        </ol>
+        <p>A per-alert equality check isn't just slow at scale — it's wrong at any scale, because a price move is a range, not a single value, and an alert sitting inside that range still has to fire even if the tick never lands on it exactly.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — why equality misses B, and range-query doesn't</span>Alerts on BBCA:  A@3,000 (>)   B@3,100 (>)   C@3,000 (<)   D@3,150 (>)
+
+Tick: price moves 2,990 → 3,120
+
+Naive equality check:  new_price == 3,100 ?  → false. B never fires. Silent miss.
+
+Range query: "thresholds in (2,990, 3,120], operator >"
+  → A@3,000 matches, B@3,100 matches, D@3,150 does not (outside the range)
+  → both A and B fire correctly, in one query against a sorted structure</div>
+        <ul class="item-list">
+          <li><strong>What the index actually is:</strong> not a database index in the SQL sense — a sorted, in-memory structure, one per ticker, where the key is the threshold price. Concretely, a Redis sorted set: <span style="font-family:var(--mono)">ZADD bbca_alerts 3100 alert_B</span>. Internally it's a skip list, which is exactly what makes "give me everything between two values" a fast operation instead of a scan.</li>
+          <li><strong>The range query itself:</strong> <span style="font-family:var(--mono)">ZRANGEBYSCORE bbca_alerts 2990 3120</span> returns every alert with a threshold in that band directly — no loop over alerts that don't match.</li>
+          <li><strong>All five operators are the same query, with the range boundaries adjusted:</strong> <span style="font-family:var(--mono)">&gt;</span> and <span style="font-family:var(--mono)">&lt;</span> use an exclusive boundary at the threshold itself; <span style="font-family:var(--mono)">&gt;=</span> and <span style="font-family:var(--mono)">&lt;=</span> use an inclusive one — a one-character difference in the query, not a different mechanism. <span style="font-family:var(--mono)">=</span> is the same query with the range collapsed to a single point (low == high == threshold), the smallest possible case of the identical detector.</li>
+          <li><strong>Cancellation races against detection, the same shape as Ticketmaster's seat hold:</strong> a user can call DELETE /alerts/{id} at the exact instant a price tick is querying that same threshold. If cancellation just deletes the row, a tick that already read it before the delete could still fire it — the classic check-then-act gap. The fix is the same atomic remove used for firing: <span style="font-family:var(--mono)">ZREM</span> on the Threshold Index is itself atomic, so whichever happens first — the cancel or the detection's own removal-on-fire — wins outright, and the other finds nothing left to act on.</li>
+        </ul>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the boundary is the only thing that changes between operators</span>Price ticks exactly onto 3,100 (from below, previous tick was 3,099):
+
+alert(threshold=3100, op=">")   → range (3099, 3100]  exclusive at 3100 → does NOT fire yet
+alert(threshold=3100, op=">=")  → range (3099, 3100]  inclusive at 3100 → FIRES
+alert(threshold=3100, op="=")   → range [3100, 3100]  single point      → FIRES</div>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Same instinct as the meeting room's overlap detection and the invoice search's anti-join — the fix in both cases was recognizing the real question is "what falls within this range," not "check this one thing against every candidate," and reaching for a structure built to answer range questions instead of a loop.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — partitioning the market feed so one Detector doesn't see every tick</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Sub-second detection</span><span class="explains-tag nfr"><b>NFR</b>No missed crossings</span><span class="explains-tag nfr"><b>NFR</b>Scales to thousands of tickers</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice everything in the deep dive above assumed a tick simply "arrives" at the Detector — worth checking what actually delivers it, especially with hundreds of liquid tickers all ticking through market hours at once.</li>
+          <li>Consider one Detector process handling every tick for every ticker. Test it against real volume: that single process now has to keep every ticker's Threshold Index warm and reachable, and process a genuinely continuous, high-throughput stream alone — the exact bottleneck this whole design exists to avoid, just moved one step earlier.</li>
+          <li>Consider the opposite: spread ticks across many Detector instances arbitrarily (round-robin). Test it against correctness: BBCA's own ticks could now land on different instances out of order, and the range query (old_price → new_price) depends on knowing the true previous price — an instance that missed the last tick has no reliable "old_price" to query from.</li>
+          <li>Fix both problems with one choice: partition the stream by ticker symbol. Every tick for a given ticker always routes to the same partition, in the order it happened — that gives correctness (true order) and locality (one instance can keep that ticker's index warm) for free.</li>
+        </ol>
+        <p>A price tick doesn't just "arrive" — with hundreds of liquid tickers ticking through market hours simultaneously, something has to decide which Detector instance handles which tick, and get the ordering right while doing it.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — partition by ticker, not round-robin</span>Kafka topic "price-ticks", key = ticker symbol
+
+Round-robin (wrong): BBCA's ticks scatter across partitions 0, 3, 1, 2, 0, 3...
+  → no single Detector instance sees BBCA's ticks in order
+  → "old_price" for the next tick is unreliable, range query can be wrong
+
+Partition-by-ticker (correct): key="BBCA" always hashes to the same partition, say partition 2
+  → every BBCA tick lands on partition 2, in the exact order the exchange emitted it
+  → the Detector instance consuming partition 2 always has the true old_price
+  → and can keep BBCA's Threshold Index shards warm, since it's the only instance touching them
+
+Is one consumer actually enough for BBCA's own volume? Check the numbers, don't assume:
+  even an extremely liquid stock ticking every 50–100ms ≈ 10–20 ticks/sec
+  one Kafka partition/consumer sustains tens of thousands of small messages/sec
+  → BBCA's raw tick rate is 3–4 orders of magnitude below that ceiling — nowhere close to a bottleneck</div>
+        <ul class="item-list">
+          <li><strong>Order is a correctness requirement here, not a nicety:</strong> Kafka guarantees order only within a partition, which is exactly why the key has to be the ticker symbol — anything else risks the Detector computing a crossing against the wrong "old_price."</li>
+          <li><strong>A hot ticker needs isolation, not necessarily more consumers:</strong> hashing alone can still place BBCA on a partition shared with several moderately active tickers — a genuine problem, since one consumer now serves the combined tick rate of all of them. Pinning BBCA to its own partition fixes that, and one consumer is enough to keep up with a single ticker's actual volume; ingestion throughput was never the scarce resource here.</li>
+          <li><strong>Don't confuse this with the Threshold Index's sharding — that bottleneck is real, this one usually isn't:</strong> a tick arriving is a tiny message; the range query it triggers against hundreds of thousands of alerts is genuinely expensive CPU/memory work. That's why the Threshold Index gets sharded across multiple Redis keys — the query workload, not the raw ingestion rate, is where a hot ticker's cost actually lives.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This is what actually makes the main diagram's single "Ingestion → Detector" arrow honest — not every tick funneling through one process, and not one dedicated instance per hot ticker either. It's a shared pool of Detector instances, each consuming one or more partitions, with known-hot tickers isolated onto their own partition specifically so their ticks never queue up behind a noisy neighbor's.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — decoupling detection from push delivery</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Push notification on trigger</span><span class="explains-tag nfr"><b>NFR</b>Sub-second detection</span><span class="explains-tag nfr"><b>NFR</b>Offline delivery, bounded staleness</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Consider the simplest possible pairing: the moment an alert crosses, look up the user's device and send the push right there, in the same step as detection.</li>
+          <li>Trace what a slow or unreachable push provider does to that: the Detector is now waiting on a network call to a third party before it can move on to the next tick — the exact bottleneck this system exists to avoid.</li>
+          <li>Separate the two concerns explicitly: detection's job is "identify the crossing, fast" — delivery's job is "get the notification to the device, however long that takes" — and neither should block on the other.</li>
+          <li>Once they're separate, decide the harder question: does marking the alert Triggered happen before or after delivery is confirmed? If before, a failed push means the alert is gone and the user never finds out. If after, a crash mid-delivery could leave a dangling Triggered-but-undelivered alert. Pick a default and be explicit about the failure mode either way.</li>
+        </ol>
+        <p>The same "don't let the slow path block the fast path" instinct as the URL shortener's click analytics and Ticketmaster's confirmation email — except here the slow path is the entire point of the feature, which makes getting the failure mode right matter more, not less.</p>
+        <ul class="item-list">
+          <li><strong>What "simple in-app push" actually means, mechanically:</strong> each device registers a push token with Apple (APNs) or Google (FCM) once, at install or login — that token is stored in DeviceToken Store as (user_id → token, platform). Delivering a notification means one API call to APNs/FCM with that token and the message; the provider handles finding and waking the actual device. This system never holds a live connection to anyone — that's the provider's job, not ours.</li>
+          <li><strong>Kafka's role here is decoupling, not sharding:</strong> the Detector publishes a small "alert X triggered" message to a Kafka topic and immediately moves to the next tick — it never calls the Delivery Worker directly. Kafka's own internal partitioning (splitting the topic so multiple Delivery Worker instances can each consume a slice in parallel) is what lets delivery scale its own throughput independently — a different mechanism from sharding the Threshold Index, solving a different problem (parallel consumers, not one hot key's write throughput).</li>
+          <li><strong>Deactivate at trigger time, retry delivery independently:</strong> the Alert is marked Triggered the moment the crossing is detected — that's the correctness guarantee ("fires exactly once"). Delivery is retried against the Kafka topic on its own schedule, decoupled from whether the alert itself is still Active; a failed push doesn't get a second detection, only a second delivery attempt.</li>
+          <li><strong>Bounded staleness needs an actual mechanism, not just a stated limit:</strong> unlike a chat app, there's no "open the conversation and see what you missed." Each trigger event carries its own timestamp; the Delivery Worker checks it before every retry and simply drops the attempt once it's older than the bound (minutes, not hours) — the same short-TTL instinct as a cache entry expiring, applied to a queued notification instead of a stored value. If APNs/FCM reports the device unreachable and the window has already passed, it doesn't retry at all.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">"Fired" and "delivered" are tracked as two different facts about the same alert — worth stating explicitly, since conflating them is exactly how a system ends up either double-firing on retry or silently losing a notification on failure.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — hot tickers and illiquid tickers need opposite treatments</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Scales to thousands of tickers</span><span class="explains-tag nfr"><b>NFR</b>Sub-second, when a tick occurs</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice the design so far quietly assumed every ticker behaves the same: ticks constantly, has a meaningfully sized alert index, needs to be fast at all times.</li>
+          <li>Check that against thousands of real tickers: a handful trade every few hundred milliseconds with huge alert counts; most trade rarely, some go days between trades, with a handful of alerts each.</li>
+          <li>Realize treating them identically wastes resources in both directions — a popular ticker's single index becomes a bottleneck under real load; an illiquid ticker's always-warm, always-sharded index costs the same as a hot one for almost no benefit.</li>
+          <li>Split the strategy by actual behavior, not by a fixed list: let recent activity — not a static classification — decide which tier a ticker is in right now, and let it move between tiers as its trading pattern changes.</li>
+        </ol>
+        <p>Thousands of tickers don't share one load profile — a fixed strategy tuned for either extreme wastes resources on the other. The fix is treating "how active is this ticker right now" as the thing that decides the strategy, not the ticker's identity.</p>
+        <div class="contrast-grid">
+          <div class="contrast-card hot">
+            <div class="contrast-title"><span class="contrast-dot"></span>Hot ticker (BBCA, ticks sub-second)</div>
+            <p>The bottleneck is throughput on a single ticker's own index — sharding spreads that one ticker's load, the same key-splitting instinct as the Caching Playbook's hot-key section.</p>
+            <ul>
+              <li>Threshold Index is split into multiple shards for this ticker specifically; a tick queries all shards for that ticker in parallel and merges the matches.</li>
+              <li>A popular round-number threshold (3,000 on a major stock) can hold thousands of alerts — one crossing fans out that many trigger events at once, the same shape as the News Feed's celebrity fan-out, just aimed at a price level instead of a follower graph.</li>
+              <li>Kept always in memory — the cost is justified by the tick rate.</li>
+            </ul>
+          </div>
+          <div class="contrast-card cold">
+            <div class="contrast-title"><span class="contrast-dot"></span>Illiquid ticker (barely trades)</div>
+            <p>There's no throughput problem to solve — the risk is the opposite one: paying hot-path memory cost for thousands of tickers that rarely justify it.</p>
+            <ul>
+              <li>Its alert index lives in a cheaper, colder tier by default — not sharded, not necessarily in memory.</li>
+              <li>The sub-second NFR simply doesn't apply while there's no tick to measure latency from — worth stating explicitly rather than treating a dormant ticker as a violation.</li>
+              <li>On the rare tick, the ticker is promoted to the hot tier, its index warmed, and demoted back after a period of inactivity — activity decides the tier, not a fixed list.</li>
+            </ul>
+          </div>
+        </div>
+        <p style="color:var(--ink); margin-top:12px; margin-bottom:0;">Neither tier is the "correct" default for every ticker — the actual design decision is the promotion/demotion rule itself, since getting that threshold wrong either wastes memory on dormant tickers or adds a cold-start delay right when an illiquid ticker finally starts moving.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — the User Alert Index at 10–20M users</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>View and cancel own alerts</span><span class="explains-tag nfr"><b>NFR</b>Fast indexed lookup, never a scan</span><span class="explains-tag nfr"><b>NFR</b>Scales to 10–20M users</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice this scale axis has gone unaddressed so far: every other deep dive scales with ticker count or tick rate — this one scales with user count, a completely different number, and it deserves its own check, not a free pass because "keyed by user_id" sounds like enough on its own.</li>
+          <li>Estimate the real size: 10–20M users, a few alerts each, lands around 40–60M rows. Ask whether a plain B-tree index on user_id still holds up at that count.</li>
+          <li>It does, for a reason worth stating rather than assuming: a B-tree index's lookup cost grows logarithmically with row count, so going from 1M to 60M rows adds a small, bounded number of extra comparisons — nothing close to the linear cost of a scan.</li>
+          <li>Identify the one thing that actually could go wrong at this scale, and it isn't the index — it's a single unsharded PostgreSQL table absorbing 10-20M users' worth of concurrent connections and writes. That's a standard, well-understood scaling problem (read replicas, then partitioning by user_id range), not a novel one this design has to solve from scratch.</li>
+        </ol>
+        <p>"Keyed by user_id" is repeated a few times in this design without ever being defended — worth checking it actually holds at 10–20M users rather than trusting the phrase on its own.</p>
+        <ul class="item-list">
+          <li><strong>The index itself is not the bottleneck:</strong> a B-tree lookup on user_id is O(log n) — at 40–60M rows that's roughly 26 comparisons versus roughly 20 at 1M rows, an immaterial difference. This NFR was never actually at risk from row count alone.</li>
+          <li><strong>The real scaling lever is standard relational-database practice, not something specific to this design:</strong> read replicas absorb GET /alerts traffic (reads dominate writes here — most users check their alerts far more often than they set or cancel one), and the table can be partitioned by a hash of user_id if a single primary node's write throughput ever becomes the actual constraint.</li>
+          <li><strong>Why this doesn't need the Threshold Index's sharding treatment:</strong> that index gets hammered by every price tick across every alert on a ticker — write-heavy, latency-critical, sub-second. This one is read-mostly, and "fast" here means "a normal indexed query," not "sub-second under continuous write pressure" — a materially easier bar.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Not every NFR needs a novel mechanism — sometimes the honest answer is "a well-indexed table already clears this bar," and saying so explicitly is more useful than silence that reads as an oversight.</p>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>No missed crossings, including price gaps</td><td>Detection is a range query (thresholds between old and new price), not an equality check against the new price alone.</td></tr>
+        <tr><td>Sub-second detection on active tickers</td><td>A sorted, per-ticker threshold index answers the range query directly; hot tickers are sharded so one ticker's tick rate never bottlenecks on one structure.</td></tr>
+        <tr><td>Scales to thousands of tickers with wildly uneven activity</td><td>Tier by recent activity, not by fixed ticker identity — hot tickers stay warm and sharded, illiquid ones live cold until they start moving.</td></tr>
+        <tr><td>Listing/canceling a user's alerts stays fast</td><td>A separate index keyed by user_id, maintained on every write alongside the detection index — never a scan.</td></tr>
+        <tr><td>Offline delivery doesn't silently vanish, but doesn't stay relevant forever either</td><td>Trigger and delivery are tracked as separate facts; undelivered triggers are retried within a bounded staleness window, not indefinitely.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Range-query detection vs. per-tick equality check</td><td>Correct even when price gaps across a threshold, at the cost of needing a sorted, indexable structure per ticker instead of a simple list — more upfront design, but the equality check isn't actually a cheaper correct alternative, it's a faster wrong one.</td></tr>
+        <tr><td>Deactivate at detection time vs. deactivate only after confirmed delivery</td><td>Detection-time deactivation guarantees "fires exactly once" cleanly, at the cost of needing separate tracking and retry logic for delivery, so a failed push doesn't silently mean the user never finds out.</td></tr>
+        <tr><td>Activity-based tiering vs. one uniform strategy for every ticker</td><td>Avoids wasting hot-path resources on thousands of dormant tickers, at the cost of promotion/demotion logic and a cold-start delay the first time a long-quiet ticker starts moving again.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for — and what each one is actually doing</h3>
+        <div class="subsection-box">
+          <h3 class="subhead" style="margin-top:0;">Ingestion — <span class="tool-tag">Kafka</span>, partitioned by ticker symbol</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:8px;">A separate topic (e.g. <span style="font-family:var(--mono)">price-ticks</span>) from the Trigger stream below — same technology, deliberately different partitioning strategy, for a different reason.</p>
+          <ul class="item-list">
+            <li><strong>Its actual job:</strong> take the raw, continuous market data firehose and split it so no single Detector instance has to process every tick for every ticker — while guaranteeing each ticker's own ticks stay in order.</li>
+            <li><strong>Why partitioned by ticker specifically, not round-robin:</strong> Kafka guarantees order only within a partition. Keying by ticker symbol means BBCA's ticks always land on the same partition in the order they happened — which the Detector's range query depends on, since it needs a reliable "old_price" for every new tick.</li>
+            <li><strong>A known-hot ticker gets a dedicated partition, assigned deliberately, not left to hashing:</strong> even with partition-by-ticker, a hash could still place BBCA on a partition shared with several other active tickers — pinning it explicitly is what actually isolates its load.</li>
+          </ul>
+        </div>
+        <div class="subsection-box">
+          <h3 class="subhead" style="margin-top:0;">Threshold Index (hot tier) — <span class="tool-tag">Redis</span> Sorted Sets</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:8px;">One <span style="font-family:var(--mono)">ZSET</span> per hot ticker (e.g. <span style="font-family:var(--mono)">bbca_alerts</span>), split into shards (<span style="font-family:var(--mono)">bbca_alerts:0</span>…<span style="font-family:var(--mono)">bbca_alerts:7</span>) once one ticker's alert count justifies it.</p>
+          <ul class="item-list">
+            <li><strong>Its actual job:</strong> answer "which alert IDs have a score (threshold) between X and Y" in O(log n + k) — internally a skip list, which is precisely the structure that makes a range query cheap instead of a scan.</li>
+            <li><strong>Why sharded, not one key:</strong> Redis executes one command at a time per key. A single popular ticker's <span style="font-family:var(--mono)">ZSET</span> becomes a serialization point under real tick volume — splitting it lets a tick fan out to N shards in parallel and merge results, the identical key-splitting instinct from the Caching Playbook's hot-key section, applied to a sorted set instead of a cache entry.</li>
+            <li><strong>What it does NOT do:</strong> it isn't durable storage — a Redis restart without persistence configured loses it. The alert's true state (Active/Triggered) lives in a durable store; this structure exists purely to make detection fast, and can be rebuilt from that source of truth if lost.</li>
+          </ul>
+        </div>
+        <div class="subsection-box">
+          <h3 class="subhead" style="margin-top:0;">Threshold Index (cold tier) — <span class="tool-tag">PostgreSQL</span></h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:8px;">A B-tree index on (ticker, threshold) for illiquid tickers that don't justify memory-resident, sharded storage.</p>
+          <ul class="item-list">
+            <li><strong>Its actual job:</strong> the same range query as the hot tier (<span style="font-family:var(--mono)">WHERE ticker = ? AND threshold BETWEEN ? AND ?</span>), answered by a standard B-tree index — slower than a Redis skip list, but the ticker isn't ticking often enough for that gap to matter.</li>
+            <li><strong>Why not just use Redis for everything:</strong> keeping thousands of rarely-active tickers' alerts warm in memory, sharded, costs real infrastructure for close to zero benefit — this tier is the deliberately cheaper default, promoted to the hot tier only on actual trading activity.</li>
+          </ul>
+        </div>
+        <div class="subsection-box">
+          <h3 class="subhead" style="margin-top:0;">Trigger stream — <span class="tool-tag">Kafka</span></h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:8px;">A second, separate topic (e.g. <span style="font-family:var(--mono)">alert-triggers</span>) from the Ingestion stream above — that the Detector publishes to and the Delivery Worker consumes from.</p>
+          <ul class="item-list">
+            <li><strong>Its actual job:</strong> decouple detection from delivery — the Detector's only interaction with Kafka here is a fire-and-forget publish, so a slow or unreachable push provider can never add latency to the next price tick's detection.</li>
+            <li><strong>Partitioned for consumer parallelism, not ordering:</strong> unlike Ingestion above (which must preserve per-ticker order), this topic's partitioning just needs to let multiple Delivery Worker instances each consume a slice concurrently — a genuinely different requirement from Ingestion's, even though both get loosely called "sharding" in conversation.</li>
+            <li><strong>Why a queue and not a direct call:</strong> the Detector calling the Delivery Worker synchronously would reintroduce exactly the coupling this design exists to avoid — a queue lets each side fail, retry, and scale independently.</li>
+          </ul>
+        </div>
+        <div class="subsection-box">
+          <h3 class="subhead" style="margin-top:0;">Push delivery — <span class="tool-tag">APNs</span> / <span class="tool-tag">FCM</span></h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:8px;">Apple's and Google's own push notification services — this system calls them, it doesn't reimplement what they do.</p>
+          <ul class="item-list">
+            <li><strong>Their actual job:</strong> given a device's registered push token and a message payload, find and wake that specific device, even if it's asleep or the app isn't running — infrastructure this system deliberately doesn't build itself.</li>
+            <li><strong>What this system is responsible for instead:</strong> storing the (user_id → push_token) mapping in DeviceToken Store, calling the provider's API with the right token, and handling the provider's response (delivered, token invalid, device unreachable) to decide whether to retry.</li>
+            <li><strong>Why no connection registry is needed here:</strong> unlike a system that holds its own live WebSocket connections, a push token isn't a live connection to track — it's a stable identifier the provider resolves on their end. That's the whole reason this design is simpler than a system built around persistent server-held connections.</li>
+          </ul>
+        </div>
+        <div class="subsection-box">
+          <h3 class="subhead" style="margin-top:0;">User Alert Index — <span class="tool-tag">PostgreSQL</span></h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:8px;">A standard table with a B-tree index on user_id — this is the durable source of truth for every Alert, not just a read-optimized copy.</p>
+          <ul class="item-list">
+            <li><strong>Its actual job:</strong> serve GET /alerts as a fast, indexed lookup, and hold the authoritative status (Active/Triggered) for every alert — the Threshold Index is a performance optimization built on top of this, not a replacement for it.</li>
+            <li><strong>At 10-20M users:</strong> the index itself stays cheap (logarithmic lookup cost), so the real scaling levers are ordinary — read replicas for GET /alerts traffic, and partitioning by a hash of user_id only if write throughput on the primary ever becomes the actual constraint.</li>
+          </ul>
+        </div>
       </div>
     </section>
 
