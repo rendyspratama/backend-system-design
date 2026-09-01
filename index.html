@@ -5135,6 +5135,12 @@ Lag-compensated check: rewind to server_tick - 100ms, check THERE → HIT (match
           <text x="90" y="180" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Price Feed</text>
           <text x="90" y="197" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">every liquid ticker, at once</text>
 
+          <!-- User (alert creation, the write path the diagram was missing) -->
+          <rect x="20" y="260" width="140" height="80" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="90" y="290" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">User</text>
+          <text x="90" y="308" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">POST /alerts</text>
+          <text x="90" y="322" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">ticker, threshold, operator</text>
+
           <!-- Ingestion (Kafka, partitioned by ticker) -->
           <rect x="190" y="140" width="180" height="90" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
           <text x="280" y="168" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Ingestion</text>
@@ -5195,6 +5201,13 @@ Lag-compensated check: rewind to server_tick - 100ms, check THERE → HIT (match
           <line x1="500" y1="230" x2="500" y2="287" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#pa-arrow-ink)"/>
           <text x="550" y="262" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">mark Triggered, remove</text>
 
+          <!-- User writes an alert into both indexes at creation time -->
+          <path d="M 155,262 C 170,120 260,42 407,42" fill="none" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#pa-arrow-green)"/>
+          <text x="230" y="112" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">0a · write threshold</text>
+
+          <line x1="160" y1="315" x2="407" y2="325" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#pa-arrow-green)"/>
+          <text x="280" y="345" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">0b · write listing entry</text>
+
           <line x1="590" y1="185" x2="647" y2="185" stroke="#FFD166" stroke-width="1.5" marker-end="url(#pa-arrow-amber)"/>
           <text x="618" y="173" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#FFD166">3</text>
 
@@ -5211,12 +5224,12 @@ Lag-compensated check: rewind to server_tick - 100ms, check THERE → HIT (match
           <line x1="30" y1="405" x2="60" y2="405" stroke="#FFD166" stroke-width="2"/>
           <text x="68" y="409" font-family="Inter" font-size="11" fill="#9FC1E0">Ingestion + detection path</text>
           <line x1="260" y1="405" x2="290" y2="405" stroke="#7CE0A8" stroke-width="2"/>
-          <text x="298" y="409" font-family="Inter" font-size="11" fill="#9FC1E0">Delivery path</text>
-          <line x1="420" y1="405" x2="450" y2="405" stroke="#94B8D4" stroke-width="2" stroke-dasharray="4 3"/>
-          <text x="458" y="409" font-family="Inter" font-size="11" fill="#9FC1E0">Index maintenance</text>
+          <text x="298" y="409" font-family="Inter" font-size="11" fill="#9FC1E0">Alert creation + delivery path</text>
+          <line x1="530" y1="405" x2="560" y2="405" stroke="#94B8D4" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="568" y="409" font-family="Inter" font-size="11" fill="#9FC1E0">Index maintenance</text>
         </svg>
       </div>
-      <div class="diagram-caption">Ingestion partitions the raw market feed by ticker symbol before the Detector ever sees it — every tick for one ticker always lands on the same partition, in order, so a Detector instance can keep that ticker's Threshold Index warm without contending with every other ticker in the market. Two indexes, one write, two purposes: the Threshold Index answers "which alerts does this price move affect" (detection); the User Alert Index answers "what alerts does this user have" (listing).</div>
+      <div class="diagram-caption">An alert starts life at creation (0a/0b): the same write lands in both indexes at once, before any price ever moves. Ingestion then partitions the live market feed by ticker symbol before the Detector ever sees it — every tick for one ticker always lands on the same partition, in order, so a Detector instance can keep that ticker's Threshold Index warm without contending with every other ticker in the market. Two indexes, one write, two purposes: the Threshold Index answers "which alerts does this price move affect" (detection); the User Alert Index answers "what alerts does this user have" (listing).</div>
 
       <div class="flow-narrative">
         <div class="flow-col write">
@@ -5270,6 +5283,96 @@ alert(threshold=3100, op=">")   → range (3099, 3100]  exclusive at 3100 → do
 alert(threshold=3100, op=">=")  → range (3099, 3100]  inclusive at 3100 → FIRES
 alert(threshold=3100, op="=")   → range [3100, 3100]  single point      → FIRES</div>
         <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Same instinct as the meeting room's overlap detection and the invoice search's anti-join — the fix in both cases was recognizing the real question is "what falls within this range," not "check this one thing against every candidate," and reaching for a structure built to answer range questions instead of a loop.</p>
+
+        <div class="subsection-box" style="margin-top:16px;">
+          <h3 class="subhead" style="margin-top:0;">Is ZADD/ZRANGEBYSCORE actually the strongest choice?</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:10px;">It's the obvious default, not automatically the best one under real load. Two different bottlenecks — correctness and latency — call for two different fixes, worth separating rather than reaching for one upgrade that only solves one of them.</p>
+          <p class="tight" style="font-size:12.5px; margin-bottom:10px; color:var(--ink);">These four are not stages in a pipeline — they're four separate answers to one question: <em>where does a hot ticker's Threshold Index actually live, and how do we touch it safely?</em> Pick exactly one per ticker.</p>
+          <div class="strategy-grid">
+            <div class="strategy-card">
+              <div class="strategy-title">1. ZRANGEBYSCORE + separate ZREM</div>
+              <p>What's currently on this page. Query and removal are two round trips — fine at low tick rates, but the gap between them is a real correctness risk once tick frequency is high enough for another operation to land in between.</p>
+            </div>
+            <div class="strategy-card">
+              <div class="strategy-title">2. Lua script (EVAL) — same structure, used atomically</div>
+              <p>Bundles the range query, every removal, and the returned matches into one script Redis runs as a single indivisible step. Closes option 1's gap completely, on the exact same sorted set — no new infrastructure.</p>
+            </div>
+            <div class="strategy-card">
+              <div class="strategy-title">3. In-process tree, held in the Detector itself</div>
+              <p>Removes the Redis network round trip entirely — a real, fixed tax (commonly 0.1–1ms) paid on every tick. Raises a real question on crash: how does it come back correct? Detailed below.</p>
+            </div>
+            <div class="strategy-card">
+              <div class="strategy-title">4. Price-band sharding within one ticker</div>
+              <p>Orthogonal to the others — splits one ticker's own alerts by price range, not by ticker. Sounds simple; one wrinkle makes it less so. Detailed below.</p>
+            </div>
+          </div>
+          <div class="example-panel" style="margin:14px 0 12px;"><span class="label">Illustration — closing the atomicity gap with a Lua script</span>Without a script (two round trips):
+  1. ZRANGEBYSCORE bbca_alerts 2990 3120   → returns [alert_B]
+  2. ZREM bbca_alerts alert_B              → a separate call
+  ...another operation can land between steps 1 and 2
+
+With EVAL (one atomic round trip):
+  EVAL "local matches = redis.call('ZRANGEBYSCORE', KEYS[1], ARGV[1], ARGV[2])
+        for i,id in ipairs(matches) do redis.call('ZREM', KEYS[1], id) end
+        return matches" 1 bbca_alerts 2990 3120
+  → query and every removal happen as one indivisible step; nothing can interleave</div>
+
+          <div class="example-panel" style="margin:12px 0;"><span class="label">Illustration — option 3: what "in-process tree" means, and what happens when it crashes</span>Structure: an in-memory balanced tree (e.g. a sorted map or skip list) per hot ticker,
+           living inside the Detector instance's own process — no network call to query it.
+
+On a tick: tree.rangeQuery(old_price, new_price) → matches, purely in local memory.
+
+The real question this raises: the tree has no persistence. If this instance crashes,
+it's gone. What comes back on restart isn't automatic — it's a sequence:
+  1. Load every Active alert for this ticker from the durable User Alert Index — the
+     actual source of truth, since the tree itself never was.
+  2. Rebuild the tree from that list.
+  3. Only then resume consuming ticks from this ticker's Kafka partition.
+
+Consuming ticks before step 2 finishes means querying an incomplete tree — a real
+crossing could be missed. The safe choice is a brief pause in detection for that one
+ticker during rebuild, not silently detecting against partial data.</div>
+
+          <div class="example-panel" style="margin:12px 0;"><span class="label">Illustration — option 4: why one tick can span more than one price-band shard</span>Shards for BBCA, split by price band:
+  bbca_alerts:0   → thresholds 0–3,000
+  bbca_alerts:1   → thresholds 3,000–6,000
+  bbca_alerts:2   → thresholds 6,000–9,000 ...
+
+Tick: price moves 2,990 → 3,120 — crosses the boundary between band 0 and band 1.
+
+Unlike ticker-sharding (a BBCA tick only ever touches BBCA's own shards), this single
+tick's range spans TWO price-band shards — the query has to check both and merge
+results, not query one shard and be done. A tick landing near a boundary is routine,
+not an edge case, so this multi-shard query is the common path, not a rare one.
+
+The bands aren't static either: if alerts cluster heavily around one round number,
+that band's own shard can go hot again — the same problem, one level down, needing
+its own re-split.</div>
+
+          <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:16px 0 8px;">The actual fork: option 2 vs. option 3</div>
+          <div class="contrast-grid">
+            <div class="contrast-card hot">
+              <div class="contrast-title"><span class="contrast-dot"></span>Option 2 — Lua script on Redis</div>
+              <p>The alert data lives in Redis, reached over the network — but the query and every removal run as one atomic script.</p>
+              <ul>
+                <li>Survives a Detector crash outright — the data lives in Redis, not in the process that died.</li>
+                <li>Every tick pays a small network round trip (~0.1–1ms) to reach Redis.</li>
+                <li>The safe default for essentially every ticker, hot or not.</li>
+              </ul>
+            </div>
+            <div class="contrast-card cold">
+              <div class="contrast-title"><span class="contrast-dot"></span>Option 3 — in-process tree</div>
+              <p>The alert data lives inside the Detector's own memory — no network call, but nothing survives if that process dies.</p>
+              <ul>
+                <li>A tick becomes a local function call — no network round trip at all.</li>
+                <li>A crash means the tree is gone — requires the load → rebuild → resume sequence above before it's safe to consume ticks again.</li>
+                <li>Only worth it once a ticker is provably hot enough that the network round trip itself matters.</li>
+              </ul>
+            </div>
+          </div>
+
+          <p style="color:var(--ink); margin:14px 0 0;"><strong>Recommendation:</strong> option 2 as the default for every ticker, hot or cold — it fixes a genuine correctness gap in option 1 for free, using infrastructure already in place, so there's no real reason to skip it. Option 3 earns its added complexity only for tickers provably hot enough that the network round trip itself eats into the sub-second budget — and only alongside the crash-safe rebuild sequence above, since a stateful in-memory structure with no persistence isn't a free upgrade, it's a new failure mode to design for. Option 4 is worth knowing about, not worth building until a real ticker's alert count actually forces the question — the multi-shard query it introduces is real added complexity for what starts out solving a problem most tickers never have.</p>
+        </div>
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
@@ -5304,6 +5407,30 @@ Is one consumer actually enough for BBCA's own volume? Check the numbers, don't 
           <li><strong>Don't confuse this with the Threshold Index's sharding — that bottleneck is real, this one usually isn't:</strong> a tick arriving is a tiny message; the range query it triggers against hundreds of thousands of alerts is genuinely expensive CPU/memory work. That's why the Threshold Index gets sharded across multiple Redis keys — the query workload, not the raw ingestion rate, is where a hot ticker's cost actually lives.</li>
         </ul>
         <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This is what actually makes the main diagram's single "Ingestion → Detector" arrow honest — not every tick funneling through one process, and not one dedicated instance per hot ticker either. It's a shared pool of Detector instances, each consuming one or more partitions, with known-hot tickers isolated onto their own partition specifically so their ticks never queue up behind a noisy neighbor's.</p>
+
+        <div class="subsection-box" style="margin-top:16px;">
+          <h3 class="subhead" style="margin-top:0;">How "only one instance reads BBCA" is actually guaranteed</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:10px;">Not something the Detector's own code has to enforce — it's a built-in Kafka guarantee, in two parts: <strong>routing</strong> (which partition a tick lands on) and <strong>exclusivity</strong> (who's allowed to read that partition).</p>
+          <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — BBCA, BBRI, BMRI, BBNI, routed and assigned</span>Part 1 — routing (which partition does each ticker's ticks land on):
+  key="BBCA" → pinned →           partition 2    (dedicated — BBCA is known-hot)
+  key="BBRI" → hash("BBRI") % 32 → partition 9
+  key="BMRI" → hash("BMRI") % 32 → partition 17
+  key="BBNI" → hash("BBNI") % 32 → partition 9   (shares a partition with BBRI — fine,
+                                                    neither is hot enough to need isolation)
+
+Part 2 — exclusivity (consumer group "detectors" — Kafka's own broker-side guarantee):
+  partition 2  → Detector instance A, exclusively   (BBCA's ticks — nothing else)
+  partition 9  → Detector instance B, exclusively   (BBRI + BBNI's ticks, in arrival order)
+  partition 17 → Detector instance C, exclusively   (BMRI's ticks)
+
+Kafka's group coordinator enforces this — two instances can never both be assigned
+partition 2 at the same time. Instance A never even sees a BBRI or BMRI tick; they
+were never routed to its partition in the first place.</div>
+          <ul class="item-list">
+            <li><strong>Instance A doesn't filter out other tickers — it never receives them:</strong> exclusivity isn't a check inside the Detector's code ("is this BBCA? ignore it if not") — it's that BBRI, BMRI, and BBNI's ticks are routed to different partitions entirely, before any Detector ever sees them.</li>
+            <li><strong>If instance A crashes, Kafka rebalances automatically:</strong> a missed heartbeat triggers reassignment of partition 2 to a different living instance — which starts with an empty local state and has to run the load → rebuild → resume sequence from the range-query deep dive above before it's safe to consume partition 2 again.</li>
+          </ul>
+        </div>
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
@@ -5399,6 +5526,7 @@ Is one consumer actually enough for BBCA's own volume? Check the numbers, don't 
 <table class="ref-table">
         <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
         <tr><td>Range-query detection vs. per-tick equality check</td><td>Correct even when price gaps across a threshold, at the cost of needing a sorted, indexable structure per ticker instead of a simple list — more upfront design, but the equality check isn't actually a cheaper correct alternative, it's a faster wrong one.</td></tr>
+        <tr><td>Lua script (atomic Redis) vs. in-process tree (no network call)</td><td>The Lua script fixes a real atomicity gap for free, on infrastructure already in place — the right default everywhere. An in-process tree removes the network round trip entirely, which only matters once a ticker's tick rate makes that round trip a meaningful share of the latency budget; applying it by default means every Detector instance carries bespoke in-memory state most tickers never justify.</td></tr>
         <tr><td>Deactivate at detection time vs. deactivate only after confirmed delivery</td><td>Detection-time deactivation guarantees "fires exactly once" cleanly, at the cost of needing separate tracking and retry logic for delivery, so a failed push doesn't silently mean the user never finds out.</td></tr>
         <tr><td>Activity-based tiering vs. one uniform strategy for every ticker</td><td>Avoids wasting hot-path resources on thousands of dormant tickers, at the cost of promotion/demotion logic and a cold-start delay the first time a long-quiet ticker starts moving again.</td></tr>
       </table>
@@ -5421,6 +5549,7 @@ Is one consumer actually enough for BBCA's own volume? Check the numbers, don't 
           <p class="tight" style="font-size:12.5px; margin-bottom:8px;">One <span style="font-family:var(--mono)">ZSET</span> per hot ticker (e.g. <span style="font-family:var(--mono)">bbca_alerts</span>), split into shards (<span style="font-family:var(--mono)">bbca_alerts:0</span>…<span style="font-family:var(--mono)">bbca_alerts:7</span>) once one ticker's alert count justifies it.</p>
           <ul class="item-list">
             <li><strong>Its actual job:</strong> answer "which alert IDs have a score (threshold) between X and Y" in O(log n + k) — internally a skip list, which is precisely the structure that makes a range query cheap instead of a scan.</li>
+            <li><strong>Accessed via a Lua script (EVAL), not separate ZRANGEBYSCORE/ZREM calls:</strong> the query and every resulting removal run as one atomic step on the server, closing the gap where another operation could otherwise land between "find the matches" and "remove them."</li>
             <li><strong>Why sharded, not one key:</strong> Redis executes one command at a time per key. A single popular ticker's <span style="font-family:var(--mono)">ZSET</span> becomes a serialization point under real tick volume — splitting it lets a tick fan out to N shards in parallel and merge results, the identical key-splitting instinct from the Caching Playbook's hot-key section, applied to a sorted set instead of a cache entry.</li>
             <li><strong>What it does NOT do:</strong> it isn't durable storage — a Redis restart without persistence configured loses it. The alert's true state (Active/Triggered) lives in a durable store; this structure exists purely to make detection fast, and can be rebuilt from that source of truth if lost.</li>
           </ul>
