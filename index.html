@@ -3264,7 +3264,7 @@ WHERE id = ? AND status = 'available'
           <div class="mini-title">Core Entities</div>
           <ul class="entity-list">
             <li><strong>Room</strong> <span class="fields">(id, capacity, location)</span> — the resource being booked.</li>
-            <li><strong>Booking</strong> <span class="fields">(id, room_id, start_time, end_time, organizer_id, recurrence_rule?)</span> — a single reservation, or the anchor of a series.</li>
+            <li><strong>Booking</strong> <span class="fields">(id, room_id, start_time, end_time, organizer_id, status, recurrence_rule?)</span> — a single reservation, or the anchor of a series. Status is Confirmed or Cancelled — record-keeping, not the conflict guard; a cancelled row stays for history instead of being deleted, and the overlap check simply excludes it.</li>
             <li><strong>RecurrenceRule</strong> <span class="fields">(frequency, interval, end_condition)</span> — e.g. "every Monday until Dec 31."</li>
           </ul>
         </div></div>
@@ -3366,21 +3366,35 @@ WHERE id = ? AND status = 'available'
         <div class="explains-row"><span class="explains-tag"><b>FR</b>Book a room</span><span class="explains-tag"><b>FR</b>Check availability</span><span class="explains-tag"><b>FR</b>Search available rooms</span><span class="explains-tag nfr"><b>NFR</b>Never double-book</span><span class="explains-tag nfr"><b>NFR</b>Fast overlap checks</span><span class="explains-tag nfr"><b>NFR</b>Room search stays one query</span></div>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
-          <li>Write down the overlap condition precisely: two ranges conflict when each one starts before the other ends. A simple comparison.</li>
+          <li>Write down the overlap condition precisely: two ranges conflict when each one starts before the other ends. A simple comparison — not the hard part of this problem.</li>
           <li>Test the naive way to use that comparison: check a new booking against every existing booking in the room. Ask what happens as a room's calendar fills up — the check gets slower with every booking added.</li>
-          <li>Narrow the search before comparing: an index on room and start time means only bookings anywhere near the requested window even get looked at.</li>
-          <li>Generalize the same question to many rooms at once: "which of N rooms are free" doesn't have to mean running the single-room check N separate times — express it as one query that finds rooms with no conflicting row, instead of checking room by room.</li>
+          <li>Narrow the search before comparing: an index on room and start time means only bookings anywhere near the requested window even get looked at. This is enough for almost every room.</li>
+          <li>Ask what "almost every room" leaves out: a genuinely high-traffic room's calendar is still large even indexed, and every check still costs a database round trip. For that specific case, skip the database at read time entirely.</li>
+          <li>Notice a fast single-room check doesn't answer a different question: "which of N rooms are free" isn't "run the single-room check N times" — it's the same predicate, expressed as one query instead of N.</li>
+          <li>Realize none of the above touches correctness under concurrent writes: a fast, correct read can still race against another booking's write — a separate problem, needing its own fix.</li>
         </ol>
-        <p>Two ranges [s1, e1) and [s2, e2) overlap exactly when s1 &lt; e2 AND s2 &lt; e1 — a simple comparison, but checking a new booking against every existing booking in a room is still wasteful once a room's calendar fills up.</p>
-        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration</span>Existing:   [10:00, 11:00)
+
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--marker); margin:16px 0 8px;">The full journey — from search to a confirmed booking</div>
+        <ol class="process" style="margin-bottom:8px;">
+          <li><strong>Search:</strong> the user asks for any free room matching a time and a filter (capacity, location). Read-only — no conflict is possible yet, since nothing has been claimed. Scales as one anti-join query across every room, not one check per room. Detailed below.</li>
+          <li><strong>Pick:</strong> the user selects one specific room and slot from the results and clicks "Book." This is the exact moment a race becomes possible — another user could have searched a second earlier and be about to pick the same slot. A UI action, not a mechanism — no dedicated section below.</li>
+          <li><strong>Check:</strong> the Booking Service asks "does anything on this one room overlap this range" — fast, via an index or a database constraint's own index. This step only makes the question fast; it does not, by itself, prevent anything on its own. Detailed below, together with write — they're one decision, not two.</li>
+          <li><strong>Write:</strong> the actual prevention happens here, and only here — one of two complete paths depending on what your database supports. Detailed below.</li>
+          <li><strong>Resolve:</strong> exactly one booker's write succeeds. The other needs a real answer, not a stack trace. Detailed below — and it reuses step 1's exact query, no new mechanism required.</li>
+        </ol>
+        <p style="color:var(--ink); margin:0 0 16px;">Check makes "is this free" fast; write is the only step that actually stops two people from getting the same slot — worth keeping those two questions separate while designing this, even though the section below covers them together, since which check you use determines which write mechanism you need.</p>
+
+        <p>Two ranges [s1, e1) and [s2, e2) overlap exactly when s1 &lt; e2 AND s2 &lt; e1 — a simple comparison, the building block every step below is built on.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the overlap condition itself</span>Existing:    [10:00, 11:00)
 New request: [10:30, 11:30)
 10:00 < 11:30  AND  10:30 < 11:00   →  true → conflict</div>
-        <ul class="item-list">
-          <li>A database index on (room_id, start_time) narrows the query to bookings starting near the requested window before applying the overlap check.</li>
-          <li>For very high-traffic rooms, an in-memory interval tree per room answers "does anything overlap this range" without touching the database at all.</li>
-          <li><strong>Searching across rooms is the same predicate, applied as an anti-join:</strong> "is this one room free" is a single query; "which of N rooms are free" doesn't mean running that query N times. One query — rooms with no matching row in an overlap subquery, filtered by capacity or location — answers it in a single pass, against the exact same (room_id, start_time) index and the same materialized near-term bookings the recurring-meetings strategy below already produces.</li>
-        </ul>
-        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — one query, not one check per room</span>SELECT room.id FROM rooms room
+        <p style="color:var(--ink); margin:0 0 16px;">Worth heading off directly: why not a <span style="font-family:var(--mono)">status</span> column on Room, the way Ticketmaster flags a seat Available or Held? A seat has exactly one state at a time — the column <em>is</em> the answer. A room is free at 9am, booked at 10, free again at 2 — one column on the room can't hold that. Booking does get a status (Confirmed/Cancelled, added to Core Entities above), but it's record-keeping, not the conflict guard: the check is never "does a row exist with this status," it's "does any row's range overlap this one" — the same range comparison above, status column or not. A cancelled booking just gets excluded from that check with one added clause, not a different mechanism.</p>
+
+        <div class="subsection-box" style="margin-top:16px;">
+          <h3 class="subhead" style="margin-top:0;">Step 1 — search: the same predicate, as an anti-join</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:10px;">"Is this one room free" is a single query; "which of N rooms are free" doesn't mean running that query N times.</p>
+          <p style="margin:0 0 10px;">One query — rooms with no matching row in an overlap subquery, filtered by capacity or location — answers it in a single pass, against the exact same (room_id, start_time) index and the same materialized near-term bookings the recurring-meetings strategy below already produces.</p>
+          <div class="example-panel" style="margin:0;"><span class="label">Illustration — one query, not one check per room</span>SELECT room.id FROM rooms room
 WHERE room.capacity >= 6 AND room.location = 'floor-3'
 AND NOT EXISTS (
   SELECT 1 FROM bookings b
@@ -3388,7 +3402,211 @@ AND NOT EXISTS (
     AND b.start_time &lt; :to AND b.end_time &gt; :from
 )
 → every matching free room, in one round trip — not N overlap checks for N rooms</div>
-        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">The write itself still needs the same atomic conditional-write pattern as Ticketmaster's seat hold — checking for a conflict and writing are two steps, and two concurrent bookers can both pass the check before either writes unless the write itself is guarded.</p>
+        </div>
+
+        <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin:14px 0 0;">Step 2 — the user picking one room and clicking "Book" — sits between here and the next section. It's a UI action, not a mechanism, so nothing to design; the walkthrough below picks back up at check and write.</p>
+
+        <div class="subsection-box" style="margin-top:16px;">
+          <h3 class="subhead" style="margin-top:0;">Steps 3 &amp; 4 — check and write: one fork, not six options</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:12px;">These were named as separate steps above, but "how do we check fast" and "how do we prevent a conflict" aren't independent choices — which one you use for the check determines what you need for the write. It's one fork, then one complete path to follow, not a checklist of every technique.</p>
+          <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--marker); margin:0 0 8px;">The fork</div>
+          <p style="margin:0 0 12px; font-size:14px;">Does your database support a native exclusion constraint for overlapping ranges (Postgres's <span style="font-family:var(--mono)">EXCLUDE</span>, or an equivalent)?</p>
+          <div class="contrast-grid">
+            <div class="contrast-card hot">
+              <div class="contrast-title"><span class="contrast-dot"></span>Yes → Path A</div>
+              <p>One constraint on the table. Done — no separate index for this query, no SERIALIZABLE, no lock. The database is the whole guarantee.</p>
+            </div>
+            <div class="contrast-card cold">
+              <div class="contrast-title"><span class="contrast-dot"></span>No → Path B</div>
+              <p>An index for the fast check, a conditional insert for the write, and one guard (SERIALIZABLE or a lock) wrapped around it — three pieces, working together.</p>
+            </div>
+          </div>
+          <p style="margin:12px 0 0; color:var(--ink);">Either path, optionally: layer an in-process tree on top for one genuinely hot room — that part is the same regardless of which path you're on, detailed at the end.</p>
+        </div>
+
+        <div class="subsection-box" style="margin-top:16px;">
+          <h3 class="subhead" style="margin-top:0;">Path A — the EXCLUDE constraint (recommended, on Postgres)</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:10px;">A database-enforced rule: no two bookings for the same room may have overlapping ranges. Its own index handles the fast check too — this is the entire path, nothing else in this deep dive needs to be added on top of it.</p>
+          <div class="example-panel" style="margin:0;"><span class="label">Illustration — the constraint, and the ordinary insert it protects</span>CREATE TABLE bookings (
+  id SERIAL PRIMARY KEY,
+  room_id INT NOT NULL,
+  during TSRANGE NOT NULL,
+  EXCLUDE USING GIST (room_id WITH =, during WITH &&)
+);
+
+The write is a completely ordinary insert — no WHERE, no NOT EXISTS:
+  INSERT INTO bookings (room_id, during)
+  VALUES (:room_id, tsrange(:start, :end));
+
+If a row already exists for this room whose "during" range overlaps —
+Postgres REJECTS the insert outright, atomically, at the storage engine
+level. No SERIALIZABLE isolation, no lock required — the guarantee is
+built into the schema, enforced the same way a UNIQUE constraint is.
+
+Two bookers, same slot, same instant: one INSERT succeeds, the other fails
+with a constraint violation — the database decided who won, not the app.</div>
+          <p style="margin:10px 0 0; color:var(--ink);">Why this is the recommendation, not just one option among several: it protects you even if a future developer writes a careless query, since the guarantee lives in the table, not in any one statement someone has to remember to write correctly every time.</p>
+        </div>
+
+        <div class="subsection-box" style="margin-top:16px;">
+          <h3 class="subhead" style="margin-top:0;">Path B — index, conditional insert, and a guard (when EXCLUDE isn't available)</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:10px;">Three pieces that only work together — an index makes the check fast, a conditional insert bundles the check into the write, and one guard closes the race the conditional insert alone can't.</p>
+
+          <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:14px 0 8px;">1 — the index</div>
+          <div class="example-panel" style="margin:0 0 12px;"><span class="label">Illustration — the B-tree index, and the query it speeds up</span>CREATE INDEX idx_bookings_room_start ON bookings (room_id, start_time);
+
+SELECT 1 FROM bookings
+WHERE room_id = :room_id
+  AND start_time &lt; :end
+  AND end_time &gt; :start;
+→ the index narrows this to rows for the right room, near the right time —
+  fast, but still just a SELECT. Two concurrent transactions can both run
+  it, both see zero rows, and both then insert. The index makes the check
+  fast; it does nothing to prevent the race below.</div>
+
+          <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:14px 0 8px;">2 — the conditional insert</div>
+          <p style="margin:0 0 10px;">Ticketmaster's fix doesn't transfer as-is: a seat is one row with one status flag — a single conditional <span style="font-family:var(--mono)">UPDATE</span> is enough. A room's calendar has no single row to flip, so the check-across-many-rows and the insert have to happen as one atomic step — the pattern commonly called a <strong>conditional insert</strong>, the insert-side counterpart to Ticketmaster's conditional update.</p>
+          <div class="example-panel" style="margin:0 0 10px;"><span class="label">Illustration — INSERT … WHERE NOT EXISTS</span>INSERT INTO bookings (room_id, start_time, end_time, organizer_id)
+SELECT :room_id, :start, :end, :organizer_id
+WHERE NOT EXISTS (
+  SELECT 1 FROM bookings
+  WHERE room_id = :room_id
+    AND start_time &lt; :end AND end_time &gt; :start
+);
+→ one statement: the check and the insert happen together, not two round trips</div>
+          <p style="margin:0 0 12px;">Still not automatically safe on its own — a building block, not the complete guarantee. At the commonly-default READ COMMITTED isolation level, two concurrent transactions can both evaluate NOT EXISTS against the same pre-insert snapshot, both see "nothing conflicts," and both insert. Piece 3 is what actually closes this.</p>
+
+          <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:14px 0 8px;">3 — the guard: pick exactly one</div>
+          <div class="example-panel" style="margin:0 0 10px;"><span class="label">Illustration — the race this guard closes</span>Booker A: checks [10:30, 11:30) → free
+Booker B: checks [10:30, 11:30) → free        (both pass the check)
+Booker A: writes the booking
+Booker B: writes the booking                  → double-booked, same room, same slot</div>
+          <div class="contrast-grid">
+            <div class="contrast-card hot">
+              <div class="contrast-title"><span class="contrast-dot"></span>SERIALIZABLE isolation — optimistic</div>
+              <p>Run the conditional insert inside a transaction at SERIALIZABLE isolation. Neither booker locks anything upfront — both proceed as if uncontended, and the database catches the real conflict at commit time, aborting one.</p>
+              <ul>
+                <li>No explicit locking code — the database enforces it.</li>
+                <li>The loser gets a serialization error and has to retry, which the app must handle.</li>
+                <li>Costs more under real contention.</li>
+              </ul>
+            </div>
+            <div class="contrast-card cold">
+              <div class="contrast-title"><span class="contrast-dot"></span>An explicit lock — pessimistic</div>
+              <p>Acquire a lock scoped to the room <em>before</em> the check-and-insert, held until the transaction ends — assume contention and prevent it upfront. Two ways to take it, below.</p>
+              <ul>
+                <li>Only bookers on the <em>same</em> room ever wait on each other.</li>
+                <li>Simpler to reason about — the second booker just waits its turn.</li>
+                <li>Must be released on every code path, including a crash, or it becomes its own outage.</li>
+              </ul>
+            </div>
+          </div>
+
+          <p style="margin:12px 0; color:var(--ink);">Why not a Redis lock instead of either of these? Because the lock and the write it protects would live in two separate systems — if the app crashes between acquiring a Redis lock and committing to Postgres, the lock needs a TTL to self-clean, and that TTL becomes its own tuning problem. Both mechanisms above live <em>inside</em> the same transaction as the write — Postgres releases the lock automatically the instant that transaction ends, crash or not, with nothing to tune. Redis earns its place coordinating something that spans more than one database transaction, not for guarding one insert Postgres can already guard for free.</p>
+
+          <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--marker); margin:14px 0 8px;">Two ways to take that lock</div>
+          <div class="strategy-grid">
+            <div class="strategy-card">
+              <div class="strategy-title">Advisory lock — an arbitrary token</div>
+              <p>pg_advisory_xact_lock(room_id) — Postgres-specific. Locks a number that means "room 101" only by convention; works against any schema, needs no existing row to lock.</p>
+            </div>
+            <div class="strategy-card">
+              <div class="strategy-title">SELECT ... FOR UPDATE — the actual row</div>
+              <p>Standard SQL, portable beyond Postgres. Locks a real row in the rooms table — the thing the contention is actually about, not a synthetic hash standing in for it.</p>
+            </div>
+          </div>
+
+          <div class="example-panel" style="margin:12px 0;"><span class="label">Illustration — the advisory lock, traced across two bookers</span>BEGIN;
+SELECT pg_advisory_xact_lock(:room_id);   -- acquire FIRST, before checking
+INSERT INTO bookings (room_id, start_time, end_time, organizer_id)
+SELECT :room_id, :start, :end, :organizer_id
+WHERE NOT EXISTS (
+  SELECT 1 FROM bookings
+  WHERE room_id = :room_id AND start_time &lt; :end AND end_time &gt; :start
+);
+COMMIT;  -- lock releases automatically, tied to the transaction
+
+Booker A: BEGIN → lock(101) acquires instantly → check+insert → COMMIT (released)
+Booker B: BEGIN → lock(101) BLOCKS, waiting — B's query hasn't even run yet
+          ...the moment A commits...
+          B's lock acquires → check+insert now correctly sees A's booking
+          → 0 rows affected → app tells B "someone got it first"
+
+B never raced A — B's check didn't start until A's transaction had already
+finished. That's the actual difference from SERIALIZABLE: the lock prevents
+the interleaving, rather than catching it afterward.
+
+Caveat: pg_advisory_xact_lock takes a bigint, so a UUID/string room_id is
+hashed down first — a hash collision means two different rooms could
+occasionally, harmlessly wait on each other.</div>
+
+          <div class="example-panel" style="margin:12px 0;"><span class="label">Illustration — SELECT ... FOR UPDATE, catching a deleted or mistyped room_id for free</span>BEGIN;
+SELECT 1 FROM rooms WHERE id = :room_id FOR UPDATE;   -- lock the real row
+-- if that returned 0 rows, room_id doesn't exist — caught right here,
+-- in the same round trip that acquired the lock. Bail out before ever
+-- attempting the insert.
+
+INSERT INTO bookings (room_id, start_time, end_time, organizer_id)
+SELECT :room_id, :start, :end, :organizer_id
+WHERE NOT EXISTS (
+  SELECT 1 FROM bookings
+  WHERE room_id = :room_id AND start_time &lt; :end AND end_time &gt; :start
+);
+COMMIT;
+
+pg_advisory_xact_lock has no such signal — it "succeeds" and grants a lock
+even for a room_id that was deleted or never existed, since it's locking
+an arbitrary number, not checking against any row. FOR UPDATE can't grant
+a lock on a row that isn't there, so the existence check comes free.</div>
+
+          <p style="color:var(--ink); margin:12px 0 0;"><strong>Between the two locks, concretely:</strong> FOR UPDATE if you need this to run on a non-Postgres database too, or you want a deleted/mistyped room_id caught in the same round trip that acquires the lock, instead of a silent no-op. The advisory lock if what you're protecting isn't tied to one row at all — locking a whole floor for a bulk operation, or a business rule keyed on something that spans tables — where there's no single row to lock against in the first place. A plain UNIQUE constraint on (room_id, start_time) is worth adding either way, as a cheap backstop against the exact-duplicate case — the same room, the same exact start time, submitted twice. It won't catch a genuine partial overlap (10:00–11:00 against 10:30–11:30) the way EXCLUDE does — a narrower guarantee, but one available on databases that don't support range exclusion at all.</p>
+        </div>
+
+        <div class="subsection-box" style="margin-top:16px;">
+          <h3 class="subhead" style="margin-top:0;">Escalation — an in-process tree, on top of either path</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:10px;">Not a third path — an optional speed layer for one genuinely hot room (a popular shared space, an all-hands room), sitting in front of whichever path above is doing the actual guaranteeing.</p>
+          <div class="example-panel" style="margin:0;"><span class="label">Illustration — the tree speeds up the check; the path above still does the guaranteeing</span>New booking request, handled by the Booking Service instance that owns this room:
+
+  1. Acquire an in-process lock scoped to this one room_id
+     (a mutex inside THIS process — not a database lock, not Redis)
+  2. tree.overlaps(start, end) → true/false        ← the fast, local check
+  3. If false: INSERT into the database (still protected by Path A or
+     Path B above, as the real backstop) AND insert into the tree
+  4. Release the lock
+
+The tree makes step 2 fast by skipping a database round trip — it doesn't,
+by itself, stop two requests on the SAME instance from both reaching step 2
+before either finishes step 3. The in-process lock prevents that; the tree
+just makes the thing being guarded cheap to check.
+
+One requirement this creates, easy to miss: if multiple Booking Service
+instances sit behind a load balancer, this room's bookings must always
+route to the SAME instance — otherwise each instance holds a different,
+incomplete view of its calendar, and the in-process lock only protects
+against other requests on the same instance. The same partition-by-key
+discipline as the price alert system pinning BBCA to one Detector instance,
+applied here to a room.</div>
+        </div>
+
+        <div class="subsection-box" style="margin-top:16px;">
+          <h3 class="subhead" style="margin-top:0;">Step 5 — resolve: what the loser actually sees</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:10px;">Every mechanism above produces exactly one outcome for the losing request: a failure. What happens next is a real product decision, not an afterthought — a bare 500 or a generic "booking failed" is a worse experience than the race itself.</p>
+          <div class="example-panel" style="margin:0 0 10px;"><span class="label">Illustration — a specific, actionable failure, not a stack trace</span>Booker B's write fails (constraint violation, or a serialization error):
+
+Bad:   500 Internal Server Error
+Good:  409 Conflict
+       { "reason": "room_already_booked", "conflicting_slot": ["10:30","11:30"] }
+
+The response tells B exactly what happened and why — not just that
+"something" went wrong.</div>
+          <p style="margin:0 0 10px;">The genuinely good version doesn't stop at explaining the failure — it immediately re-runs step 1's exact anti-join query, scoped to the same time window and filters B already searched with, and returns what's still available. No new mechanism required: the same query that found B a room the first time finds B an alternative the second.</p>
+          <div class="example-panel" style="margin:0;"><span class="label">Illustration — closing the loop back to step 1</span>409 response, extended:
+  { "reason": "room_already_booked",
+    "conflicting_slot": ["10:30","11:30"],
+    "alternatives": [ /* step 1's search, re-run automatically */ ] }
+
+B never has to manually start over — the system already knows what else is free.</div>
+        </div>
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
@@ -3434,7 +3652,7 @@ AND NOT EXISTS (
 <table class="ref-table" style="margin-top:16px;">
         <tr class="rt-head"><th>Non-functional requirement</th><th>How this design satisfies it</th></tr>
         <tr><td>Never double-book a room</td><td>Atomic conditional write gated by the overlap check — same pattern as Ticketmaster's seat hold.</td></tr>
-        <tr><td>Fast overlap checks</td><td>Index on (room_id, start_time), or an in-memory interval tree for high-traffic rooms.</td></tr>
+        <tr><td>Fast overlap checks</td><td>Index on (room_id, start_time), or an in-process interval tree (inside the Booking Service, not Redis) for high-traffic rooms.</td></tr>
         <tr><td>Searching many rooms stays one query</td><td>A single NOT EXISTS anti-join across rooms, filtered by capacity/location — not N separate per-room checks.</td></tr>
         <tr><td>Recurring meetings don't require years of pre-generated rows</td><td>Hybrid: materialize a near-term window, expand on demand beyond it.</td></tr>
       </table>
@@ -3448,7 +3666,8 @@ AND NOT EXISTS (
         <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
         <tr><td>Hybrid materialize-near-term + expand-on-read</td><td>Fast queries for the common case (near-term bookings) without unbounded storage, at the cost of maintaining two code paths and the boundary logic between them.</td></tr>
         <tr><td>Anti-join search across all rooms vs. checking rooms one at a time</td><td>Scales far better as room count grows and stays a single round trip, but needs a solid (room_id, start_time) index to keep the query planner honest — for a large multi-building portfolio, worth partitioning by location so a search doesn't scan rooms nobody's asking about.</td></tr>
-        <tr><td>In-memory interval tree per room vs. database index alone</td><td>Faster for very hot rooms, but it's an extra moving part that must be kept in sync with the database — only worth it once a room's traffic justifies it.</td></tr>
+        <tr><td>In-process interval tree per room vs. database index alone</td><td>Faster for very hot rooms — no network call at all, not even to a cache — but requires that room's bookings always route to the same Booking Service instance, or different instances hold different, incomplete views of its calendar. Only worth it once a room's traffic justifies both the complexity and that routing constraint.</td></tr>
+        <tr><td>SERIALIZABLE isolation vs. an advisory lock per room_id</td><td>SERIALIZABLE needs no explicit locking code but costs more under real contention and requires the app to handle retry-on-abort; an advisory lock is simpler to reason about (bookers on the same room just wait their turn) but must be released on every code path, including a crash mid-transaction, or it becomes its own outage for that room.</td></tr>
         <tr><td>One room per meeting (assumed)</td><td>A much simpler booking transaction — one row, one check — but doesn't support a meeting that genuinely needs two connected rooms, which would require an atomic multi-row transaction if added.</td></tr>
       </table>
 </div>
@@ -3459,7 +3678,7 @@ AND NOT EXISTS (
         <div class="table-wrap">
 <table class="ref-table tools-table">
         <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
-        <tr><td>Availability Checker</td><td><span class="tool-tag">PostgreSQL</span> range types + exclusion constraints — a genuinely exact fit for this problem — or an in-memory interval tree</td></tr>
+        <tr><td>Availability Checker</td><td><span class="tool-tag">PostgreSQL</span> range types + exclusion constraints — a genuinely exact fit for this problem — or an in-process interval tree inside the Booking Service itself for the rare hot room</td></tr>
         <tr><td>Bookings DB</td><td><span class="tool-tag">PostgreSQL</span></td></tr>
       </table>
 </div>
