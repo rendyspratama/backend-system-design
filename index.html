@@ -525,6 +525,7 @@
       <a class="nav-link" href="#usecase-viewcount"><span class="num">M</span>Video View Count</a>
       <a class="nav-link" href="#usecase-snowflake"><span class="num">N</span>Global Unique ID Generator</a>
       <a class="nav-link" href="#usecase-pricealert"><span class="num">O</span>Stock Price Alert System</a>
+      <a class="nav-link" href="#usecase-flashsale"><span class="num">P</span>Flash Sale System</a>
     </div>
 
     <div class="nav-group">
@@ -5807,6 +5808,303 @@ were never routed to its partition in the first place.</div>
             <li><strong>At 10-20M users:</strong> the index itself stays cheap (logarithmic lookup cost), so the real scaling levers are ordinary — read replicas for GET /alerts traffic, and partitioning by a hash of user_id only if write throughput on the primary ever becomes the actual constraint.</li>
           </ul>
         </div>
+      </div>
+    </section>
+
+
+    <section class="section" id="usecase-flashsale">
+      <div class="eyebrow">Worked Example P — One Hot Resource Becomes Many</div>
+      <div class="usecase-head">
+        <h2 class="section-title">Design a Flash Sale System</h2>
+        <span class="uc-tag">per-SKU admission · adaptive hold expiry · randomized anti-bot admission</span>
+      </div>
+      <p style="max-width:680px;">"Multiple hyped products go on sale at the exact same announced instant. Each has severely limited inventory relative to demand — a popular sneaker might be 4,000 buyers for every unit; a less-hyped accessory might be 50:1. A buyer who wins a unit gets a short window to complete checkout; if they don't, it releases back to everyone else waiting." Ticketmaster already solved "many buyers, one hot resource, someone loses" — this is the same race, but with dozens of independently hot resources spiking at the identical instant, an idle hold that's ruinously expensive at these ratios, and an adversary organized enough to time itself to the second.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>Multiple SKUs go live simultaneously at one announced instant, each with independent, limited inventory.</li>
+              <li>A buyer joins a per-product queue; admission is randomized among current arrivals, not strictly speed-ordered.</li>
+              <li>Winning admission reserves one specific unit and starts a checkout window; payment is confirmed asynchronously (charge, then a provider webhook) — not a synchronous hold on the request.</li>
+              <li>An abandoned or expired reservation releases its unit back to the pool automatically.</li>
+              <li>A buyer sees clear status at every stage: queued (with position), admitted (with time remaining), purchased, or sold out.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>Never oversell a single unit of any product, even at the instant-spike traffic this event is built for.</li>
+              <li>Each product's admission rate is calibrated to its own demand — a 4,000:1 product and a 50:1 product never share one undifferentiated queue.</li>
+              <li>The checkout window adapts to how contended that specific product is — an idle hold is far more expensive at 4,000:1 than at 50:1.</li>
+              <li>Resistant to pre-sale connection priming — bots opening connections before the announced instant specifically to win on reaction time alone.</li>
+              <li>One shared ceiling protects downstream infrastructure (inventory database, payment service) even if many products spike in the identical instant.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: can a buyer queue for multiple products at once, or one at a time? We'll assume multiple — queues are per-product and independent, so nothing stops a buyer holding a queue position in several simultaneously.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>Product</strong> <span class="fields">(id, inventory_count, price, sale_start_time, sale_end_time)</span> — one SKU's sale window and stated inventory.</li>
+            <li><strong>InventoryUnit</strong> <span class="fields">(product_id, unit_id, status)</span> — status is Available, Reserved, or Sold. A specific unit gets claimed, never just a decremented counter — the same lesson as Ticketmaster's seat rows.</li>
+            <li><strong>Reservation</strong> <span class="fields">(id, product_id, unit_id, user_id, expires_at, status)</span> — status is Active, Purchased, or Expired; the hold, kept separate from the payment itself.</li>
+            <li><strong>Purchase</strong> <span class="fields">(id, reservation_id, product_id, user_id, status, created_at)</span> — status is Pending, Complete, or Failed. Confirmed asynchronously by a payment provider webhook, not a synchronous response.</li>
+          </ul>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p><span style="font-family:var(--mono)">POST /products/{id}/queue</span> → joins that product's queue, returns a queue token<br>
+          <span style="font-family:var(--mono)">GET /queue/{token}/status</span> → queued (position) / admitted (reservation + time remaining) / expired<br>
+          <span style="font-family:var(--mono)">POST /reservations/{id}/checkout</span> → fires the charge, does not block on payment confirmation<br>
+          <span style="font-family:var(--mono)">POST /webhooks/payment</span> → the provider's async confirmation, completes or fails the Purchase</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>A buyer joins a product's queue; a bot-defense check runs first, ahead of the queue itself, flagging connections primed suspiciously early relative to the announced instant.</li>
+            <li>Admission for that product is randomized among current arrivals, not first-come-first-served — calibrated to that product's own demand, independent of every other product's queue.</li>
+            <li>Admission claims one specific InventoryUnit and creates a Reservation with an expiry scaled to that product's contention ratio.</li>
+            <li>Checkout fires a charge to the payment provider and returns immediately; the provider's webhook, arriving later, is what actually completes the Purchase.</li>
+            <li>An expired, unpurchased Reservation releases its InventoryUnit back to Available, where the next round of admission can claim it.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>One shared queueing infrastructure hosts many independent, per-product admission rates — not one undifferentiated line, and not a separate deployment per product either — diagrammed below.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Three below: <strong>(a)</strong> per-SKU admission on one shared infrastructure, <strong>(b)</strong> adaptive hold expiry, scaled to contention, and <strong>(c)</strong> randomized admission as the actual anti-bot mechanism.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 1200 460" style="width:100%; min-width:860px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="fs-arrow-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="fs-arrow-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="fs-arrow-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="fs-arrow-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+            <marker id="fs-arrow-red" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker>
+          </defs>
+
+          <!-- Buyer -->
+          <rect x="20" y="180" width="140" height="70" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="90" y="210" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Buyer</text>
+          <text x="90" y="227" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">queuing for product X</text>
+
+          <!-- Bot Defense -->
+          <rect x="200" y="170" width="170" height="90" rx="10" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="285" y="200" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Bot Defense</text>
+          <text x="285" y="218" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">flags pre-sale connection</text>
+          <text x="285" y="232" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">priming, before the queue</text>
+
+          <!-- Waiting Room, per-product keys -->
+          <rect x="420" y="60" width="220" height="95" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="530" y="90" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Waiting Room</text>
+          <text x="530" y="108" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">Redis, keyed per product —</text>
+          <text x="530" y="122" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">one infra, independent rates</text>
+          <text x="530" y="139" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">admission: randomized, not FIFO</text>
+
+          <!-- Sale Service -->
+          <rect x="420" y="200" width="220" height="90" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="530" y="230" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Sale Service</text>
+          <text x="530" y="248" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">claims a unit, sets adaptive</text>
+          <text x="530" y="262" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">expiry on the Reservation</text>
+
+          <!-- Database -->
+          <rect x="700" y="140" width="200" height="110" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="800" y="170" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Database</text>
+          <text x="800" y="188" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">Product, InventoryUnit,</text>
+          <text x="800" y="202" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">Reservation, Purchase</text>
+          <text x="800" y="220" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">conditional claim per unit</text>
+
+          <!-- External Payment -->
+          <rect x="960" y="200" width="200" height="90" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="1060" y="230" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Payment Provider</text>
+          <text x="1060" y="248" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">charge fired, confirmed</text>
+          <text x="1060" y="262" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">later via webhook</text>
+
+          <!-- flows -->
+          <line x1="160" y1="212" x2="197" y2="212" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#fs-arrow-ink)"/>
+          <text x="178" y="200" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9FC1E0">1</text>
+
+          <path d="M 370,195 C 400,160 405,140 417,120" fill="none" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#fs-arrow-red)"/>
+          <text x="365" y="145" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">2 · pass</text>
+
+          <line x1="530" y1="155" x2="530" y2="197" stroke="#FFD166" stroke-width="1.5" marker-end="url(#fs-arrow-amber)"/>
+          <text x="580" y="180" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">3 · admitted</text>
+
+          <line x1="640" y1="230" x2="697" y2="215" stroke="#FFD166" stroke-width="1.5" marker-end="url(#fs-arrow-amber)"/>
+          <text x="668" y="205" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#FFD166">4</text>
+
+          <line x1="900" y1="220" x2="957" y2="235" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#fs-arrow-green)"/>
+          <text x="925" y="207" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">5 · charge</text>
+
+          <path d="M 1000,290 C 900,340 700,340 640,270" fill="none" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#fs-arrow-ink)"/>
+          <text x="820" y="345" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">6 · webhook confirms Purchase</text>
+
+          <!-- legend -->
+          <line x1="30" y1="400" x2="60" y2="400" stroke="#FFD166" stroke-width="2"/>
+          <text x="68" y="404" font-family="Inter" font-size="11" fill="#9FC1E0">Admission + reservation path</text>
+          <line x1="290" y1="400" x2="320" y2="400" stroke="#7CE0A8" stroke-width="2"/>
+          <text x="328" y="404" font-family="Inter" font-size="11" fill="#9FC1E0">Payment path</text>
+          <line x1="480" y1="400" x2="510" y2="400" stroke="#FF6B5E" stroke-width="2"/>
+          <text x="518" y="404" font-family="Inter" font-size="11" fill="#9FC1E0">Bot defense</text>
+          <line x1="650" y1="400" x2="680" y2="400" stroke="#94B8D4" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="688" y="404" font-family="Inter" font-size="11" fill="#9FC1E0">Async confirmation</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">One Redis-backed Waiting Room, keyed per product — the infrastructure is shared, but each product's admission rate is independent, calibrated to its own demand. Bot Defense sits ahead of the queue, not inside it, and payment is confirmed asynchronously so a slow card charge never holds a request open.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col write">
+          <div class="flow-title">A buyer wins a unit</div>
+          <ol>
+            <li>The buyer's queue-join request passes Bot Defense first — flagged connections never reach the queue at all.</li>
+            <li>The Waiting Room admits from that product's own queue, at that product's own calibrated rate, independent of every other product's queue.</li>
+            <li>Admission triggers a conditional claim on one specific InventoryUnit and creates a Reservation with an expiry scaled to that product's contention.</li>
+            <li>Checkout fires a charge to the Payment Provider and returns immediately — the request never blocks on the card actually clearing.</li>
+          </ol>
+        </div>
+        <div class="flow-col read">
+          <div class="flow-title">A hold expires unused</div>
+          <ol>
+            <li>The buyer is admitted but never completes checkout — distracted, changed their mind, or the tab timed out.</li>
+            <li>The Reservation's adaptive expiry elapses; a sweep (or a lazy check on next access) marks it Expired.</li>
+            <li>The InventoryUnit releases back to Available, visible to the next round of admission from that same product's queue.</li>
+            <li>The next admitted buyer for that product claims it — no manual intervention, no stuck inventory.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — per-SKU admission on one shared infrastructure</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Multiple SKUs, simultaneous</span><span class="explains-tag nfr"><b>NFR</b>Each product's own admission rate</span><span class="explains-tag nfr"><b>NFR</b>Shared ceiling for downstream infra</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from Ticketmaster's waiting room: one event, one queue, one admission rate calibrated to that event's own backend capacity.</li>
+          <li>Add a second product to the sale. Test the naive extension: one shared queue for both. A 4,000:1 product and a 50:1 product now compete for the same admission slots — one starves, or the other wastes them.</li>
+          <li>Consider the opposite extreme: a fully separate queue deployment per product. Test it against a sale with dozens of SKUs — that's dozens of things to provision, monitor, and scale independently, for a problem that's really about admission *rate*, not separate infrastructure.</li>
+          <li>Separate the two concerns: one shared queueing technology, but a distinct key and a distinct admission rate per product — infrastructure reuse without rate coupling.</li>
+          <li>Notice a residual risk even with per-product rates: if every product spikes in the same instant, the sum across all of them can still overwhelm something they all share — the database, the payment provider. Add one global ceiling as a backstop, not the primary mechanism.</li>
+        </ol>
+        <p>A shared queue with one admission rate either starves a hyped product or wastes slots on an unpopular one; a fully separate deployment per product is infrastructure sprawl for what's fundamentally a rate problem, not an isolation problem.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — one Redis, independent keys and rates</span>waiting_room:sneaker_x   → admits 50/sec   (4,000:1 demand, deliberately slow)
+waiting_room:charger_y   → admits 400/sec  (50:1 demand, far less contended)
+
+Both keys live in the same Redis cluster — no separate infrastructure per
+product. Only the admission RATE differs, tuned to each product's own
+demand, not a shared average across the whole sale.
+
+Global ceiling, checked independently of either key:
+  total_active_checkouts < MAX_CONCURRENT_CHECKOUTS
+  → protects the database and payment provider even if sneaker_x AND
+    charger_y both spike at the exact same instant.</div>
+        <ul class="item-list">
+          <li><strong>The per-product rate is the real fix</strong> — calibrated to that product's own inventory and expected demand, not derived from a shared pool that has to be split ahead of time.</li>
+          <li><strong>The global ceiling is a backstop, not the primary mechanism</strong> — it exists specifically for the case no per-product rate alone can catch: many independently well-managed queues admitting into the same downstream systems at once.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Same two-layer instinct as the rate limiter's per-client limit plus a system-wide backstop — a per-key rate handles the common case, one shared ceiling catches the case where many well-behaved keys collide on a resource none of them individually knows about.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — adaptive hold expiry</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Expiry scales with contention</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from Ticketmaster's fixed checkout window — a flat, say, 10-minute hold, the same for every seat regardless of demand.</li>
+          <li>Compute what a flat window actually costs at flash-sale ratios: a 4,000:1 product with a 10-minute window means an idle, abandoned hold locks out roughly 4,000 waiting buyers for the full 10 minutes, every time someone doesn't complete checkout.</li>
+          <li>Compare that to a 50:1 product with the identical window: the same 10 minutes idle costs 50 waiting buyers their turn, not 4,000 — the flat window is wildly miscalibrated for one of the two.</li>
+          <li>Fix it directly: make the window a function of contention, not a constant — the more people waiting behind a given hold, the more expensive that hold's idle time is, so the shorter it should be.</li>
+        </ol>
+        <p>A flat checkout window, copied from Ticketmaster, is calibrated for one contention ratio and wrong for every other one — and a flash sale runs many different ratios simultaneously, in the same event.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — expiry as a function of contention, not a constant</span>expiry_seconds = base_window / max(1, queue_depth / inventory_remaining)
+
+sneaker_x:  queue_depth=4,000  inventory_remaining=1   → ratio 4,000 → ~3 sec window
+charger_y:  queue_depth=50     inventory_remaining=1   → ratio 50    → ~2 min window
+
+Same base_window, same formula — the ratio between waiting buyers and
+remaining units is what actually drives how expensive an idle hold is,
+and the expiry shrinks accordingly.</div>
+        <ul class="item-list">
+          <li><strong>The window has to stay usable, not just short:</strong> a 3-second checkout window is only fair if the buyer already has payment details saved and ready — worth pairing with a UI that pre-fills or one-clicks checkout specifically for high-contention products, or the "fix" just moves the unfairness from admission to checkout.</li>
+          <li><strong>Recompute per reservation, not once per sale:</strong> a product's contention ratio shifts as inventory depletes and the queue drains — the formula reads current queue_depth and inventory_remaining at the moment each reservation is created, not a value fixed at sale start.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — randomized admission as the actual anti-bot mechanism</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Resistant to pre-sale connection priming</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from Ticketmaster's waiting room: admission is roughly first-come-first-served, throttled to a sustainable rate. Ask what that ordering rewards.</li>
+          <li>Trace the answer honestly: strict speed-ordering rewards whoever arrives first — and a script that opens a connection microseconds after the announced instant will always beat a human clicking a button. The ordering itself is the vulnerability.</li>
+          <li>Consider Ticketmaster's usual defenses (CAPTCHA, per-account limits, rate limiting) layered on top of speed-ordering. Notice they mitigate volume, not the core unfairness — a single well-timed script still reliably wins over a human, every time, even with those in place.</li>
+          <li>Remove the advantage at its source: stop ordering by arrival at all. Admit randomly from everyone who arrived within a short window, so being fastest stops being the thing that wins.</li>
+          <li>Add the piece specific to a flash sale's known-instant timing: detect connections opened suspiciously early, before the announced start, since that's a stronger bot signal here than in Ticketmaster's less precisely-timed on-sales.</li>
+        </ol>
+        <p>Admitting strictly by arrival order rewards whoever's fastest — and against a timed, scripted adversary, that's never the human. The fix isn't a better speed check; it's removing speed as the advantage entirely.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — a lottery window, not a finish line</span>Sale announced for 12:00:00.000.
+
+Arrivals in [12:00:00.000, 12:00:00.500] — a 500ms window:
+  1,200 requests arrive, scripts and humans mixed together
+
+Speed-ordered admission: the fastest 50 win — overwhelmingly scripts,
+since a script's reaction time beats any human's by orders of magnitude.
+
+Randomized admission: 50 winners drawn uniformly at random from all 1,200
+arrivals in the window — a script's only edge is being IN the window at
+all, not being first inside it. A human who clicks within 500ms of the
+announced instant has the same odds as a script that fired in 2ms.</div>
+        <ul class="item-list">
+          <li><strong>Pre-sale connection priming gets its own signal:</strong> a connection opened well before sale_start_time, specifically to be ready the instant the queue opens, is flagged independently of anything that happens inside the randomized window — this is the piece Ticketmaster's less-precisely-timed on-sales don't need as sharply.</li>
+          <li><strong>Ticketmaster's other defenses still apply, layered on top:</strong> per-account limits and rate limiting the queue-join endpoint remain worth doing — randomized admission fixes the ordering unfairness specifically, not every form of abuse.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This is a genuine philosophical fork from Ticketmaster's waiting room, worth stating plainly: Ticketmaster's admission answers "who's been waiting longest," which is a reasonable notion of fairness when arrival times are naturally staggered. A flash sale's arrivals cluster at one instant by design, which turns "longest waiting" into "fastest script" — a different notion of fairness for a genuinely different arrival pattern.</p>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>Never oversell, even at instant-spike traffic</td><td>A specific InventoryUnit is conditionally claimed per reservation — the same claim-a-row, not decrement-a-counter discipline as Ticketmaster's seat hold.</td></tr>
+        <tr><td>Each product's admission calibrated to its own demand</td><td>One Redis instance, per-product keys, independent admission rates — no shared pool to split ahead of time, no forecast required.</td></tr>
+        <tr><td>Idle holds cost proportional to actual contention</td><td>Expiry is computed per reservation from live queue_depth and inventory_remaining, not a flat window copied across every product.</td></tr>
+        <tr><td>Resistant to pre-timed bot advantage</td><td>Admission is a random draw from a short arrival window, not a speed-ordered queue — plus explicit detection of connections primed before the announced instant.</td></tr>
+        <tr><td>Downstream infra survives many products spiking at once</td><td>A global concurrency ceiling, independent of any single product's own rate, bounds total load on the shared database and payment provider.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Per-product admission rate vs. one shared queue</td><td>Matches each product's actual demand without needing a forecast, at the cost of one more parameter (the rate itself) to set and monitor per product, instead of one setting for the whole sale.</td></tr>
+        <tr><td>Adaptive expiry vs. a flat checkout window</td><td>Keeps an idle hold's cost proportional to real contention, at the cost of a shorter, less forgiving window for the most popular products — genuinely harder for a buyer without saved payment details to complete in time.</td></tr>
+        <tr><td>Randomized admission vs. strict speed-ordering</td><td>Removes reaction speed as a decisive advantage, at the cost of a human who arrives right at the announced instant having no better odds than one who arrives a moment later within the same window — "first" stops meaning anything, on purpose.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>Waiting Room (per-product keys)</td><td><span class="tool-tag">Redis</span> — sorted sets or lists, one key per product, independent admission workers per key</td></tr>
+        <tr><td>Bot Defense</td><td>a rate limiter and connection-age check in front of the queue-join endpoint — same pattern as the Rate Limiter example, aimed at pre-sale timing specifically</td></tr>
+        <tr><td>Database</td><td><span class="tool-tag">PostgreSQL</span> — a conditional claim on InventoryUnit, the same optimistic-concurrency pattern as Ticketmaster's seat hold</td></tr>
+        <tr><td>Payment</td><td><span class="tool-tag">Stripe</span> or similar — charge fired async, confirmed via webhook</td></tr>
+        <tr><td>Reservation expiry sweep</td><td>a scheduled worker plus a lazy check on read, the same hybrid as Ticketmaster's Hold Expiry</td></tr>
+      </table>
+</div>
       </div>
     </section>
 
