@@ -591,7 +591,7 @@
       <a class="nav-link" href="#usecase-payments"><span class="num">X</span>Idempotent Payment API</a>
       <a class="nav-link" href="#usecase-auditlog"><span class="num">Y</span>Audit Logging at Scale</a>
       <a class="nav-link" href="#usecase-observability"><span class="num">Z</span>Observability &amp; Alerting</a>
-      <a class="nav-link" href="#usecase-platform"><span class="num">★</span>How It All Fits Together</a>
+      <a class="nav-link" href="#usecase-platform"><span class="num">★</span>Microservices Platform</a>
     </div>
 
     <div class="nav-group">
@@ -9688,15 +9688,15 @@ flag on for the rest of the request.</div>
     <section class="section" id="usecase-platform">
       <details class="uc-details">
         <summary class="uc-summary">
-          <div class="eyebrow">Worked Example ★ — The Assembled Platform</div>
+          <div class="eyebrow">Worked Example ★ — The Platform Layer, End to End</div>
           <div class="usecase-head">
-            <h2 class="section-title">How It All Fits Together</h2>
-            <span class="uc-tag">north-south vs east-west · control vs data plane · one request, every hop</span>
+            <h2 class="section-title">Design a Microservices Platform: One Request Through Every Layer</h2>
+            <span class="uc-tag">north-south vs east-west · control vs data plane · L4 vs L7</span>
           </div>
           <div class="uc-hint">Click to expand</div>
         </summary>
         <div class="uc-body">
-      <p style="max-width:680px;">The previous examples each solve one problem in isolation. This one assembles them: a request arrives from the internet, crosses the edge, reaches a service, that service calls another, and telemetry falls out of every hop along the way. The components are ones already covered — registry, gateway, sidecar, auth server, rate limiter, logging, observability — but the questions here are different. Who owns which decision, where does each one physically sit, what actually travels on the wire between them, and what keeps working when each piece fails.</p>
+      <p style="max-width:680px;">"Design the platform layer a few hundred microservices run on — the shared infrastructure every team inherits rather than builds." The components are ones already covered individually: registry, gateway, sidecar, auth server, rate limiter, logging, observability. What's different here is that they have to work as one system, which raises questions none of the individual examples could answer. Who owns which decision, where does each component physically sit, what actually travels on the wire between them, and what keeps working when each piece fails. The spine of the answer is a single request traced from the internet to a database and back.</p>
 
       <div class="mini-steps">
         <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
