@@ -9703,9 +9703,10 @@ flag on for the rest of the request.</div>
           <div class="mini-title">The seven components, one line each</div>
           <ul class="entity-list">
             <li><strong>Internet edge</strong> <span class="fields">before the gateway</span> — DNS, CDN, WAF and an L4 load balancer. Four hops that absorb volumetric attacks and cache static responses so the gateway only ever sees traffic worth authenticating.</li>
-            <li><strong>API Gateway</strong> <span class="fields">edge · data plane</span> — the first component that is yours. Terminates TLS, routes, authenticates the caller, applies per-consumer limits, starts the trace.</li>
+            <li><strong>API Gateway</strong> <span class="fields">edge · data plane · ingress</span> — the first component that is yours, and the ingress point itself rather than something sitting behind one. Terminates TLS, routes, authenticates the caller, applies per-consumer limits, starts the trace.</li>
             <li><strong>Sidecar proxy</strong> <span class="fields">every pod · data plane</span> — intercepts all traffic in <em>and out</em> of one service. Service-to-service encryption, authorization, retries, per-dependency protection — and egress control for calls leaving the cluster entirely.</li>
             <li><strong>Service Registry</strong> <span class="fields">control plane</span> — the source of truth for which instances of which service are alive right now.</li>
+            <li><strong>Mesh Control Plane</strong> <span class="fields">control plane</span> — computes endpoints, traffic and authZ policy, and workload certificates, then pushes them to every sidecar. Together with those sidecars it <em>is</em> the service mesh — the one component spanning two planes.</li>
             <li><strong>Authorization Server</strong> <span class="fields">control plane</span> — issues and revokes tokens, publishes the public keys used to verify them. Never on the request path.</li>
             <li><strong>Rate Limiter</strong> <span class="fields">both planes</span> — not one component. A per-consumer quota at the edge, and a per-dependency concurrency guard in each sidecar.</li>
             <li><strong>Telemetry Collector</strong> <span class="fields">every host · telemetry plane</span> — receives metrics, logs, and traces locally, enforces cost limits, ships onward.</li>
@@ -9759,7 +9760,7 @@ flag on for the rest of the request.</div>
         </div></div>
         <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
           <div class="mini-title">Deep Dives</div>
-          <p>Eight below: <strong>(a)</strong> what sits in front of the gateway, <strong>(b)</strong> where load balancing actually happens, <strong>(c)</strong> why auth and rate limiting each appear twice, <strong>(d)</strong> three identities and how each propagates, <strong>(e)</strong> egress — the sidecar's other half, <strong>(f)</strong> how a trace survives a queue, <strong>(g)</strong> what survives when each component fails, and <strong>(h)</strong> telemetry and logs.</p>
+          <p>Ten below: <strong>(a)</strong> what sits in front of the gateway, <strong>(b)</strong> where load balancing actually happens, <strong>(c)</strong> why auth and rate limiting each appear twice, <strong>(d)</strong> three identities and how each propagates, <strong>(e)</strong> egress — the sidecar's other half, <strong>(f)</strong> how a trace survives a queue, <strong>(g)</strong> why retries compose into cascades, <strong>(h)</strong> deploys, draining and certificate rotation, <strong>(i)</strong> what survives when each component fails, and <strong>(j)</strong> telemetry and logs.</p>
         </div></div>
       </div>
 
@@ -9839,10 +9840,16 @@ flag on for the rest of the request.</div>
           <text x="912" y="354" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">App — never sees</text>
           <text x="912" y="371" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">TLS or tokens</text>
 
-          <rect x="1075" y="270" width="170" height="85" rx="10" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.4"/>
-          <text x="1160" y="298" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Third-Party API</text>
-          <text x="1160" y="318" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">outside your trust</text>
-          <text x="1160" y="335" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">and your control</text>
+          <rect x="1075" y="215" width="170" height="78" rx="10" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.4"/>
+          <text x="1160" y="241" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Third-Party API</text>
+          <text x="1160" y="260" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">outside your trust</text>
+          <text x="1160" y="277" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">and your control</text>
+
+          <rect x="1075" y="318" width="170" height="90" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="1160" y="344" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Datastore</text>
+          <text x="1160" y="363" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">owned by ONE service</text>
+          <text x="1160" y="380" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">pooled conns, usually</text>
+          <text x="1160" y="397" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">NOT via the sidecar</text>
 
           <rect x="565" y="500" width="215" height="80" rx="10" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.4"/>
           <text x="672" y="528" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Local Collector</text>
@@ -9864,8 +9871,11 @@ flag on for the rest of the request.</div>
           <line x1="780" y1="240" x2="800" y2="240" stroke="#6FE0F0" stroke-width="2" marker-end="url(#pf-cyan)"/>
           <text x="791" y="228" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#6FE0F0">3</text>
 
-          <line x1="1020" y1="312" x2="1070" y2="312" stroke="#FF6B5E" stroke-width="1.8" marker-end="url(#pf-red)"/>
-          <text x="1045" y="336" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">4 · egress</text>
+          <line x1="1020" y1="254" x2="1070" y2="254" stroke="#FF6B5E" stroke-width="1.8" marker-end="url(#pf-red)"/>
+          <text x="1045" y="243" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">4 · egress</text>
+
+          <path d="M 1010,370 C 1035,372 1050,366 1070,363" fill="none" stroke="#7CE0A8" stroke-width="1.8" marker-end="url(#pf-green)"/>
+          <text x="1040" y="392" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">5 · direct</text>
 
           <text x="270" y="420" text-anchor="middle" font-family="Inter" font-size="10" fill="#FFD166">NORTH-SOUTH</text>
           <text x="800" y="420" text-anchor="middle" font-family="Inter" font-size="10" fill="#6FE0F0">EAST-WEST · mTLS</text>
@@ -9874,7 +9884,7 @@ flag on for the rest of the request.</div>
           <text x="432" y="448" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">L7 · requests</text>
           <text x="672" y="448" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">L7 · requests</text>
           <text x="912" y="448" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">L7 · requests</text>
-          <text x="1160" y="448" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">three balancing layers</text>
+          <text x="1105" y="448" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">three balancing layers</text>
 
           <line x1="415" y1="140" x2="415" y2="211" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#pf-green)"/>
           <text x="490" y="180" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">keys, cached</text>
@@ -9902,27 +9912,199 @@ flag on for the rest of the request.</div>
         </svg>
       </div>
       <div class="diagram-caption">Note the three balancing layers marked along the bottom: L4 spreads <em>connections</em> at the edge, while the gateway and every sidecar balance <em>requests</em> — a distinction that only matters until you run gRPC, at which point it matters enormously. Solid lines are the only paths a user's request travels. Everything dashed is configuration pushed <em>before</em> the request arrives, and everything dotted is telemetry emitted after — which is why an outage in the top or bottom band degrades the platform without stopping it.</div>
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Reading the diagram — three things it doesn't label</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Three questions this picture reliably provokes, because the answer in each case is "that isn't a box."</p>
 
-      <div class="flow-narrative">
-        <div class="flow-col write">
-          <div class="flow-title">Crossing the edge (north-south)</div>
-          <ol>
-            <li>TLS terminates at the gateway; a route table match decides which service this is for.</li>
-            <li>A cheap anonymous IP limit runs first, then the JWT is verified against keys cached from the auth server — no call to it.</li>
-            <li>Identity is now known, so the per-consumer quota applies, and a trace id is minted.</li>
-            <li>The bearer token is <em>stripped</em>, user claims are attached as headers, and the request is forwarded inward.</li>
-          </ol>
-        </div>
-        <div class="flow-col read">
-          <div class="flow-title">Between services (east-west)</div>
-          <ol>
-            <li>Service A's app calls "service-b" by name over plain HTTP to its own sidecar on localhost.</li>
-            <li>The sidecar already holds B's endpoints, pushed by the control plane earlier, and picks one.</li>
-            <li>It opens mTLS to B's sidecar, presenting A's workload certificate, and applies A's concurrency budget for B.</li>
-            <li>B's sidecar verifies the certificate says "service-a", checks policy, and hands plain HTTP to B's app.</li>
-          </ol>
-        </div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">1 · Where is ingress?</div>
+        <p style="margin:0 0 10px;"><strong>Ingress isn't a component — it's a direction.</strong> Traffic coming in is ingress; traffic going out is egress. The API Gateway <em>is</em> the ingress point, and the sidecar is the egress point, which is why neither appears as a separately labelled box.</p>
+        <p style="margin:0 0 10px;">The confusion is legitimate, because Kubernetes overloaded the word. There, "Ingress" is also a specific API object, implemented by an <strong>Ingress Controller</strong> — itself an L7 proxy, usually NGINX or Envoy. That overlaps heavily with what a gateway does:</p>
+        <div class="example-panel" style="margin:0 0 14px;"><span class="label">Illustration — ingress controller vs. API gateway</span>INGRESS CONTROLLER              API GATEWAY
+  TLS termination                 TLS termination
+  host / path routing             host / path routing
+  ── and that is mostly it ──     + authN, per-consumer quota
+                                  + request/response transformation
+                                  + trace origination
+                                  + token stripping, claim injection
+
+  a CLUSTER concern:              a PRODUCT concern:
+  "get traffic to the right       "is this caller allowed, and within
+   service"                        what they were sold?"
+
+Three arrangements you will actually meet:
+
+  gateway only          the gateway IS the ingress — one L7 hop
+                        (what this diagram shows)
+
+  controller only       fine until you need auth or quotas, at which
+                        point every service reimplements them
+
+  both, stacked         ingress controller → gateway → service
+                        two L7 proxies, overlapping jobs — sometimes
+                        justified (managed TLS, platform-team
+                        ownership boundary), often the redundant
+                        L7 hop from the load-balancing deep dive
+
+The Kubernetes Gateway API exists largely because this split confused
+people, and deliberately merges the two concepts.</div>
+
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">2 · Where is the service mesh?</div>
+        <p style="margin:0 0 10px;"><strong>The mesh isn't one box — it's the only component here that lives in two planes at once.</strong> The Mesh Control Plane computes and distributes configuration; every sidecar enforces it. "Where is the mesh" therefore means "that top-right box <em>plus</em> every sidecar in every pod," which is exactly why it looks absent from whichever plane you're currently looking at.</p>
+        <div class="example-panel" style="margin:0 0 14px;"><span class="label">Illustration — what the control plane pushes, and what the sidecar does with it</span>MESH CONTROL PLANE  (control plane — computes, never serves a request)
+  endpoints        ← sourced from the Service Registry
+  traffic policy   ← timeouts, retries, canary weights
+  authZ policy     ← which service may call which
+  workload certs   ← issued and rotated continuously
+
+        │  pushed out of band, continuously
+        ▼
+
+SIDECAR  (data plane — enforces, on every single request)
+  picks a pod from the endpoints it already holds
+  opens mTLS using the cert it was already issued
+  allows or denies by the policy it already has
+  applies the timeout and retry budget it was already given
+
+Every verb in the sidecar's list is in the past tense on purpose:
+it acts on configuration it received BEFORE the request arrived.
+That is what makes the control plane skippable at request time.</div>
+
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">3 · Why is the control plane never called during a request?</div>
+        <p style="margin:0 0 10px;">Three separate reasons, worth keeping distinct because they'd each justify the design on their own:</p>
+        <div class="example-panel" style="margin:0 0 12px;"><span class="label">Illustration — three reasons, one technique</span>LATENCY       a lookup per request adds a round trip to EVERY HOP,
+              and one request crosses several hops
+
+AVAILABILITY  if the gateway called the auth server per request, the
+              auth server's outage becomes a TOTAL outage
+              → cached, the same outage degrades only the issuing of
+                NEW tokens, and traffic keeps flowing
+
+RATE MISMATCH the one most often missed. Config changes a few times
+              a day; requests arrive thousands of times a second.
+              Serving a per-second workload from a per-day source is
+              wasteful by orders of magnitude, regardless of whether
+              it would be fast enough.
+
+Same technique answers all three:
+  push ahead of time → cache locally → accept bounded staleness
+
+Which is why the Auth Server has exactly two interactions, and
+neither is during a request:
+  1. BEFORE   the client authenticates and gets a token — a separate
+              flow, possibly hours earlier
+  2. PERIODIC the gateway refreshes cached JWKS public keys
+
+  during the request the gateway verifies the signature LOCALLY,
+  against those cached keys, and contacts nobody. That is why the
+  line to it is dashed rather than solid.</div>
+        <p style="color:var(--ink); margin:0;">The cost of the technique is the thing every dashed line in this diagram has in common: cached data can be briefly wrong. Every staleness window here — key cache, endpoint list, policy, certificates — is a deliberate choice rather than an accident, which is the point the failure deep dive below returns to.</p>
       </div>
+
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">One real request, start to finish — <span style="font-family:var(--mono)">GET /profile</span></h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Everything above describes components. This follows a single request through all of them, in order, in plain language — a user opening their profile page, where Service A owns profiles and calls Service B for billing status.</p>
+
+        <div class="example-panel" style="margin:0 0 14px;"><span class="label">The journey — nine hops, roughly 40ms</span>WHAT THE USER DID
+  tapped "My Profile" in the app
+
+  GET https://api.example.com/v1/profile
+  Authorization: Bearer eyJhbGci...        ← they logged in hours ago
+
+
+①  DNS → CDN                                                    ~0ms
+   "Is this cacheable?" No — it's personal data. Pass it through.
+   TLS terminates here, close to the user.
+
+②  WAF                                                          ~1ms
+   "Does this look like an attack?" No. Pass.
+
+③  L4 LOAD BALANCER                                             ~0ms
+   "Which gateway instance?" Picks one. It only sees packets —
+   it has no idea this is a profile request.
+
+④  API GATEWAY                                                  ~3ms
+   Now something actually reads the HTTP.
+
+   a. anonymous IP limit  — cheap, runs first. Under the limit. OK.
+   b. verify the token    — checks the signature using keys it
+                            cached earlier. Does NOT call the auth
+                            server. Token is valid, user is u_8831.
+   c. per-consumer quota  — now that it knows WHO, checks their
+                            quota. Fine.
+   d. route               — /v1/profile belongs to service-a.
+   e. pick a pod          — L7 choice across service-a's 6 pods.
+   f. start the trace     — mints trace id 4bf92f...
+   g. REWRITE the request:
+        ✗ Authorization: Bearer ...   ← REMOVED. Goes no further.
+        ✓ x-user-id: u_8831           ← added
+        ✓ x-user-scopes: profile:read
+        ✓ traceparent: 00-4bf92f...-00f067...-01
+
+⑤  SERVICE A — SIDECAR (inbound)                                ~1ms
+   Terminates mTLS. The certificate says "the gateway", and policy
+   allows the gateway to call service-a. Records a span.
+   Hands plain HTTP to the app over localhost.
+
+⑥  SERVICE A — APP                                              ~2ms
+   Reads x-user-id and loads the profile it owns.
+   Needs billing status, so it calls http://service-b/billing —
+   plain HTTP, no TLS, no token. It just names the service.
+
+⑦  SERVICE A — SIDECAR (outbound)                               ~1ms
+   Intercepts that call. "Where is service-b?" It already holds
+   the endpoint list, pushed earlier. Picks one of B's 4 pods.
+   Checks its budget for B — 12 of 40 in flight, room to go.
+   Opens mTLS, presenting service-a's own certificate.
+
+⑧  SERVICE B — SIDECAR (inbound) → APP                          ~2ms
+   Verifies the certificate says "service-a", and policy allows
+   service-a → service-b. Hands plain HTTP to B's app.
+
+⑨  SERVICE B — DATASTORE                                        ~25ms
+   B's app queries its OWN database, through its own connection
+   pool. The sidecar is not involved — this is not HTTP.
+   ← the slowest hop by far, and where the time actually went
+
+
+THE RESPONSE COMES BACK THE SAME WAY
+  B's app → B's sidecar → A's sidecar → A's app (merges profile
+  + billing) → A's sidecar → gateway → L4 → CDN → user.
+
+  Each proxy it passes back through records how long its half took
+  and what status came back — which is what makes step ⑨ visible
+  as the culprit without anyone adding instrumentation to find it.</div>
+
+        <p style="margin:0 0 12px;">Three things worth noticing about that journey, because each one is a design decision rather than an accident:</p>
+        <ul class="item-list">
+          <li><strong>The user's token existed for exactly one hop.</strong> It was verified at the gateway and deleted. Services A and B know who the user is — they just never hold anything they could replay as that user.</li>
+          <li><strong>Neither app wrote a line of networking code.</strong> Service A called <span style="font-family:var(--mono)">http://service-b/billing</span> in plain HTTP. Discovery, load balancing, mTLS, retries, and timeouts all happened in the sidecar beside it. Swapping the load-balancing algorithm is a config push, not a code change in either service.</li>
+          <li><strong>Nothing in the top band was contacted.</strong> No call to the auth server, the registry, or the mesh control plane. Every decision used information pushed <em>before</em> this request existed — which is the whole reason a control-plane outage wouldn't have stopped it.</li>
+        </ul>
+
+        <div class="example-panel" style="margin:12px 0 0;"><span class="label">The same journey when something goes wrong</span>Say one of service-b's four pods has gone bad.
+
+⑦  A's sidecar picks pod-2 and opens mTLS.
+⑧  pod-2 times out at 200ms.
+
+    A's sidecar retries — on a DIFFERENT pod, not the same one:
+      pod-3 answers in 2ms. ✓
+
+    The user waits ~200ms instead of ~40ms and sees nothing wrong.
+    Service A's code was never told any of this happened.
+
+Meanwhile, quietly:
+    pod-2's failures push it toward outlier ejection — the sidecar
+    stops selecting it entirely for a cooldown period.
+    Its readiness probe fails; the control plane drops it from the
+    endpoint list; every OTHER service's sidecar stops choosing it
+    too, without anyone being paged.
+
+    If ALL of B's pods were failing, the retry budget caps how many
+    retries the fleet is allowed in total — which is what stops
+    this from becoming the retry storm in the deep dive below.</div>
+      </div>
+
 
       <div class="callout keydive">
         <span class="label">Key deep dive — what sits in front of the gateway</span>
@@ -10222,6 +10404,135 @@ Two things worth stating plainly:
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — retries compose, and that is how you cascade</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice what has been described so far without comment: the gateway retries, the caller's sidecar retries, and the callee's sidecar retries. Each one is individually sensible and configured by a different team.</li>
+          <li>Multiply them. Three attempts at each of three layers is up to twenty-seven requests reaching a service for one user action — and nobody chose that number, it emerged.</li>
+          <li>Find when that multiplication actually fires. Not during normal operation, when nothing retries; only when a service is already slow or failing. The amplification arrives precisely when the target has the least capacity to absorb it.</li>
+          <li>Follow the feedback loop to its conclusion: retries add load, added load increases latency, increased latency triggers more retries. A service recovering from a blip cannot recover, because the retries won't let it.</li>
+          <li>Reject the obvious fix of "turn off retries" — they exist because a single packet loss shouldn't surface as a user-visible error, and removing them trades one failure mode for another.</li>
+          <li>Bound the total instead of the per-layer count: cap retries as a fraction of overall traffic, and retry at one layer rather than at every layer.</li>
+        </ol>
+        <p>Every layer in this architecture retries, each configured by a different team, and none of them can see the others. The composition is what kills you.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — one user click, twenty-seven requests</span>Service C starts responding slowly. Each layer does the sensible thing:
+
+  user click
+    gateway              retries 3×   ─┐
+      sidecar-a outbound retries 3×    ├─ 3 × 3 × 3 = 27 requests
+        sidecar-c inbound retries 3×  ─┘   arriving at a service that
+                                            is ALREADY struggling
+
+  → C gets 27× its normal load at its weakest moment
+  → C slows further, so MORE requests time out, so MORE are retried
+  → the retries are now the outage. C never recovers on its own.
+
+THE FIX IS A BUDGET, NOT A COUNT
+
+  retry_budget:
+    ratio: 0.1          # retries may add at most 10% of normal traffic
+    min_retries_per_sec: 3
+
+  → under normal conditions retries are rare, so the budget is
+    never touched and a lost packet is still retried transparently
+  → when C degrades and everything wants to retry at once, the
+    budget is exhausted almost immediately and further retries are
+    simply not attempted
+  → load on C is capped at ~1.1× normal no matter how bad it gets
+
+TWO MORE RULES THAT MATTER
+
+  RETRY AT ONE LAYER ONLY
+    pick the sidecar (it knows which pods are healthy and can pick
+    a DIFFERENT one) and disable retries at the gateway for that
+    route. Retrying the same failing pod is pointless anyway.
+
+  BUDGET YOUR TIMEOUTS DOWNWARD
+    gateway timeout    3000ms
+      service-a        2500ms   ← must be LESS than its caller's
+        service-b      2000ms
+          service-c    1500ms
+    → if every layer uses the same timeout, the outermost gives up
+      first and every inner layer keeps working on a request whose
+      answer nobody is waiting for — capacity burned on nothing</div>
+        <ul class="item-list">
+          <li><strong>Jitter is not optional</strong> — retrying after a fixed delay means every client that failed together retries together, producing a synchronised second wave. Randomised exponential backoff spreads the retry over time instead of concentrating it.</li>
+          <li><strong>Circuit breakers and retry budgets solve different halves</strong> — the breaker stops calling a service that is clearly down; the budget limits the damage while it is merely degraded, which is the longer and more dangerous state.</li>
+          <li><strong>Only idempotent operations may be retried at all</strong> — the mesh cannot know whether an endpoint is safe to repeat, so this is a per-route configuration, and getting it wrong on a payment is the failure the idempotency keys from example X exist to prevent.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — deploys, draining, and rotating certificates</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice everything so far describes the platform serving traffic in steady state, and that a platform spends its whole life changing — new versions ship, pods come and go, credentials expire.</li>
+          <li>Ask what the sidecar makes possible that wasn't possible before it existed. It already decides which pod receives each request, so "send 5% of traffic to the new version" is a routing rule rather than a deployment strategy.</li>
+          <li>Separate deploying from releasing. Starting new pods is a deploy; sending users to them is a release. Once routing is a control-plane decision, those stop being the same event, and a bad version is reverted by changing a weight rather than by shipping again.</li>
+          <li>Work out how a pod leaves cleanly. An instance that simply stops drops whatever it was serving, so it needs to fail readiness first, let callers stop choosing it, finish in-flight work, and only then exit.</li>
+          <li>Find the piece that runs continuously and is easy to forget: the workload certificates every mTLS hop depends on are short-lived, so something must reissue them constantly — and if it stops, the mesh stops trusting itself.</li>
+        </ol>
+        <p>Steady state is the easy half. Everything in this section that makes a request work has a counterpart that makes <em>change</em> safe, and it's the same control plane doing both.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — three lifecycle mechanisms the mesh already has the position to provide</span>1 · TRAFFIC SHIFTING — deploy and release become separate events
+
+    route: service-b
+      v1  weight 95      ← stable
+      v2  weight  5      ← canary, real users, real traffic
+
+    watch v2's OWN error rate and latency, not the aggregate —
+    5% of traffic failing barely moves a combined number
+    → healthy: 5 → 25 → 50 → 100 over minutes
+    → unhealthy: set v2 to 0. Instant. No redeploy, no rollback
+      build, no waiting for images to pull.
+
+    Because the sidecar already picks the pod, this is a weight in
+    a config push — not a new capability, just one it was always
+    positioned to offer.
+
+2 · READINESS AND DRAINING — how a pod leaves without dropping work
+
+    WRONG          SIGTERM → process exits
+                   → in-flight requests die
+                   → callers see connection resets they must retry,
+                     which is exactly how a routine deploy becomes
+                     the retry storm from the previous deep dive
+
+    RIGHT          1. readiness probe starts failing
+                   2. control plane removes the pod from endpoints
+                   3. callers' sidecars stop selecting it — but
+                      existing connections keep working
+                   4. pod finishes in-flight requests (drain window)
+                   5. only now does the process exit
+
+    LIVENESS asks "is this process broken, restart it?"
+    READINESS asks "should traffic come here right now?"
+    Conflating them means a pod that is merely warming up gets
+    killed instead of simply not being sent traffic yet.
+
+3 · CERTIFICATE ROTATION — the thing that must never quietly stop
+
+    Workload certs are deliberately short-lived — often hours.
+    Short life is the point: a stolen certificate expires on its
+    own, so there is no revocation list to distribute.
+
+    The control plane reissues them continuously, and each sidecar
+    swaps its cert without dropping connections.
+
+    The failure mode worth naming: if rotation silently stops, NOTHING
+    breaks for hours — and then every mTLS handshake in the fleet
+    starts failing at roughly the same time, because the certs were
+    all issued on a similar schedule. Certificate expiry is one of
+    the few failures that is simultaneously fleet-wide and entirely
+    predictable, which makes "time until the soonest expiry" one of
+    the highest-value alerts in the whole platform.</div>
+        <ul class="item-list">
+          <li><strong>Canary judgement needs per-version telemetry, which the sidecar already emits</strong> — the version has to be a label on the metrics the proxy produces, or you cannot tell a failing canary from a slightly worse aggregate. This is one of the rare labels genuinely worth its cardinality.</li>
+          <li><strong>The drain window and the client timeout must agree</strong> — a 5-second drain against a 30-second client timeout still kills long requests at shutdown. The drain should outlast the slowest request the service is expected to serve.</li>
+          <li><strong>Rotation applies to more than certificates</strong> — signing keys behind the gateway's JWKS cache rotate on the same principle, which is why that endpoint serves several keys at once: a token signed by the outgoing key must still verify until it expires.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
         <span class="label">Key deep dive — what survives when each component fails</span>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
@@ -10362,7 +10673,7 @@ Three rules that matter more at fleet scale than in one service:
         <tr><td>CDN · WAF · L4 LB</td><td>Data · internet edge</td><td>Caching, volumetric and L7 attack absorption, and spreading <em>connections</em> across gateway instances — everything rejectable before identity is known. Usually managed services, not yours to debug</td></tr>
         <tr><td>API Gateway</td><td>Data · edge (north-south)</td><td>An L7 proxy: TLS termination, routing, <em>per-request</em> balancing across a service's pods, user authN, per-consumer quota, trace origination, token stripping and claim injection</td></tr>
         <tr><td>Sidecar proxy</td><td>Data · every pod (east-west)</td><td>Also an L7 proxy: mTLS both directions, service-to-service authZ, <em>per-request</em> balancing across the callee's pods, retries, per-dependency budgets, egress allow-listing, free telemetry</td></tr>
-        <tr><td>Service Registry</td><td>Control</td><td>Which instances are alive; consumed by the mesh control plane, never called during a request</td></tr>
+        <tr><td>Service Registry</td><td>Control</td><td>Which instances are alive; consumed by the mesh control plane, never called during a request. Readiness is what removes a draining pod from this set</td></tr>
         <tr><td>Auth Server</td><td>Control</td><td>Token issuance and revocation, JWKS publication; cached by the gateway so it stays off the request path</td></tr>
         <tr><td>Rate limiting</td><td>Both</td><td>Commercial quota at the edge; stability-oriented concurrency budgets in the sidecars — different constructs sharing a name</td></tr>
         <tr><td>Message broker</td><td>Data · async</td><td>Carries work across a connection boundary — which means trace context and acting user must travel in the message, because the sidecar cannot follow them there</td></tr>
@@ -10382,6 +10693,7 @@ Three rules that matter more at fleet scale than in one service:
         <tr><td>Cache everything in the data plane vs. query the control plane live</td><td>Control plane outages degrade change rather than stopping traffic, at the cost of every cached thing having a staleness window that must be chosen deliberately.</td></tr>
         <tr><td>A gateway at all vs. exposing services directly</td><td>One consistent place for auth, quota and observability, at the cost of a genuine single point of failure that only redundancy can mitigate — no cache saves you if every gateway instance is down.</td></tr>
         <tr><td>Per-request L7 balancing in sidecars vs. relying on L4 alone</td><td>Load actually spreads for gRPC and HTTP/2, and enables least-request and outlier ejection — at the cost of a proxy in every pod that must hold and refresh an accurate view of every callee's endpoints.</td></tr>
+        <tr><td>Traffic shifting in the mesh vs. deploy-and-pray</td><td>Deploy and release become separate events, so a bad version is reverted by changing a weight rather than shipping again — at the cost of per-version telemetry to judge the canary by, and a routing config that is now part of your release process.</td></tr>
         <tr><td>Egress through a sidecar allow-list vs. letting services call out freely</td><td>A compromised service can't exfiltrate to an arbitrary host, and every external dependency becomes a declared fact — at the cost of a list that must be maintained, and an outage shaped like "we forgot to allow-list the new vendor."</td></tr>
         <tr><td>Propagating context through messages vs. accepting broken traces</td><td>One trace spans an API request and the async work it triggered, at the cost of producers and consumers both having to handle headers correctly — and a header that is an assertion rather than the proof mTLS gave you.</td></tr>
         <tr><td>This whole architecture vs. a monolith</td><td>Independent deploys, per-service scaling and blast-radius containment — at the cost of every piece above. Worth stating plainly: a small team serving modest traffic will ship faster without any of it.</td></tr>
@@ -10390,18 +10702,122 @@ Three rules that matter more at fleet scale than in one service:
       </div>
 
       <div class="result-card tools-card">
-        <h3 class="subhead">What this looks like in practice</h3>
+        <h3 class="subhead">Every box in the diagram, and what you'd actually run there</h3>
+        <p style="font-size:13px; color:var(--ink-dim); margin:0 0 14px;">One row per component. "Managed" means someone else operates it; "self-hosted" means you do. The right column is the part worth reading — most of these choices are decided by constraints rather than by the tool being better.</p>
         <div class="table-wrap">
-<table class="ref-table tools-table">
-        <tr class="rt-head"><th>Component</th><th>Common real-world choices</th></tr>
-        <tr><td>Gateway</td><td><span class="tool-tag">Envoy</span>, <span class="tool-tag">Kong</span>, <span class="tool-tag">NGINX</span>, or a cloud-managed API gateway</td></tr>
-        <tr><td>Sidecar &amp; mesh</td><td><span class="tool-tag">Istio</span> or <span class="tool-tag">Linkerd</span> — Envoy sidecars with a control plane speaking xDS</td></tr>
-        <tr><td>Registry / discovery</td><td><span class="tool-tag">Kubernetes</span> Services and Endpoints backed by <span class="tool-tag">etcd</span>; <span class="tool-tag">Consul</span> outside Kubernetes</td></tr>
-        <tr><td>Workload identity</td><td><span class="tool-tag">SPIFFE</span>/<span class="tool-tag">SPIRE</span>, or the mesh's built-in certificate authority</td></tr>
-        <tr><td>Auth server</td><td><span class="tool-tag">Keycloak</span>, <span class="tool-tag">Auth0</span>, <span class="tool-tag">Okta</span></td></tr>
-        <tr><td>Telemetry</td><td><span class="tool-tag">OpenTelemetry</span> Collector into <span class="tool-tag">Prometheus</span>, <span class="tool-tag">Tempo</span> and <span class="tool-tag">Loki</span> — or a managed APM</td></tr>
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:17%">Box</th><th style="width:26%">Managed</th><th style="width:26%">Self-hosted / OSS</th><th>How the choice usually gets made</th></tr>
+
+        <tr><td><strong>CDN</strong></td>
+            <td><span class="tool-tag">Cloudflare</span> <span class="tool-tag">Fastly</span> <span class="tool-tag">CloudFront</span> <span class="tool-tag">Akamai</span></td>
+            <td>— practically never self-hosted</td>
+            <td>You cannot self-host presence in 300 cities. This one is bought, and usually bundled with the WAF below.</td></tr>
+
+        <tr><td><strong>WAF / DDoS</strong></td>
+            <td><span class="tool-tag">Cloudflare</span> <span class="tool-tag">AWS WAF + Shield</span> <span class="tool-tag">Akamai</span></td>
+            <td><span class="tool-tag">ModSecurity</span> + NGINX, <span class="tool-tag">Coraza</span></td>
+            <td>Volumetric attacks must be absorbed upstream of your capacity, so the DDoS half is inherently a managed service. Self-hosted WAF rules are viable for L7 filtering only.</td></tr>
+
+        <tr><td><strong>L4 load balancer</strong></td>
+            <td><span class="tool-tag">AWS NLB</span> <span class="tool-tag">GCP Network LB</span> <span class="tool-tag">Azure LB</span></td>
+            <td><span class="tool-tag">HAProxy</span> (L4 mode), <span class="tool-tag">IPVS</span>, <span class="tool-tag">MetalLB</span></td>
+            <td>On a cloud you inherit this from a <span style="font-family:var(--mono)">Service type=LoadBalancer</span> and never think about it. MetalLB exists because bare metal has no such thing.</td></tr>
+
+        <tr><td><strong>API Gateway</strong></td>
+            <td><span class="tool-tag">AWS API Gateway</span> <span class="tool-tag">Apigee</span> <span class="tool-tag">Azure APIM</span></td>
+            <td><span class="tool-tag">Kong</span> <span class="tool-tag">Envoy Gateway</span> <span class="tool-tag">APISIX</span> <span class="tool-tag">Traefik</span> <span class="tool-tag">Tyk</span> <span class="tool-tag">NGINX</span></td>
+            <td>Managed gateways bill per request and get expensive at volume, which is the usual reason teams move off them. On Kubernetes this box is often an ingress controller — the overlap covered in the diagram notes above.</td></tr>
+
+        <tr><td><strong>Sidecar proxy</strong></td>
+            <td>— comes with the mesh you pick</td>
+            <td><span class="tool-tag">Envoy</span> (Istio, Consul), <span class="tool-tag">linkerd2-proxy</span> (Rust, much lighter)</td>
+            <td>You rarely choose the proxy directly; you choose the mesh and inherit its proxy. Sidecarless modes now exist, which trade per-pod overhead for a shared node-level component.</td></tr>
+
+        <tr><td><strong>Mesh control plane</strong></td>
+            <td><span class="tool-tag">GKE/EKS managed Istio</span></td>
+            <td><span class="tool-tag">Istio</span> <span class="tool-tag">Linkerd</span> <span class="tool-tag">Consul</span> <span class="tool-tag">Cilium</span> <span class="tool-tag">Kuma</span></td>
+            <td>Istio is the most capable and the most to operate; Linkerd trades features for being genuinely simple. Cilium does it at the eBPF layer instead of with proxies. Pick by how much operational surface you can carry.</td></tr>
+
+        <tr><td><strong>Service Registry</strong></td>
+            <td>— part of your orchestrator</td>
+            <td><span class="tool-tag">Kubernetes</span> (etcd + EndpointSlice), <span class="tool-tag">Consul</span> <span class="tool-tag">etcd</span> <span class="tool-tag">Eureka</span> <span class="tool-tag">Nacos</span></td>
+            <td>On Kubernetes you already have one and adding another is a mistake. Consul and Eureka matter when you're on VMs, or spanning clusters and clouds.</td></tr>
+
+        <tr><td><strong>Auth Server</strong></td>
+            <td><span class="tool-tag">Auth0</span> <span class="tool-tag">Okta</span> <span class="tool-tag">Cognito</span> <span class="tool-tag">Entra ID</span></td>
+            <td><span class="tool-tag">Keycloak</span> <span class="tool-tag">Ory Hydra</span> <span class="tool-tag">Zitadel</span> <span class="tool-tag">Authentik</span></td>
+            <td>Managed is right until per-user pricing collides with your user count, or a compliance rule says identity data stays in your own infrastructure. Both cases arrive suddenly.</td></tr>
+
+        <tr><td><strong>Workload identity</strong></td>
+            <td>— usually the mesh's built-in CA</td>
+            <td><span class="tool-tag">SPIFFE</span>/<span class="tool-tag">SPIRE</span>, <span class="tool-tag">cert-manager</span>, <span class="tool-tag">Vault PKI</span></td>
+            <td>The mesh issues workload certs by default. SPIRE earns its place when identity must span clusters, clouds, or workloads that aren't in the mesh at all.</td></tr>
+
+        <tr><td><strong>Datastore</strong></td>
+            <td><span class="tool-tag">RDS</span> <span class="tool-tag">Aurora</span> <span class="tool-tag">Cloud SQL</span> <span class="tool-tag">DynamoDB</span> <span class="tool-tag">Spanner</span></td>
+            <td><span class="tool-tag">PostgreSQL</span> <span class="tool-tag">MySQL</span> <span class="tool-tag">Cassandra</span> <span class="tool-tag">Redis</span></td>
+            <td>Owned by one service, not shared — that boundary matters far more than the engine. Self-hosting a database on Kubernetes is a real commitment; managed is the default for good reason.</td></tr>
+
+        <tr><td><strong>Message broker</strong></td>
+            <td><span class="tool-tag">SQS</span>/<span class="tool-tag">SNS</span> <span class="tool-tag">Google Pub/Sub</span> <span class="tool-tag">MSK</span> <span class="tool-tag">Confluent</span></td>
+            <td><span class="tool-tag">Kafka</span> <span class="tool-tag">RabbitMQ</span> <span class="tool-tag">NATS</span> <span class="tool-tag">Pulsar</span></td>
+            <td>Kafka when you need a replayable log; RabbitMQ or SQS when you need a work queue. Choosing Kafka for a task queue is one of the most common over-engineering mistakes here.</td></tr>
+
+        <tr><td><strong>Local Collector</strong></td>
+            <td><span class="tool-tag">Datadog Agent</span> <span class="tool-tag">Grafana Alloy</span></td>
+            <td><span class="tool-tag">OpenTelemetry Collector</span>, <span class="tool-tag">Fluent Bit</span> (logs), <span class="tool-tag">Vector</span></td>
+            <td>The OTel Collector is the vendor-neutral default, and the reason it's worth running even with a managed backend: switching backends becomes a config change rather than a re-instrumentation project.</td></tr>
+
+        <tr><td><strong>Obs backends</strong></td>
+            <td><span class="tool-tag">Datadog</span> <span class="tool-tag">New Relic</span> <span class="tool-tag">Honeycomb</span> <span class="tool-tag">Grafana Cloud</span></td>
+            <td><span class="tool-tag">Prometheus</span>/<span class="tool-tag">Mimir</span> (metrics), <span class="tool-tag">Tempo</span>/<span class="tool-tag">Jaeger</span> (traces), <span class="tool-tag">Loki</span>/<span class="tool-tag">OpenSearch</span> (logs)</td>
+            <td>Usually three systems, not one — the cardinality and retention profiles differ so much that one store serves all three badly. Managed APM is billed on ingest, which is exactly why the collector's caps matter.</td></tr>
+
+        <tr><td><strong>Alerting</strong></td>
+            <td><span class="tool-tag">PagerDuty</span> <span class="tool-tag">Opsgenie</span></td>
+            <td><span class="tool-tag">Alertmanager</span> <span class="tool-tag">Grafana OnCall</span></td>
+            <td>Rules belong in version control next to the service. The paging tool only handles escalation and rotations.</td></tr>
+
+        <tr><td><strong>Third-party API</strong></td>
+            <td colspan="2">Not a choice — it's whoever you integrate with</td>
+            <td>The design decisions here are yours regardless: egress allow-list, conservative timeouts, and idempotency on anything that costs money.</td></tr>
       </table>
 </div>
+
+        <div class="example-panel" style="margin:14px 0 0;"><span class="label">Two stacks that actually exist, and the order to adopt them in</span>IF YOU ARE ON KUBERNETES AND AWS — the path of least resistance
+  CDN + WAF        CloudFront + AWS WAF, or Cloudflare in front
+  L4               NLB, inherited from Service type=LoadBalancer
+  gateway          Envoy Gateway or Kong, in-cluster
+  mesh             Linkerd if you want it simple, Istio if you need it
+  registry         Kubernetes itself — do NOT add a second one
+  auth             Cognito or Keycloak
+  datastore        RDS/Aurora, one per owning service
+  telemetry        OTel Collector → Prometheus + Tempo + Loki,
+                   or → Datadog if you would rather pay than operate
+
+IF YOU ARE ON VMs, NO KUBERNETES
+  registry         Consul — this is the case it was built for
+  mesh             Consul Connect, or none and use client libraries
+  gateway          NGINX or Kong on dedicated hosts
+  everything else  largely unchanged
+
+THE ORDER THAT MATTERS MORE THAN THE TOOLS
+
+  You do not need all of this, and adopting it in the wrong order
+  is how platform teams lose a year.
+
+  1. gateway + auth      the first real need: one door, one identity
+  2. telemetry           you cannot operate what you cannot see —
+                         and this pays off before anything below it
+  3. registry            comes free with Kubernetes; otherwise Consul
+  4. mesh                LAST. Adopt it when you have the problems it
+                         solves — mTLS everywhere, gRPC load balancing,
+                         per-service authZ, canary routing.
+
+  Adopting a mesh before you have those problems buys you a large
+  operational surface and a debugging story your team has not yet
+  needed. A monolith with a managed database and good telemetry
+  beats this entire diagram for most teams, most of the time.</div>
       </div>
         </div>
       </details>
