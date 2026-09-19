@@ -182,6 +182,17 @@
   .scale-note .label{ color:var(--optional); }
 
   .hld-diagram-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; margin:20px 0 4px; border:1px solid var(--hairline); border-radius:8px; background:var(--bg-deep); padding:6px; }
+  /* one-off: let a dense diagram use more horizontal room than the text column */
+  .hld-diagram-wrap.wide{ margin-left:-64px; margin-right:-64px; width:calc(100% + 128px); }
+  @media (min-width:1200px){
+    .hld-diagram-wrap.wide{ width:calc(100vw - 344px); max-width:none; margin-left:-64px; margin-right:0; }
+  }
+  @media (max-width:980px){
+    .hld-diagram-wrap.wide{ width:calc(100% + 44px); margin-left:-22px; margin-right:-22px; }
+  }
+  @media (max-width:700px){
+    .hld-diagram-wrap.wide{ width:calc(100% + 32px); margin-left:-16px; margin-right:-16px; }
+  }
   .diagram-caption{ font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); text-align:center; margin:8px 0 0; letter-spacing:.03em; }
   .flow-col{ background:var(--bg-deep); border:1px solid var(--hairline); border-radius:8px; padding:16px 18px; }
   .flow-col .flow-title{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:12px; }
@@ -580,6 +591,7 @@
       <a class="nav-link" href="#usecase-payments"><span class="num">X</span>Idempotent Payment API</a>
       <a class="nav-link" href="#usecase-auditlog"><span class="num">Y</span>Audit Logging at Scale</a>
       <a class="nav-link" href="#usecase-observability"><span class="num">Z</span>Observability &amp; Alerting</a>
+      <a class="nav-link" href="#usecase-platform"><span class="num">★</span>How It All Fits Together</a>
     </div>
 
     <div class="nav-group">
@@ -1462,8 +1474,8 @@ Local cache vs. shared cache, for a key known to run hot:
 
     <section class="section" id="usecases-intro" style="padding-bottom:0;">
       <div class="eyebrow">Worked Examples</div>
-      <h2 class="section-title">26 Systems, Run Through the Framework</h2>
-      <p style="max-width:680px;">Each one is collapsed by default — open the ones you want. They're roughly ordered from simplest to most specialised, and later examples reference earlier ones rather than repeating them.</p>
+      <h2 class="section-title">27 Systems, Run Through the Framework</h2>
+      <p style="max-width:680px;">Each one is collapsed by default — open the ones you want. They're roughly ordered from simplest to most specialised, and later examples reference earlier ones rather than repeating them. The last one assembles the platform pieces into a single architecture.</p>
       <div class="uc-controls">
         <button type="button" class="uc-btn" id="uc-expand-all">Expand all</button>
         <button type="button" class="uc-btn" id="uc-collapse-all">Collapse all</button>
@@ -9665,6 +9677,729 @@ flag on for the rest of the request.</div>
         <tr><td>Traces</td><td><span class="tool-tag">Tempo</span>, <span class="tool-tag">Jaeger</span>, or a managed APM — tail sampling typically in the collector tier</td></tr>
         <tr><td>Logs</td><td><span class="tool-tag">Loki</span> or <span class="tool-tag">OpenSearch</span>, indexed by trace id so logs join traces without correlation work</td></tr>
         <tr><td>Alerting &amp; SLOs</td><td><span class="tool-tag">Alertmanager</span> or <span class="tool-tag">PagerDuty</span>, with burn-rate rules defined as code alongside the service</td></tr>
+      </table>
+</div>
+      </div>
+        </div>
+      </details>
+    </section>
+
+
+    <section class="section" id="usecase-platform">
+      <details class="uc-details">
+        <summary class="uc-summary">
+          <div class="eyebrow">Worked Example ★ — The Assembled Platform</div>
+          <div class="usecase-head">
+            <h2 class="section-title">How It All Fits Together</h2>
+            <span class="uc-tag">north-south vs east-west · control vs data plane · one request, every hop</span>
+          </div>
+          <div class="uc-hint">Click to expand</div>
+        </summary>
+        <div class="uc-body">
+      <p style="max-width:680px;">The previous examples each solve one problem in isolation. This one assembles them: a request arrives from the internet, crosses the edge, reaches a service, that service calls another, and telemetry falls out of every hop along the way. The components are ones already covered — registry, gateway, sidecar, auth server, rate limiter, logging, observability — but the questions here are different. Who owns which decision, where does each one physically sit, what actually travels on the wire between them, and what keeps working when each piece fails.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">The seven components, one line each</div>
+          <ul class="entity-list">
+            <li><strong>Internet edge</strong> <span class="fields">before the gateway</span> — DNS, CDN, WAF and an L4 load balancer. Four hops that absorb volumetric attacks and cache static responses so the gateway only ever sees traffic worth authenticating.</li>
+            <li><strong>API Gateway</strong> <span class="fields">edge · data plane</span> — the first component that is yours. Terminates TLS, routes, authenticates the caller, applies per-consumer limits, starts the trace.</li>
+            <li><strong>Sidecar proxy</strong> <span class="fields">every pod · data plane</span> — intercepts all traffic in <em>and out</em> of one service. Service-to-service encryption, authorization, retries, per-dependency protection — and egress control for calls leaving the cluster entirely.</li>
+            <li><strong>Service Registry</strong> <span class="fields">control plane</span> — the source of truth for which instances of which service are alive right now.</li>
+            <li><strong>Authorization Server</strong> <span class="fields">control plane</span> — issues and revokes tokens, publishes the public keys used to verify them. Never on the request path.</li>
+            <li><strong>Rate Limiter</strong> <span class="fields">both planes</span> — not one component. A per-consumer quota at the edge, and a per-dependency concurrency guard in each sidecar.</li>
+            <li><strong>Telemetry Collector</strong> <span class="fields">every host · telemetry plane</span> — receives metrics, logs, and traces locally, enforces cost limits, ships onward.</li>
+            <li><strong>Observability Backends</strong> <span class="fields">telemetry plane</span> — store and query the signals; evaluate SLOs and decide what pages a human.</li>
+          </ul>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">2</div><div class="mini-body">
+          <div class="mini-title">Two axes that explain the whole picture</div>
+          <div class="req-block">
+            <span class="req-label fr">Direction — who handles this traffic</span>
+            <ul class="item-list">
+              <li><strong>North-south</strong> — traffic entering or leaving the cluster. Owned by the gateway. The caller is untrusted, the identity is a user or partner, and the job is establishing who they are before anything internal sees the request.</li>
+              <li><strong>East-west</strong> — traffic between services inside the cluster. Owned by sidecars. The caller is another service with a cryptographic identity, and the job is deciding whether that service may call this one.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Plane — is it on the request path</span>
+            <ul class="item-list">
+              <li><strong>Data plane</strong> — gateway and sidecars. Every request passes through these, so their latency is user-visible and their failure is an outage.</li>
+              <li><strong>Control plane</strong> — registry, auth server, mesh control plane. These <em>configure</em> the data plane out of band and are deliberately never called during a request.</li>
+              <li><strong>Telemetry plane</strong> — collectors and backends. Fed by the data plane asynchronously; a total outage here loses visibility, not traffic.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Nearly every "why is auth in two places?" or "don't the gateway and the sidecar do the same thing?" question resolves by locating the component on both axes at once.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">What actually travels on the wire</div>
+          <p>Three distinct identities coexist on a single request, and conflating them is the most common design error here:</p>
+          <p><span style="font-family:var(--mono)">Authorization: Bearer &lt;jwt&gt;</span> — the <strong>end user's</strong> identity, presented at the edge and verified there. It stops at the gateway.<br>
+          <span style="font-family:var(--mono)">mTLS client certificate</span> — the <strong>calling service's</strong> identity, established per hop between sidecars. Never leaves the pair of pods it connects.<br>
+          <span style="font-family:var(--mono)">x-user-id / x-user-scopes</span> — the end user's identity <strong>as a claim</strong>, propagated inward by the gateway after verification.<br>
+          <span style="font-family:var(--mono)">traceparent</span> — the correlation id, minted at the edge and carried through every subsequent hop.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — one request, every hop</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>DNS resolves to the CDN; the CDN serves what it can from cache and forwards the rest. A WAF inspects the request, and an L4 load balancer hands the connection to a gateway instance.</li>
+            <li>The gateway terminates TLS and matches a route.</li>
+            <li>The gateway applies a cheap anonymous limit, verifies the JWT against locally cached keys, then applies the per-consumer quota now that identity is known.</li>
+            <li>It mints a trace id, strips the bearer token, attaches user claims as headers, and forwards to Service A.</li>
+            <li>Service A's sidecar terminates mTLS, checks the gateway is permitted to call this service, records a span, and hands plain HTTP to the app on localhost.</li>
+            <li>Service A calls Service B by name; its own sidecar resolves that name from endpoints the control plane pushed earlier, opens mTLS to B's sidecar, and applies B's concurrency budget.</li>
+            <li>B's sidecar authorizes the call by A's certificate identity, and B's app serves it.</li>
+            <li>If B needs a third party, its sidecar handles that as <em>egress</em> — a different policy, a different failure model, outside the trust boundary.</li>
+            <li>Every proxy and app emits spans, metrics, and logs to the local collector, all stamped with the same trace id.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>Three horizontal bands — control plane above, request path in the middle, telemetry below — with solid lines only where a request actually travels.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Eight below: <strong>(a)</strong> what sits in front of the gateway, <strong>(b)</strong> where load balancing actually happens, <strong>(c)</strong> why auth and rate limiting each appear twice, <strong>(d)</strong> three identities and how each propagates, <strong>(e)</strong> egress — the sidecar's other half, <strong>(f)</strong> how a trace survives a queue, <strong>(g)</strong> what survives when each component fails, and <strong>(h)</strong> telemetry and logs.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap wide">
+        <svg viewBox="0 0 1300 640" style="width:100%; min-width:1040px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="pf-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="pf-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="pf-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="pf-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+            <marker id="pf-red" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker>
+          </defs>
+
+          <text x="18" y="26" font-family="JetBrains Mono" font-size="11" fill="#7CE0A8">CONTROL PLANE — never on the request path</text>
+          <text x="18" y="196" font-family="JetBrains Mono" font-size="11" fill="#FFD166">DATA PLANE — every request passes through</text>
+          <text x="18" y="486" font-family="JetBrains Mono" font-size="11" fill="#94B8D4">TELEMETRY PLANE — fed asynchronously</text>
+
+          <rect x="310" y="42" width="210" height="98" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.4"/>
+          <text x="415" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Auth Server</text>
+          <text x="415" y="93" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#7CE0A8">issues tokens</text>
+          <text x="415" y="111" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#7CE0A8">publishes JWKS</text>
+
+          <rect x="545" y="42" width="210" height="98" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.4"/>
+          <text x="650" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Service Registry</text>
+          <text x="650" y="93" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#7CE0A8">which instances</text>
+          <text x="650" y="111" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#7CE0A8">are alive</text>
+
+          <rect x="780" y="42" width="220" height="98" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.4"/>
+          <text x="890" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Mesh Control Plane</text>
+          <text x="890" y="93" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#7CE0A8">pushes endpoints</text>
+          <text x="890" y="111" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#7CE0A8">and policy to sidecars</text>
+
+          <rect x="18" y="270" width="110" height="72" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="73" y="300" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Client</text>
+          <text x="73" y="320" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">untrusted</text>
+
+          <rect x="150" y="215" width="150" height="180" rx="11" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="225" y="240" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Internet Edge</text>
+          <rect x="162" y="252" width="126" height="38" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1"/>
+          <text x="225" y="269" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">CDN</text>
+          <text x="225" y="283" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">cache · TLS at edge</text>
+          <rect x="162" y="296" width="126" height="38" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1"/>
+          <text x="225" y="313" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">WAF / DDoS</text>
+          <text x="225" y="327" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">L7 attack patterns</text>
+          <rect x="162" y="340" width="126" height="38" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1.2"/>
+          <text x="225" y="357" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">L4 LOAD BALANCER</text>
+          <text x="225" y="371" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">spreads CONNECTIONS</text>
+
+          <rect x="325" y="215" width="215" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-width="1.8"/>
+          <text x="432" y="242" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">API Gateway</text>
+          <text x="432" y="260" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">NORTH-SOUTH edge · an L7 proxy</text>
+          <rect x="337" y="270" width="191" height="28" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1"/>
+          <text x="432" y="288" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">IP limit → authN → quota</text>
+          <rect x="337" y="303" width="191" height="28" rx="5" fill="#0A2540" stroke="#6FE0F0" stroke-width="1"/>
+          <text x="432" y="321" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">route · start trace</text>
+          <rect x="337" y="336" width="191" height="28" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1"/>
+          <text x="432" y="354" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">L7 balance across A's pods</text>
+          <text x="432" y="382" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">strip token · add claims</text>
+
+          <rect x="565" y="215" width="215" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-width="1.6"/>
+          <text x="672" y="241" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Pod · Service A</text>
+          <rect x="577" y="252" width="191" height="74" rx="6" fill="#0A2540" stroke="#6FE0F0" stroke-width="1.1"/>
+          <text x="672" y="271" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">Sidecar — also an L7 proxy</text>
+          <text x="672" y="288" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">mTLS · authZ · retries · egress</text>
+          <text x="672" y="305" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">L7 balance across B's pods</text>
+          <rect x="577" y="334" width="191" height="52" rx="6" fill="#0A2540" stroke="#EAF4FF" stroke-opacity="0.45" stroke-width="1.1"/>
+          <text x="672" y="354" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">App — business logic,</text>
+          <text x="672" y="371" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">plain HTTP on localhost</text>
+
+          <rect x="805" y="215" width="215" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-width="1.6"/>
+          <text x="912" y="241" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Pod · Service B</text>
+          <rect x="817" y="252" width="191" height="74" rx="6" fill="#0A2540" stroke="#6FE0F0" stroke-width="1.1"/>
+          <text x="912" y="271" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">Sidecar — verifies A's</text>
+          <text x="912" y="288" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">identity, applies policy,</text>
+          <text x="912" y="305" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">gates egress outbound</text>
+          <rect x="817" y="334" width="191" height="52" rx="6" fill="#0A2540" stroke="#EAF4FF" stroke-opacity="0.45" stroke-width="1.1"/>
+          <text x="912" y="354" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">App — never sees</text>
+          <text x="912" y="371" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">TLS or tokens</text>
+
+          <rect x="1075" y="270" width="170" height="85" rx="10" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.4"/>
+          <text x="1160" y="298" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Third-Party API</text>
+          <text x="1160" y="318" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">outside your trust</text>
+          <text x="1160" y="335" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">and your control</text>
+
+          <rect x="565" y="500" width="215" height="80" rx="10" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.4"/>
+          <text x="672" y="528" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Local Collector</text>
+          <text x="672" y="548" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">batches, caps cardinality,</text>
+          <text x="672" y="565" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">samples by outcome</text>
+
+          <rect x="805" y="500" width="215" height="80" rx="10" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.4"/>
+          <text x="912" y="528" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Obs Backends</text>
+          <text x="912" y="548" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">metrics · traces · logs</text>
+          <text x="912" y="565" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">SLO rules → page</text>
+
+          <line x1="128" y1="306" x2="145" y2="306" stroke="#FF6B5E" stroke-width="1.8" marker-end="url(#pf-red)"/>
+          <line x1="300" y1="306" x2="320" y2="306" stroke="#FFD166" stroke-width="2" marker-end="url(#pf-amber)"/>
+          <text x="311" y="294" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#FFD166">1</text>
+
+          <line x1="540" y1="240" x2="560" y2="240" stroke="#FFD166" stroke-width="2" marker-end="url(#pf-amber)"/>
+          <text x="551" y="228" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#FFD166">2</text>
+
+          <line x1="780" y1="240" x2="800" y2="240" stroke="#6FE0F0" stroke-width="2" marker-end="url(#pf-cyan)"/>
+          <text x="791" y="228" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#6FE0F0">3</text>
+
+          <line x1="1020" y1="312" x2="1070" y2="312" stroke="#FF6B5E" stroke-width="1.8" marker-end="url(#pf-red)"/>
+          <text x="1045" y="336" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">4 · egress</text>
+
+          <text x="270" y="420" text-anchor="middle" font-family="Inter" font-size="10" fill="#FFD166">NORTH-SOUTH</text>
+          <text x="800" y="420" text-anchor="middle" font-family="Inter" font-size="10" fill="#6FE0F0">EAST-WEST · mTLS</text>
+
+          <text x="225" y="448" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">L4 · connections</text>
+          <text x="432" y="448" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">L7 · requests</text>
+          <text x="672" y="448" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">L7 · requests</text>
+          <text x="912" y="448" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">L7 · requests</text>
+          <text x="1160" y="448" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">three balancing layers</text>
+
+          <line x1="415" y1="140" x2="415" y2="211" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#pf-green)"/>
+          <text x="490" y="180" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">keys, cached</text>
+
+          <line x1="755" y1="91" x2="775" y2="91" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#pf-green)"/>
+
+          <path d="M 830,140 C 780,168 720,182 680,211" fill="none" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#pf-green)"/>
+          <line x1="900" y1="140" x2="890" y2="211" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#pf-green)"/>
+          <text x="1090" y="180" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">endpoints + policy</text>
+
+          <path d="M 410,395 C 424,455 520,470 562,496" fill="none" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="2 4" marker-end="url(#pf-ink)"/>
+          <line x1="672" y1="395" x2="672" y2="496" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="2 4" marker-end="url(#pf-ink)"/>
+          <path d="M 890,395 C 866,455 800,468 762,496" fill="none" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="2 4" marker-end="url(#pf-ink)"/>
+          <line x1="780" y1="540" x2="800" y2="540" stroke="#94B8D4" stroke-width="1.5" marker-end="url(#pf-ink)"/>
+          <text x="330" y="470" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">one trace id on every signal</text>
+
+          <line x1="18" y1="612" x2="48" y2="612" stroke="#FFD166" stroke-width="2.4"/>
+          <text x="54" y="616" font-family="Inter" font-size="11" fill="#9FC1E0">Request path</text>
+          <line x1="175" y1="612" x2="205" y2="612" stroke="#FF6B5E" stroke-width="2.4"/>
+          <text x="211" y="616" font-family="Inter" font-size="11" fill="#9FC1E0">Outside the trust boundary</text>
+          <line x1="420" y1="612" x2="450" y2="612" stroke="#7CE0A8" stroke-width="2.4" stroke-dasharray="5 4"/>
+          <text x="456" y="616" font-family="Inter" font-size="11" fill="#9FC1E0">Control plane push — off the hot path</text>
+          <line x1="740" y1="612" x2="770" y2="612" stroke="#94B8D4" stroke-width="2.4" stroke-dasharray="2 4"/>
+          <text x="776" y="616" font-family="Inter" font-size="11" fill="#9FC1E0">Telemetry — never blocks</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">Note the three balancing layers marked along the bottom: L4 spreads <em>connections</em> at the edge, while the gateway and every sidecar balance <em>requests</em> — a distinction that only matters until you run gRPC, at which point it matters enormously. Solid lines are the only paths a user's request travels. Everything dashed is configuration pushed <em>before</em> the request arrives, and everything dotted is telemetry emitted after — which is why an outage in the top or bottom band degrades the platform without stopping it.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col write">
+          <div class="flow-title">Crossing the edge (north-south)</div>
+          <ol>
+            <li>TLS terminates at the gateway; a route table match decides which service this is for.</li>
+            <li>A cheap anonymous IP limit runs first, then the JWT is verified against keys cached from the auth server — no call to it.</li>
+            <li>Identity is now known, so the per-consumer quota applies, and a trace id is minted.</li>
+            <li>The bearer token is <em>stripped</em>, user claims are attached as headers, and the request is forwarded inward.</li>
+          </ol>
+        </div>
+        <div class="flow-col read">
+          <div class="flow-title">Between services (east-west)</div>
+          <ol>
+            <li>Service A's app calls "service-b" by name over plain HTTP to its own sidecar on localhost.</li>
+            <li>The sidecar already holds B's endpoints, pushed by the control plane earlier, and picks one.</li>
+            <li>It opens mTLS to B's sidecar, presenting A's workload certificate, and applies A's concurrency budget for B.</li>
+            <li>B's sidecar verifies the certificate says "service-a", checks policy, and hands plain HTTP to B's app.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — what sits in front of the gateway</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice the gateway is usually drawn as the first thing traffic touches, and that it isn't. Between the client and the gateway sit several layers, each owned by someone else.</li>
+          <li>Ask what would reach the gateway without them. Every scraper, every volumetric flood, every request for a static asset — all of it arriving at the component that does the most expensive per-request work.</li>
+          <li>Order the layers by the same principle the gateway's own filter chain uses: reject as early and as cheaply as possible, and let each layer only see what the one before it couldn't handle.</li>
+          <li>Separate what each layer can actually judge. A CDN sees HTTP and can serve a cached response without any origin at all. A WAF inspects payloads for attack patterns. An L4 balancer sees only packets, so it can spread load but cannot reason about content.</li>
+          <li>Note what none of them can do: decide whether <em>this specific customer</em> is within their quota. That needs identity, which needs the token verified — so it stays at the gateway, and the layers in front exist to make sure the gateway is only asked that question for plausible traffic.</li>
+        </ol>
+        <p>Each layer in front of the gateway is cheaper per request than the one behind it, and the whole chain exists so that expensive work happens on the smallest possible share of traffic.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — five hops before your code runs</span>CLIENT
+  │ DNS resolution — often geo-aware, steering to the nearest region
+  ▼
+CDN                      caches static and cacheable responses
+  │                      absorbs most traffic without an origin call
+  │                      terminates TLS at the edge, close to the user
+  ▼
+WAF / DDoS               volumetric floods absorbed at L3/L4
+  │                      L7 attack patterns (SQLi, XSS) rejected
+  │                      bot scoring, geo blocking
+  ▼
+L4 LOAD BALANCER         spreads connections across gateway instances
+  │                      health-checks them; knows packets, not content
+  ▼
+API GATEWAY              ← the first component that is YOURS
+                         authN, per-consumer quota, routing, tracing
+
+Why the order is not arbitrary:
+  a cached CDN response costs no origin capacity at all
+  a WAF rejection costs no routing or token verification
+  an L4 decision costs no HTTP parsing
+  → by the time a request reaches the gateway, it is plausible
+    traffic for a real endpoint, which is when spending a
+    signature verification on it becomes reasonable
+
+What none of these layers can do:
+  "is customer acme within the 1,000 req/s they bought?"
+  → requires identity, which requires the verified token
+  → which is exactly why that check lives at the gateway and
+    nowhere in front of it</div>
+        <ul class="item-list">
+          <li><strong>The boundary of ownership matters more than the boundary of the network</strong> — CDN, WAF and L4 balancer are typically managed services. The gateway is usually the first hop your team can change, debug, and be paged for.</li>
+          <li><strong>The client's real IP survives only if you carry it</strong> — by the gateway, the connection's source address is the load balancer. Anything IP-based (the anonymous rate limit, geo rules, audit records) depends on a forwarded-for header the edge sets and the gateway is configured to trust from that source, and from nowhere else.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — where load balancing actually happens</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Ask the obvious question the diagram provokes: there's an L4 load balancer at the edge, so where is the L7 one?</li>
+          <li>Notice it isn't missing — it's the gateway. A gateway <em>is</em> an L7 proxy that reads HTTP and picks a backend; the policy features are bolted onto that, not separate from it.</li>
+          <li>Then notice a second one that's easy to miss entirely: when Service A calls Service B, A's sidecar chooses which instance of B receives the request. That is also L7 balancing, happening once per hop, in every pod.</li>
+          <li>Reframe accordingly — L4 and L7 aren't positions in the stack, they're capabilities, and the same traffic gets balanced several times for different reasons at different layers.</li>
+          <li>Find the distinction that actually has consequences: L4 balances <em>connections</em>, L7 balances <em>requests</em>. For short-lived HTTP/1.1 connections those are nearly the same thing.</li>
+          <li>Test that against a long-lived multiplexed protocol and it stops being nearly the same thing at all — which turns out to be one of the strongest practical arguments for a mesh existing.</li>
+        </ol>
+        <p>"Where is the L7 load balancer" has three answers in this diagram, and the interesting part is why balancing the same traffic repeatedly isn't redundant.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — three balancing layers, three different jobs</span>LAYER          WHAT IT SEES        WHAT IT BALANCES      DECIDES
+
+L4 LB          TCP packets,        CONNECTIONS across    "which gateway
+(edge)         IPs and ports       gateway instances      instance?"
+               no HTTP at all
+
+API GATEWAY    full HTTP: path,    REQUESTS across       "which service,
+(L7)           host, headers,      that service's pods    and which of
+               method                                     its pods?"
+
+SIDECAR        full HTTP, plus     REQUESTS across       "which pod of
+(L7, per pod)  the mesh's view     the callee's pods      service-b?"
+               of healthy pods
+
+Same traffic, balanced up to three times — not redundant, because each
+layer is choosing between a different set of things.
+
+THE FAILURE MODE THAT MAKES THIS MATTER — gRPC and HTTP/2
+
+  HTTP/1.1: many short connections
+    L4 balancing works fine — each new connection is a new chance
+    to pick a different backend, so load spreads naturally.
+
+  gRPC / HTTP/2: ONE long-lived connection, multiplexing
+                 hundreds of concurrent requests
+    L4 picks a backend ONCE, at connect time, and every request on
+    that connection goes there — for the life of the connection.
+
+      client ──one TCP conn──▶ [L4 LB] ──▶ pod-1   ← ALL traffic
+                                           pod-2   ← idle
+                                           pod-3   ← idle
+
+    → the balancer is working exactly as designed, and your load
+      distribution has collapsed anyway
+    → adding pods does nothing; they receive no traffic
+    → classic symptom: one pod pinned at 100% CPU while the rest
+      of the deployment sits idle, and autoscaling makes it worse
+
+  The fix is L7, which re-decides PER REQUEST:
+      app ─▶ sidecar ─┬─▶ pod-1
+                      ├─▶ pod-2     ← each request routed
+                      └─▶ pod-3       independently
+
+  This is why a mesh is frequently adopted the moment a fleet moves
+  to gRPC, and why Kubernetes Services alone (kube-proxy is
+  effectively L4) disappoint people who expect them to balance
+  gRPC traffic evenly.</div>
+        <ul class="item-list">
+          <li><strong>Watch for redundant L7 hops</strong> — a cloud ALB (L7) in front of an API gateway (L7) is two proxies doing overlapping work. Sometimes justified for TLS offload or managed WAF integration; often it's one hop of latency and one more thing to configure, collapsible into the gateway.</li>
+          <li><strong>Only the L7 layers can do the interesting algorithms</strong> — least-request, zone-aware routing, and outlier ejection all need per-request visibility. An L4 balancer can only do round-robin or hashing over connections, because a connection is the only unit it can see.</li>
+          <li><strong>The sidecar's balancing is why the registry matters at runtime</strong> — its pod list comes from the control plane, which got it from the registry. L4 at the edge is comparatively static; the per-request layer is the one that must react as pods come and go.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — why auth and rate limiting each appear twice</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice the apparent duplication: the gateway authenticates and the sidecar authorizes; the gateway rate limits and the sidecar rate limits. It looks like one job done twice.</li>
+          <li>Ask what each is protecting against, and the answers turn out to be different threats entirely — not one threat handled redundantly.</li>
+          <li>At the edge the caller is unknown and untrusted, so the question is "who are you, and are you within what you were sold." That needs a user token and a per-consumer quota.</li>
+          <li>Between services the caller was already authenticated at the edge, so the question changes to "may this <em>service</em> call that one, and is that dependency healthy enough to take more load." That needs a workload identity and a concurrency budget.</li>
+          <li>Test whether either could be dropped. Remove the sidecar layer and a compromised internal service can call anything it likes — the edge check proved a user's identity, never what a service is permitted to do.</li>
+        </ol>
+        <p>They aren't redundant layers of one control; they're different questions that happen to share a vocabulary.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the same two words, four different jobs</span>                 AT THE EDGE (gateway)          BETWEEN SERVICES (sidecar)
+
+AUTH       authN: "who is this user?"       authZ: "may service-a call
+           verify JWT signature and                service-b at all?"
+           expiry against cached JWKS       verify the mTLS workload
+                                            certificate, then check policy
+
+           identity = a person or           identity = a service, proven
+           partner application              cryptographically, per hop
+
+RATE       per-consumer QUOTA               per-dependency CONCURRENCY
+LIMIT      "this customer bought            "no more than 40 in-flight
+            1,000 req/s"                     calls to service-b from here"
+           a commercial construct           a stability construct —
+           → 429 Too Many Requests          the bulkhead from example S
+                                            → shed fast, protect the caller
+
+Drop the edge layer    → anyone calls anything, no commercial control
+Drop the sidecar layer → one compromised service reaches every other,
+                         and one slow dependency stalls all its callers</div>
+        <ul class="item-list">
+          <li><strong>The sidecar layer is what makes "zero trust" concrete</strong> — being inside the network grants nothing, because every hop is independently authenticated and authorized regardless of where it originated.</li>
+          <li><strong>Neither layer calls a remote service to decide</strong> — the gateway uses cached keys, the sidecar uses pushed policy. Both checks are local, which is what keeps them off the latency budget.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — three identities, propagated three different ways</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the tempting simplification: verify the user's token at the edge and forward it inward, so every service knows who the user is.</li>
+          <li>Trace what that token becomes once inside. It's a credential any internal service can replay against any other service that accepts it — the confused deputy problem from the MCP example, now fleet-wide.</li>
+          <li>Separate the two things the token was doing. Proving the user's identity is one job; authorizing this specific hop is another, and only the first needs to travel.</li>
+          <li>Strip the token at the edge and forward the verified claims instead. Downstream services learn who the user is without holding anything they could replay.</li>
+          <li>Give the hop its own identity, independent of the user: a workload certificate issued to the service, verified per connection.</li>
+          <li>Add the third identity, which isn't security at all — the trace id, which must survive every hop unchanged so the telemetry plane can stitch the request back together.</li>
+        </ol>
+        <p>Three identities answer three different questions, and the design error is letting one of them try to answer all three.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — what each hop carries</span>CLIENT → GATEWAY
+  Authorization: Bearer eyJhbGci...        ← the USER's identity
+  → verified against cached JWKS, then STRIPPED. Goes no further.
+
+GATEWAY → SERVICE A        (mTLS: gateway-identity → service-a)
+  x-user-id: u_8831                        ← user identity, as a CLAIM
+  x-user-scopes: invoices:read
+  traceparent: 00-4bf92f...-00f067...-01   ← correlation, minted here
+  (no Authorization header — deliberately)
+
+SERVICE A → SERVICE B      (mTLS: service-a → service-b)
+  x-user-id: u_8831                        ← same claim, passed along
+  x-user-scopes: invoices:read
+  traceparent: 00-4bf92f...-b7ad6b...-01   ← same TRACE id, new SPAN id
+  (mTLS proves it is service-a; nothing about the user is re-proven)
+
+Why the token stops at the edge:
+  forwarded → every service holds a replayable user credential, and
+              any one of them can act as that user anywhere
+  stripped  → services know WHO the user is, and hold nothing they
+              could present elsewhere
+
+The trade: downstream services must TRUST the gateway's claims. That
+trust is only sound because the sidecar verified the connection came
+from the gateway — which is why the mesh layer is load-bearing rather
+than decorative.</div>
+        <ul class="item-list">
+          <li><strong>Claims must be un-spoofable, which the sidecar provides</strong> — a header is trivially forged by anything that can reach the service, so the guarantee comes from mTLS proving the sender is the gateway, not from the header itself.</li>
+          <li><strong>The trace id is the only thing that never changes</strong> — span ids differ per hop and identities differ per hop, but one trace id spans the whole request, and that is what lets a metric spike lead to a log line.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — egress, the sidecar's other half</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice the sidecar has been described entirely in terms of inbound and east-west traffic, and that it necessarily sees outbound traffic too — a service calling a payment processor goes through it just the same.</li>
+          <li>Ask what changes when the destination is outside the cluster. Every assumption the mesh relies on breaks: no workload certificate to verify, no pushed endpoints, no control over their latency or their uptime.</li>
+          <li>Recognise what that makes egress: not "east-west with a longer network path" but a third traffic class with its own rules, which is why it deserves its own policy rather than inheriting internal defaults.</li>
+          <li>Find the security property worth having. If all outbound traffic must pass a sidecar that enforces an allow-list, a compromised service cannot exfiltrate to an arbitrary host — the proxy simply refuses a destination nobody approved.</li>
+          <li>Apply the resilience patterns that already exist elsewhere, since an external dependency is the most likely thing in the system to be slow: timeouts, circuit breaking, and a concurrency budget, exactly as with an internal dependency but tuned far more conservatively.</li>
+        </ol>
+        <p>Egress is the traffic class most often left undesigned, and it's the one where the caller has the least control and the most exposure.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — three traffic classes, three sets of rules</span>                 INBOUND (n-s)   EAST-WEST        EGRESS
+                 client → you    you ↔ you        you → them
+
+who they are     user token      mTLS workload    a TLS server cert
+                 at the gateway  certificate      you did not issue
+
+endpoints from   route config    mesh control     DNS you don't control
+                                 plane push
+
+if it is slow    they wait       your bulkhead    THEIR problem becomes
+                                 sheds load       YOUR outage unless you
+                                                  bound it aggressively
+
+policy question  "who are you?"  "may A call B?"  "may ANY service reach
+                                                   this host at all?"
+
+Egress allow-list, enforced by the sidecar:
+
+  service-b  →  api.stripe.com:443       ALLOW
+  service-b  →  api.partner.example:443  ALLOW
+  service-b  →  *                        DENY
+
+  → a compromised service-b cannot post your data to an arbitrary
+    host, because its own proxy refuses to open the connection
+  → every external dependency becomes a declared, reviewable fact
+    instead of whatever a library decided to call
+
+Tune external calls far more conservatively than internal ones:
+  internal timeout  ~200ms, retry twice
+  external timeout  ~2s,    retry ONCE and only if idempotent
+  → the payment example's compensation logic exists precisely
+    because a retried external call is not free</div>
+        <ul class="item-list">
+          <li><strong>A dedicated egress gateway is the common escalation</strong> — routing all outbound traffic through a small set of nodes gives you a stable set of source IPs to give partners for their allow-lists, and one place to hold outbound credentials.</li>
+          <li><strong>Retrying egress is a correctness question, not a latency one</strong> — an internal read can be retried freely; a charge cannot. Which is why the idempotency keys from the payment example are what make an external retry safe at all.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — how a trace survives a queue</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice everything described so far is synchronous request-response, and that a real platform does a large share of its work through queues instead.</li>
+          <li>Ask what the sidecar can do for a message on a queue. Very little — it proxies connections, and the producer's connection to the broker ends long before the consumer's begins. There is no hop for it to sit in.</li>
+          <li>Follow what that costs. The trace ends at the producer, the user's identity ends at the producer, and the consumer starts with a message and no context at all.</li>
+          <li>Recognise why this hurts most exactly where it's hardest: a failure in the consumer is disconnected from the request that caused it, so nobody can answer "which user action led to this."</li>
+          <li>Carry the context inside the message rather than around it. Trace context and the acting user become message headers, written by the producer and read by the consumer to continue the same trace.</li>
+          <li>Be precise about what the consumer's span is. It is not a child running concurrently with the producer's — it runs later, after the parent has finished, which is a link between traces rather than ordinary nesting.</li>
+        </ol>
+        <p>The mesh's guarantees are per-connection, and a queue deliberately breaks the connection. Everything the sidecar provided for free has to be re-established in the message payload itself.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — what a message must carry that a connection gave you free</span>SYNCHRONOUS HOP — the sidecar handles all of it
+  service-a ──mTLS──▶ service-b
+    identity  : proven by certificate, per connection
+    trace     : traceparent header, forwarded automatically
+    authZ     : policy evaluated at connect time
+
+ACROSS A QUEUE — the connection ends; nothing is carried for you
+  service-a ──▶ [ topic ] ──▶ service-c   (minutes later, maybe)
+    identity  : no connection, so no certificate. Gone.
+    trace     : producer's span ended at publish. Gone.
+    authZ     : broker ACLs govern who may publish or consume a
+                TOPIC — not which user the message concerns
+
+So the message carries it explicitly:
+
+  headers:
+    traceparent:  00-4bf92f3577b34da6-a1b2c3d4-01   ← same TRACE id
+    x-user-id:    u_8831                            ← who it is FOR
+    x-user-scopes: invoices:read
+  payload:
+    { "invoice_id": "inv_991", ... }
+
+  consumer reads traceparent → starts a span LINKED to that trace
+  → one trace now spans the API request AND the work it triggered,
+    minutes apart, across services that never shared a connection
+
+Two things worth stating plainly:
+
+  1. The consumer's span is a LINK, not a child. The parent finished
+     long ago; they are causally related, not concurrent. Treating
+     it as a normal child produces traces with impossible durations.
+
+  2. A message header is NOT proof. On a connection, mTLS proved who
+     the sender was. Here, x-user-id is an assertion by whoever
+     published — which is only trustworthy because broker ACLs
+     control who may publish to that topic at all.</div>
+        <ul class="item-list">
+          <li><strong>Publish inside the transaction, or the trace lies</strong> — the outbox pattern from the payment and audit examples applies directly. A message published after a commit that then fails leaves a trace showing work that was never actually caused.</li>
+          <li><strong>Consumer lag is the metric with no synchronous equivalent</strong> — there is no caller waiting and timing out, so a stalled consumer produces no errors and no latency alert. Lag is the symptom, and it needs an SLO of its own.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — what survives when each component fails</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Take the separation of planes seriously and test it, rather than treating it as a diagram convention.</li>
+          <li>Go component by component and ask the same question: if this is completely down, can a user's request still be served?</li>
+          <li>Notice the pattern that emerges — every control-plane component was made survivable by the same technique, which is caching its output in the data plane ahead of time.</li>
+          <li>Name what that costs. Cached data goes stale, so each component accepts a staleness window in exchange for not being a hard dependency.</li>
+          <li>Find the components where the honest answer is "traffic stops," and confirm those are the ones mitigated by redundancy instead.</li>
+        </ol>
+        <p>The recurring move across every example on this page shows up here as one property of the assembled system: the request path holds a local copy of everything it needs, so the systems that produce that information can fail without stopping traffic.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — failure by component</span>AUTH SERVER DOWN
+  → gateway keeps verifying tokens with cached JWKS
+  → existing tokens work; NEW tokens cannot be issued
+  → degraded at the edges, traffic flows
+
+SERVICE REGISTRY DOWN
+  → sidecars keep using last-pushed endpoints
+  → existing instances reachable; scale-up is invisible until it returns
+  → this is WHY the registry is AP rather than CP (example R)
+
+MESH CONTROL PLANE DOWN
+  → sidecars keep the config they already hold and keep proxying
+  → policy changes do not propagate; traffic is unaffected
+
+TELEMETRY COLLECTOR DOWN
+  → the app's writes fail fast locally and are buffered or dropped
+  → you lose VISIBILITY, not traffic — and losing it during an
+    incident is exactly when it hurts, hence local buffering
+
+OBS BACKENDS DOWN
+  → collectors buffer; alerting is blind
+  → the real risk is an outage nobody is paged for
+
+SIDECAR DOWN (one pod)
+  → that pod is unreachable; the registry evicts it and callers
+    route around it — an ordinary instance failure
+
+GATEWAY DOWN (all instances)
+  → external traffic STOPS. There is no cache that saves you.
+  → the genuine single point of failure, which is why it is stateless,
+    horizontally scaled and multi-AZ — mitigated by redundancy,
+    because it cannot be mitigated by caching</div>
+        <ul class="item-list">
+          <li><strong>The asymmetry is deliberate</strong> — control plane failures degrade <em>change</em> (new tokens, new endpoints, new policy) while leaving <em>steady state</em> working, and steady state is the overwhelming majority of the time.</li>
+          <li><strong>Staleness windows should be explicit, not incidental</strong> — how long a sidecar keeps stale endpoints, or a gateway keeps stale keys, is a decision to make deliberately rather than a value someone left at its default.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — telemetry and logs through every hop</span>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the question an on-call engineer actually asks: this request was slow — which hop caused it?</li>
+          <li>Recognise what answering that requires: every component the request touched must emit a signal, and those signals must be joinable after the fact.</li>
+          <li>Find the cheapest place to get most of it for free. The sidecar already sees every byte in and out of its service, so it can emit latency, status and a span without the application being modified at all.</li>
+          <li>Identify what the sidecar genuinely cannot know — why a request was slow <em>inside</em> the app — and accept that in-process instrumentation is needed for that layer specifically.</li>
+          <li>Make the signals joinable by propagating one trace id from the edge through every hop, so proxy spans, app spans and log lines share a key.</li>
+          <li>Keep it off the hot path: everything goes to a local collector that batches and ships, so no application ever waits on a telemetry backend.</li>
+        </ol>
+        <p>The sidecar turns observability from something every team must implement into something the platform provides by default — with a clearly bounded gap that in-process instrumentation fills.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — one trace, assembled from every layer</span>trace 4bf92f3577b34da6
+
+  span 1  gateway             212ms   ← from the gateway itself
+          route match, authN, quota
+  span 2  sidecar-a inbound   208ms   ← FREE, from the proxy
+  span 3  service-a app       205ms   ← in-process instrumentation
+  span 4  sidecar-a outbound  190ms   ← FREE
+  span 5  sidecar-b inbound   188ms   ← FREE
+  span 6  service-b app       185ms   ← in-process
+  span 7    └─ db query       180ms   ← in-process. THE CULPRIT.
+
+Spans 2, 4 and 5 cost the application teams nothing — the proxy is
+already in the path, so latency, status codes and retries come for
+free across every service in the fleet, in a consistent format.
+
+What the sidecar CANNOT see:
+  which SQL statement was slow, which code path was taken, what a
+  cache hit ratio was. Proxy telemetry tells you WHICH HOP; only
+  in-process instrumentation tells you WHY.
+
+The chain that makes it work:
+  gateway mints the trace id → forwards it in traceparent
+  → sidecar reads it, emits its span under it, forwards unchanged
+  → app reads it, emits its span, attaches it to every log line
+  → all three signals join on one key in the backend</div>
+        <p style="margin-top:14px;">Logs deserve separating out, because they're the one signal the sidecar mostly can't produce for you, and the one with obligations the other two don't have.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — what makes a log line useful rather than just present</span>UNSTRUCTURED — grep-only, joins to nothing
+  2026-09-19 08:14:22 ERROR failed to charge customer 5567: timeout
+
+STRUCTURED — queryable, and joins to the trace above
+  {
+    "ts":       "2026-09-19T08:14:22.118Z",
+    "level":    "error",
+    "service":  "service-b",
+    "trace_id": "4bf92f3577b34da6",   ← THE join key
+    "span_id":  "b7ad6b7169203331",
+    "user_id":  "u_8831",
+    "event":    "charge_failed",
+    "reason":   "processor_timeout",
+    "invoice":  "inv_991"
+  }
+
+  → filter by level, service, or event without regex
+  → one trace_id pivots from a latency spike to this exact line
+  → aggregate "how often is charge_failed happening" as a metric
+
+Three rules that matter more at fleet scale than in one service:
+
+  LEVELS ARE A BUDGET      debug in production is a cost decision,
+                           not a preference. Sample or disable it
+                           per service, and raise it temporarily
+                           during an incident.
+
+  NEVER LOG SECRETS        tokens, card numbers, passwords. A log
+                           OR PERSONAL DATA CASUALLY — logs are
+                           replicated, widely readable, and retained,
+                           which makes them the least guarded place
+                           personal data accumulates. Log an id; put
+                           the detail in the audited store from
+                           example Y, where erasure is possible.
+
+  LOGS FOLLOW THE TRACE    full fidelity for sampled traces,
+                           aggressive sampling for everything else —
+                           detail exactly where an investigation
+                           will go looking for it.</div>
+        <ul class="item-list">
+          <li><strong>Consistency is the underrated benefit</strong> — sidecar-emitted metrics carry identical names and labels across every service in the fleet, so a dashboard works for a service the team that built it has never seen.</li>
+          <li><strong>The collector is where cost is controlled</strong> — the cardinality caps and outcome-based sampling from example Z apply to this combined firehose, which is larger than any single service's output.</li>
+          <li><strong>Audit logs are not application logs</strong> — they look similar and have opposite requirements. Application logs are disposable, sampled, and short-lived; audit entries are evidence, must never be lost, and are governed by the retention and erasure rules from example Y. Keeping them in one pipeline gets one of the two wrong.</li>
+        </ul>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Responsibility map</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:24%">Component</th><th style="width:20%">Plane · position</th><th>Owns</th></tr>
+        <tr><td>CDN · WAF · L4 LB</td><td>Data · internet edge</td><td>Caching, volumetric and L7 attack absorption, and spreading <em>connections</em> across gateway instances — everything rejectable before identity is known. Usually managed services, not yours to debug</td></tr>
+        <tr><td>API Gateway</td><td>Data · edge (north-south)</td><td>An L7 proxy: TLS termination, routing, <em>per-request</em> balancing across a service's pods, user authN, per-consumer quota, trace origination, token stripping and claim injection</td></tr>
+        <tr><td>Sidecar proxy</td><td>Data · every pod (east-west)</td><td>Also an L7 proxy: mTLS both directions, service-to-service authZ, <em>per-request</em> balancing across the callee's pods, retries, per-dependency budgets, egress allow-listing, free telemetry</td></tr>
+        <tr><td>Service Registry</td><td>Control</td><td>Which instances are alive; consumed by the mesh control plane, never called during a request</td></tr>
+        <tr><td>Auth Server</td><td>Control</td><td>Token issuance and revocation, JWKS publication; cached by the gateway so it stays off the request path</td></tr>
+        <tr><td>Rate limiting</td><td>Both</td><td>Commercial quota at the edge; stability-oriented concurrency budgets in the sidecars — different constructs sharing a name</td></tr>
+        <tr><td>Message broker</td><td>Data · async</td><td>Carries work across a connection boundary — which means trace context and acting user must travel in the message, because the sidecar cannot follow them there</td></tr>
+        <tr><td>Collector</td><td>Telemetry · every host</td><td>Local buffering, cardinality caps, sampling decisions — the cost control point</td></tr>
+        <tr><td>Obs backends</td><td>Telemetry</td><td>Storage and query for metrics, traces and logs; SLO evaluation and paging decisions</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs of the assembled platform</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Sidecar per pod vs. a library in each service</td><td>Language-agnostic, upgradeable without touching application code, and telemetry comes free — at the cost of a proxy process per pod, its memory and latency overhead, and a harder debugging story when the proxy itself misbehaves.</td></tr>
+        <tr><td>Strip the user token at the edge vs. forward it inward</td><td>No internal service holds a replayable user credential, at the cost of downstream services having to trust gateway-asserted claims — which only holds because mTLS proves those claims came from the gateway.</td></tr>
+        <tr><td>Cache everything in the data plane vs. query the control plane live</td><td>Control plane outages degrade change rather than stopping traffic, at the cost of every cached thing having a staleness window that must be chosen deliberately.</td></tr>
+        <tr><td>A gateway at all vs. exposing services directly</td><td>One consistent place for auth, quota and observability, at the cost of a genuine single point of failure that only redundancy can mitigate — no cache saves you if every gateway instance is down.</td></tr>
+        <tr><td>Per-request L7 balancing in sidecars vs. relying on L4 alone</td><td>Load actually spreads for gRPC and HTTP/2, and enables least-request and outlier ejection — at the cost of a proxy in every pod that must hold and refresh an accurate view of every callee's endpoints.</td></tr>
+        <tr><td>Egress through a sidecar allow-list vs. letting services call out freely</td><td>A compromised service can't exfiltrate to an arbitrary host, and every external dependency becomes a declared fact — at the cost of a list that must be maintained, and an outage shaped like "we forgot to allow-list the new vendor."</td></tr>
+        <tr><td>Propagating context through messages vs. accepting broken traces</td><td>One trace spans an API request and the async work it triggered, at the cost of producers and consumers both having to handle headers correctly — and a header that is an assertion rather than the proof mTLS gave you.</td></tr>
+        <tr><td>This whole architecture vs. a monolith</td><td>Independent deploys, per-service scaling and blast-radius containment — at the cost of every piece above. Worth stating plainly: a small team serving modest traffic will ship faster without any of it.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">What this looks like in practice</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Common real-world choices</th></tr>
+        <tr><td>Gateway</td><td><span class="tool-tag">Envoy</span>, <span class="tool-tag">Kong</span>, <span class="tool-tag">NGINX</span>, or a cloud-managed API gateway</td></tr>
+        <tr><td>Sidecar &amp; mesh</td><td><span class="tool-tag">Istio</span> or <span class="tool-tag">Linkerd</span> — Envoy sidecars with a control plane speaking xDS</td></tr>
+        <tr><td>Registry / discovery</td><td><span class="tool-tag">Kubernetes</span> Services and Endpoints backed by <span class="tool-tag">etcd</span>; <span class="tool-tag">Consul</span> outside Kubernetes</td></tr>
+        <tr><td>Workload identity</td><td><span class="tool-tag">SPIFFE</span>/<span class="tool-tag">SPIRE</span>, or the mesh's built-in certificate authority</td></tr>
+        <tr><td>Auth server</td><td><span class="tool-tag">Keycloak</span>, <span class="tool-tag">Auth0</span>, <span class="tool-tag">Okta</span></td></tr>
+        <tr><td>Telemetry</td><td><span class="tool-tag">OpenTelemetry</span> Collector into <span class="tool-tag">Prometheus</span>, <span class="tool-tag">Tempo</span> and <span class="tool-tag">Loki</span> — or a managed APM</td></tr>
       </table>
 </div>
       </div>
