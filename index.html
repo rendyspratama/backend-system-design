@@ -9698,6 +9698,13 @@ flag on for the rest of the request.</div>
         <div class="uc-body">
       <p style="max-width:680px;">"Design the platform layer a few hundred microservices run on — the shared infrastructure every team inherits rather than builds." The components are ones already covered individually: registry, gateway, sidecar, auth server, rate limiter, logging, observability. What's different here is that they have to work as one system, which raises questions none of the individual examples could answer. Who owns which decision, where does each component physically sit, what actually travels on the wire between them, and what keeps working when each piece fails. The spine of the answer is a single request traced from the internet to a database and back.</p>
 
+      <div class="subsection-box" style="margin:14px 0 0; padding:14px 18px;">
+        <div style="font-family:var(--mono); font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:9px;">What's in this example</div>
+        <p style="margin:0 0 8px; font-size:13px;"><strong style="color:var(--marker);">Orientation</strong> — the components and the two axes, then the diagram, then how to read it.</p>
+        <p style="margin:0 0 8px; font-size:13px;"><strong style="color:var(--optional);">One real request</strong> — <span style="font-family:var(--mono)">GET /profile</span> traced end to end, including what the control plane did <em>before</em> it.</p>
+        <p style="margin:0; font-size:13px;"><strong style="color:var(--accent);">Ten deep dives</strong> — the edge chain · load balancing · auth and limits appearing twice · three identities · egress · async boundaries · retry cascades · deploys and certificates · what survives a failure · telemetry and logs.</p>
+      </div>
+
       <div class="mini-steps">
         <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
           <div class="mini-title">The seven components, one line each</div>
@@ -9706,11 +9713,12 @@ flag on for the rest of the request.</div>
             <li><strong>API Gateway</strong> <span class="fields">edge · data plane · ingress</span> — the first component that is yours, and the ingress point itself rather than something sitting behind one. Terminates TLS, routes, authenticates the caller, applies per-consumer limits, starts the trace.</li>
             <li><strong>Sidecar proxy</strong> <span class="fields">every pod · data plane</span> — intercepts all traffic in <em>and out</em> of one service. Service-to-service encryption, authorization, retries, per-dependency protection — and egress control for calls leaving the cluster entirely.</li>
             <li><strong>Service Registry</strong> <span class="fields">control plane</span> — the source of truth for which instances of which service are alive right now.</li>
-            <li><strong>Mesh Control Plane</strong> <span class="fields">control plane</span> — computes endpoints, traffic and authZ policy, and workload certificates, then pushes them to every sidecar. Together with those sidecars it <em>is</em> the service mesh — the one component spanning two planes.</li>
+            <li><strong>Mesh Control Plane</strong> <span class="fields">control plane</span> — computes endpoints, traffic and authZ policy, then pushes them to every sidecar. It is also <strong>the mesh's certificate authority</strong> — the thing that signs every service's identity certificate. That matters because mTLS only proves anything if a trusted party vouched for the certificate: Service B's sidecar believes "this caller is service-a" precisely because the control plane signed that claim, and it reissues those certificates continuously as they expire. Together with those sidecars it <em>is</em> the service mesh — the one component spanning two planes.</li>
             <li><strong>Authorization Server</strong> <span class="fields">control plane</span> — issues and revokes tokens, publishes the public keys used to verify them. Never on the request path.</li>
             <li><strong>Rate Limiter</strong> <span class="fields">both planes</span> — not one component. A per-consumer quota at the edge, and a per-dependency concurrency guard in each sidecar.</li>
             <li><strong>Telemetry Collector</strong> <span class="fields">every host · telemetry plane</span> — receives metrics, logs, and traces locally, enforces cost limits, ships onward.</li>
             <li><strong>Observability Backends</strong> <span class="fields">telemetry plane</span> — store and query the signals; evaluate SLOs and decide what pages a human.</li>
+            <li><strong>Platform Team / CI</strong> <span class="fields">where configuration comes from</span> — the only humans in the diagram. Every policy the control plane distributes was authored here and applied as config, which is why the box is drawn dashed: it isn't a running service, it's the origin of everything the control plane pushes.</li>
           </ul>
         </div></div>
         <div class="mini-step"><div class="badge-hatch sm amber">2</div><div class="mini-body">
@@ -9778,6 +9786,12 @@ flag on for the rest of the request.</div>
           <text x="18" y="196" font-family="JetBrains Mono" font-size="11" fill="#FFD166">DATA PLANE — every request passes through</text>
           <text x="18" y="486" font-family="JetBrains Mono" font-size="11" fill="#94B8D4">TELEMETRY PLANE — fed asynchronously</text>
 
+          <rect x="30" y="42" width="250" height="98" rx="10" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.4" stroke-dasharray="6 4"/>
+          <text x="155" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Platform Team / CI</text>
+          <text x="155" y="88" text-anchor="middle" font-family="Inter" font-size="10" fill="#94B8D4">the only humans in this</text>
+          <text x="155" y="104" text-anchor="middle" font-family="Inter" font-size="10" fill="#94B8D4">diagram — they author policy,</text>
+          <text x="155" y="120" text-anchor="middle" font-family="Inter" font-size="10" fill="#94B8D4">routes, scopes, canary weights</text>
+
           <rect x="310" y="42" width="210" height="98" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.4"/>
           <text x="415" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Auth Server</text>
           <text x="415" y="93" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#7CE0A8">issues tokens</text>
@@ -9789,9 +9803,10 @@ flag on for the rest of the request.</div>
           <text x="650" y="111" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#7CE0A8">are alive</text>
 
           <rect x="780" y="42" width="220" height="98" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.4"/>
-          <text x="890" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Mesh Control Plane</text>
-          <text x="890" y="93" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#7CE0A8">pushes endpoints</text>
-          <text x="890" y="111" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#7CE0A8">and policy to sidecars</text>
+          <text x="890" y="66" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Mesh Control Plane</text>
+          <text x="890" y="86" text-anchor="middle" font-family="Inter" font-size="10" fill="#7CE0A8">pushes endpoints + policy</text>
+          <text x="890" y="104" text-anchor="middle" font-family="Inter" font-size="10" fill="#7CE0A8">signs every service's identity</text>
+          <text x="890" y="120" text-anchor="middle" font-family="Inter" font-size="10" fill="#7CE0A8">certificate, and rotates it</text>
 
           <rect x="18" y="270" width="110" height="72" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
           <text x="73" y="300" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Client</text>
@@ -9820,8 +9835,10 @@ flag on for the rest of the request.</div>
           <text x="432" y="354" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">L7 balance across A's pods</text>
           <text x="432" y="382" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">strip token · add claims</text>
 
+          <rect x="577" y="203" width="191" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-opacity="0.32" stroke-width="1.2"/>
+          <rect x="571" y="209" width="203" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-opacity="0.55" stroke-width="1.3"/>
           <rect x="565" y="215" width="215" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-width="1.6"/>
-          <text x="672" y="241" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Pod · Service A</text>
+          <text x="672" y="241" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Pod · Service A ×6</text>
           <rect x="577" y="252" width="191" height="74" rx="6" fill="#0A2540" stroke="#6FE0F0" stroke-width="1.1"/>
           <text x="672" y="271" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">Sidecar — also an L7 proxy</text>
           <text x="672" y="288" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">mTLS · authZ · retries · egress</text>
@@ -9830,8 +9847,10 @@ flag on for the rest of the request.</div>
           <text x="672" y="354" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">App — business logic,</text>
           <text x="672" y="371" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">plain HTTP on localhost</text>
 
+          <rect x="817" y="203" width="191" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-opacity="0.32" stroke-width="1.2"/>
+          <rect x="811" y="209" width="203" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-opacity="0.55" stroke-width="1.3"/>
           <rect x="805" y="215" width="215" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-width="1.6"/>
-          <text x="912" y="241" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Pod · Service B</text>
+          <text x="912" y="241" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Pod · Service B ×4</text>
           <rect x="817" y="252" width="191" height="74" rx="6" fill="#0A2540" stroke="#6FE0F0" stroke-width="1.1"/>
           <text x="912" y="271" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">Sidecar — verifies A's</text>
           <text x="912" y="288" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">identity, applies policy,</text>
@@ -9891,6 +9910,10 @@ flag on for the rest of the request.</div>
 
           <line x1="755" y1="91" x2="775" y2="91" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#pf-green)"/>
 
+          <line x1="280" y1="86" x2="306" y2="86" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="3 3" marker-end="url(#pf-ink)"/>
+          <path d="M 280,122 C 470,172 700,176 884,146" fill="none" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="3 3" marker-end="url(#pf-ink)"/>
+          <text x="638" y="184" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">policy, routes, weights</text>
+
           <path d="M 830,140 C 780,168 720,182 680,211" fill="none" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#pf-green)"/>
           <line x1="900" y1="140" x2="890" y2="211" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#pf-green)"/>
           <text x="1090" y="180" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">endpoints + policy</text>
@@ -9911,7 +9934,7 @@ flag on for the rest of the request.</div>
           <text x="776" y="616" font-family="Inter" font-size="11" fill="#9FC1E0">Telemetry — never blocks</text>
         </svg>
       </div>
-      <div class="diagram-caption">Note the three balancing layers marked along the bottom: L4 spreads <em>connections</em> at the edge, while the gateway and every sidecar balance <em>requests</em> — a distinction that only matters until you run gRPC, at which point it matters enormously. Solid lines are the only paths a user's request travels. Everything dashed is configuration pushed <em>before</em> the request arrives, and everything dotted is telemetry emitted after — which is why an outage in the top or bottom band degrades the platform without stopping it.</div>
+      <div class="diagram-caption">Each service is drawn as a <em>stack</em> because every one of them runs several pods — which is the thing the L7 layers are choosing between, and the reason the gRPC pinning problem below is a problem at all. Note the three balancing layers marked along the bottom: L4 spreads <em>connections</em> at the edge, while the gateway and every sidecar balance <em>requests</em> — a distinction that only matters until you run gRPC, at which point it matters enormously. Solid lines are the only paths a user's request travels. Everything dashed is configuration pushed <em>before</em> the request arrives, and everything dotted is telemetry emitted after — which is why an outage in the top or bottom band degrades the platform without stopping it.</div>
       <div class="subsection-box" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">Reading the diagram — three things it doesn't label</h3>
         <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Three questions this picture reliably provokes, because the answer in each case is "that isn't a box."</p>
@@ -10003,88 +10026,145 @@ neither is during a request:
 
       <div class="subsection-box" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">One real request, start to finish — <span style="font-family:var(--mono)">GET /profile</span></h3>
-        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Everything above describes components. This follows a single request through all of them, in order, in plain language — a user opening their profile page, where Service A owns profiles and calls Service B for billing status.</p>
+        <p class="tight" style="font-size:12.5px; margin-bottom:14px;">A user opens their profile page. Service A owns profiles and calls Service B for billing status. Told in four parts: what happened <em>before</em> the request, the edge, the mesh, and the way back.</p>
 
-        <div class="example-panel" style="margin:0 0 14px;"><span class="label">The journey — nine hops, roughly 40ms</span>WHAT THE USER DID
-  tapped "My Profile" in the app
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--optional); margin:0 0 8px;">Part 0 · Before the request — where the control plane did its work</div>
+        <p style="margin:0 0 10px; font-size:13.5px;">This is the part the walkthrough below makes invisible, and the reason the control plane looks absent: <strong>every one of those components acted before the user tapped anything.</strong></p>
+        <div class="example-panel" style="margin:0 0 16px;"><span class="label">A timeline, counting backwards from the tap</span>T-14 days   PLATFORM TEAM / CI
+            Authored the route for /v1/profile, the policy saying
+            "gateway may call service-a, service-a may call service-b",
+            the scopes, and the canary weights. Applied as config.
 
-  GET https://api.example.com/v1/profile
-  Authorization: Bearer eyJhbGci...        ← they logged in hours ago
+T-3 hours   AUTH SERVER
+            The user logged in. It issued their token, signed with its
+            private key.
+            ← the ONLY moment the auth server touches this user.
+              It will not be consulted again for this request or any
+              other until that token expires.
 
+T-2 hours   API GATEWAY  ← pulled, not pushed
+            Refreshed its cached copy of the auth server's PUBLIC keys
+            (JWKS). Refreshes again on a timer, regardless of traffic.
 
-①  DNS → CDN                                                    ~0ms
-   "Is this cacheable?" No — it's personal data. Pass it through.
+T-45 min    MESH CONTROL PLANE  (acting as the CA)
+            Issued service-a and service-b their identity certificates.
+            Each sidecar holds one and will be handed a fresh one
+            before it expires.
+
+T-30 sec    SERVICE REGISTRY
+            service-b's pods heartbeat continuously. One pod was
+            replaced 30 seconds ago; the registry now lists the new
+            one and has dropped the old.
+
+T-25 sec    MESH CONTROL PLANE
+            Noticed that registry change and pushed an updated endpoint
+            list to every sidecar that talks to service-b — including
+            service-a's.
+
+T-0         The user taps "My Profile".
+
+            From this instant on, NOTHING above is contacted.
+            Every decision in the request below is made from data
+            that already arrived.</div>
+
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--marker); margin:0 0 8px;">Part 1 · Crossing the edge — hops ① to ④</div>
+        <div class="example-panel" style="margin:0 0 16px;"><span class="label">Outside your infrastructure, then the first component that's yours</span>  GET https://api.example.com/v1/profile
+  Authorization: Bearer eyJhbGci...     ← the token from T-3 hours
+
+①  DNS → CDN                                              ~0ms
+   "Cacheable?" No — personal data. Pass through.
    TLS terminates here, close to the user.
 
-②  WAF                                                          ~1ms
+②  WAF                                                    ~1ms
    "Does this look like an attack?" No. Pass.
 
-③  L4 LOAD BALANCER                                             ~0ms
-   "Which gateway instance?" Picks one. It only sees packets —
+③  L4 LOAD BALANCER                                       ~0ms
+   "Which gateway instance?" Picks one. It sees packets only —
    it has no idea this is a profile request.
 
-④  API GATEWAY                                                  ~3ms
-   Now something actually reads the HTTP.
+④  API GATEWAY                                            ~3ms
+   The first component that reads the HTTP, and the first one
+   you operate.
 
-   a. anonymous IP limit  — cheap, runs first. Under the limit. OK.
-   b. verify the token    — checks the signature using keys it
-                            cached earlier. Does NOT call the auth
-                            server. Token is valid, user is u_8831.
-   c. per-consumer quota  — now that it knows WHO, checks their
-                            quota. Fine.
-   d. route               — /v1/profile belongs to service-a.
-   e. pick a pod          — L7 choice across service-a's 6 pods.
-   f. start the trace     — mints trace id 4bf92f...
-   g. REWRITE the request:
-        ✗ Authorization: Bearer ...   ← REMOVED. Goes no further.
-        ✓ x-user-id: u_8831           ← added
+   a. anonymous IP limit  cheap, runs first. Under the limit.
+   b. verify the token    checks the signature against the keys
+                          cached at T-2 hours.
+                          ← USES the auth server's work.
+                            Does NOT call the auth server.
+                          Valid. The user is u_8831.
+   c. per-consumer quota  now that it knows WHO, checks their
+                          quota. Fine.
+   d. route               /v1/profile → service-a
+                          ← USES the route authored at T-14 days.
+   e. pick a pod          L7 choice across service-a's 6 pods.
+   f. start the trace     mints trace id 4bf92f...
+   g. rewrite the request:
+        ✗ Authorization: Bearer ...   REMOVED. Goes no further.
+        ✓ x-user-id: u_8831
         ✓ x-user-scopes: profile:read
-        ✓ traceparent: 00-4bf92f...-00f067...-01
+        ✓ traceparent: 00-4bf92f...-00f067...-01</div>
 
-⑤  SERVICE A — SIDECAR (inbound)                                ~1ms
-   Terminates mTLS. The certificate says "the gateway", and policy
-   allows the gateway to call service-a. Records a span.
-   Hands plain HTTP to the app over localhost.
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">Part 2 · Inside the mesh — hops ⑤ to ⑨</div>
+        <div class="example-panel" style="margin:0 0 16px;"><span class="label">Where the sidecars take over, and the app writes no networking code</span>⑤  SERVICE A — SIDECAR (inbound)                           ~1ms
+   Terminates mTLS. The certificate says "the gateway".
+   ← USES the cert the control plane issued at T-45 min.
+   Policy allows gateway → service-a.
+   ← USES the policy authored at T-14 days.
+   Records a span. Hands plain HTTP to the app on localhost.
 
-⑥  SERVICE A — APP                                              ~2ms
-   Reads x-user-id and loads the profile it owns.
-   Needs billing status, so it calls http://service-b/billing —
-   plain HTTP, no TLS, no token. It just names the service.
+⑥  SERVICE A — APP                                        ~2ms
+   Reads x-user-id, loads the profile it owns.
+   Needs billing status, so it calls:
+       http://service-b/billing
+   Plain HTTP. No TLS. No token. It just names the service.
 
-⑦  SERVICE A — SIDECAR (outbound)                               ~1ms
-   Intercepts that call. "Where is service-b?" It already holds
-   the endpoint list, pushed earlier. Picks one of B's 4 pods.
-   Checks its budget for B — 12 of 40 in flight, room to go.
-   Opens mTLS, presenting service-a's own certificate.
+⑦  SERVICE A — SIDECAR (outbound)                         ~1ms
+   Intercepts that call.
+   "Where is service-b?" It already holds the endpoint list.
+   ← USES the endpoints pushed at T-25 sec — which is why it
+     will NOT pick the pod that was replaced.
+   Picks one of B's 4 pods. Budget: 12 of 40 in flight, room to go.
+   Opens mTLS presenting service-a's own certificate.
 
-⑧  SERVICE B — SIDECAR (inbound) → APP                          ~2ms
+⑧  SERVICE B — SIDECAR (inbound) → APP                    ~2ms
    Verifies the certificate says "service-a", and policy allows
    service-a → service-b. Hands plain HTTP to B's app.
 
-⑨  SERVICE B — DATASTORE                                        ~25ms
-   B's app queries its OWN database, through its own connection
-   pool. The sidecar is not involved — this is not HTTP.
-   ← the slowest hop by far, and where the time actually went
+⑨  SERVICE B — DATASTORE                                  ~25ms
+   B queries its OWN database through its own connection pool.
+   The sidecar is not involved — this is not HTTP.
+   ← the slowest hop by far, and where the time actually went.</div>
 
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--optional); margin:0 0 8px;">Part 3 · The way back</div>
+        <div class="example-panel" style="margin:0 0 16px;"><span class="label">The response retraces every proxy, and that's what makes the slow hop visible</span>B's app → B's sidecar → A's sidecar → A's app (merges profile
++ billing) → A's sidecar → gateway → L4 → CDN → user.
 
-THE RESPONSE COMES BACK THE SAME WAY
-  B's app → B's sidecar → A's sidecar → A's app (merges profile
-  + billing) → A's sidecar → gateway → L4 → CDN → user.
+Each proxy it passes back through records how long its half took
+and what status came back. Nobody instrumented anything to find
+the database — step ⑨ simply shows up as the span that dominates.</div>
 
-  Each proxy it passes back through records how long its half took
-  and what status came back — which is what makes step ⑨ visible
-  as the culprit without anyone adding instrumentation to find it.</div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--optional); margin:0 0 8px;">The answer to "so where were they?"</div>
+        <div class="table-wrap" style="margin-bottom:14px;">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:22%">Component</th><th style="width:30%">What it provided</th><th style="width:16%">When</th><th>Called during the request?</th></tr>
+        <tr><td>Auth Server</td><td>The user's token, and the public keys to verify it</td><td>T-3 hours / T-2 hours</td><td><strong style="color:var(--redline);">No.</strong> The gateway verified the signature locally.</td></tr>
+        <tr><td>Service Registry</td><td>Which of service-b's pods are alive</td><td>Continuously; last change T-30 sec</td><td><strong style="color:var(--redline);">No.</strong> The sidecar never queries it — it's read by the mesh control plane.</td></tr>
+        <tr><td>Mesh Control Plane</td><td>Endpoint lists, authZ policy, and the identity certificates</td><td>T-45 min and T-25 sec</td><td><strong style="color:var(--redline);">No.</strong> Every sidecar already held everything it needed.</td></tr>
+        <tr><td>Platform Team / CI</td><td>The route, the policy, the scopes</td><td>T-14 days</td><td><strong style="color:var(--redline);">No.</strong> Not a running service at all.</td></tr>
+        <tr><td>Collector / backends</td><td>Nothing — they receive</td><td>After each hop</td><td><strong style="color:var(--marker);">Written to,</strong> asynchronously. The request never waits.</td></tr>
+      </table>
+</div>
+        <p style="margin:0 0 14px; color:var(--ink);">That column of "No" is the design, not an accident. It's why the failure deep dive below can say an auth server outage doesn't stop traffic — the request path was never going to call it.</p>
 
-        <p style="margin:0 0 12px;">Three things worth noticing about that journey, because each one is a design decision rather than an accident:</p>
-        <ul class="item-list">
-          <li><strong>The user's token existed for exactly one hop.</strong> It was verified at the gateway and deleted. Services A and B know who the user is — they just never hold anything they could replay as that user.</li>
-          <li><strong>Neither app wrote a line of networking code.</strong> Service A called <span style="font-family:var(--mono)">http://service-b/billing</span> in plain HTTP. Discovery, load balancing, mTLS, retries, and timeouts all happened in the sidecar beside it. Swapping the load-balancing algorithm is a config push, not a code change in either service.</li>
-          <li><strong>Nothing in the top band was contacted.</strong> No call to the auth server, the registry, or the mesh control plane. Every decision used information pushed <em>before</em> this request existed — which is the whole reason a control-plane outage wouldn't have stopped it.</li>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">Three things worth noticing</div>
+        <ul class="item-list" style="margin-bottom:14px;">
+          <li><strong>The user's token existed for exactly one hop.</strong> Verified at the gateway and deleted. Services A and B know who the user is — they just never hold anything they could replay as that user.</li>
+          <li><strong>Neither app wrote a line of networking code.</strong> Service A called <span style="font-family:var(--mono)">http://service-b/billing</span> in plain HTTP. Discovery, load balancing, mTLS, retries and timeouts all happened in the sidecar beside it. Changing the load-balancing algorithm is a config push, not a code change in either service.</li>
+          <li><strong>Every decision used information that arrived earlier.</strong> Keys from two hours ago, certificates from 45 minutes ago, endpoints from 25 seconds ago, policy from two weeks ago. Nothing in the top band of the diagram was contacted.</li>
         </ul>
 
-        <div class="example-panel" style="margin:12px 0 0;"><span class="label">The same journey when something goes wrong</span>Say one of service-b's four pods has gone bad.
-
-⑦  A's sidecar picks pod-2 and opens mTLS.
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--redline); margin:0 0 8px;">The same journey when something goes wrong</div>
+        <div class="example-panel" style="margin:0;"><span class="label">One of service-b's four pods has gone bad</span>⑦  A's sidecar picks pod-2 and opens mTLS.
 ⑧  pod-2 times out at 200ms.
 
     A's sidecar retries — on a DIFFERENT pod, not the same one:
@@ -10101,10 +10181,9 @@ Meanwhile, quietly:
     too, without anyone being paged.
 
     If ALL of B's pods were failing, the retry budget caps how many
-    retries the fleet is allowed in total — which is what stops
-    this from becoming the retry storm in the deep dive below.</div>
+    retries the fleet is allowed in total — which is what stops this
+    becoming the retry storm in the deep dive below.</div>
       </div>
-
 
       <div class="callout keydive">
         <span class="label">Key deep dive — what sits in front of the gateway</span>
@@ -10676,6 +10755,8 @@ Three rules that matter more at fleet scale than in one service:
         <tr><td>Service Registry</td><td>Control</td><td>Which instances are alive; consumed by the mesh control plane, never called during a request. Readiness is what removes a draining pod from this set</td></tr>
         <tr><td>Auth Server</td><td>Control</td><td>Token issuance and revocation, JWKS publication; cached by the gateway so it stays off the request path</td></tr>
         <tr><td>Rate limiting</td><td>Both</td><td>Commercial quota at the edge; stability-oriented concurrency budgets in the sidecars — different constructs sharing a name</td></tr>
+        <tr><td>Mesh Control Plane</td><td>Control</td><td>Endpoints, traffic and authZ policy — plus it signs and rotates the identity certificate every service presents on an mTLS hop, which is what makes those identities trustworthy. Pushes all of it out of band; never answers a request</td></tr>
+        <tr><td>Platform Team / CI</td><td>Outside the request path entirely</td><td>Authors the policy the control plane distributes. Not a running component — the origin of configuration, which is why a control-plane outage degrades <em>change</em> rather than traffic</td></tr>
         <tr><td>Message broker</td><td>Data · async</td><td>Carries work across a connection boundary — which means trace context and acting user must travel in the message, because the sidecar cannot follow them there</td></tr>
         <tr><td>Collector</td><td>Telemetry · every host</td><td>Local buffering, cardinality caps, sampling decisions — the cost control point</td></tr>
         <tr><td>Obs backends</td><td>Telemetry</td><td>Storage and query for metrics, traces and logs; SLO evaluation and paging decisions</td></tr>
