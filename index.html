@@ -560,6 +560,8 @@
       <div class="nav-group-label">Toolkits</div>
       <a class="nav-link" href="#mathtoolkit"><span class="num">Σ</span>Math Toolkit</a>
       <a class="nav-link" href="#cachingplaybook"><span class="num">⚡</span>Caching Playbook</a>
+      <a class="nav-link" href="#scaleladder"><span class="num">↗</span>Scale Ladder</a>
+      <a class="nav-link" href="#statuscodes"><span class="num">⚑</span>HTTP Status Codes</a>
       <a class="nav-link" href="#glossary"><span class="num">§</span>Glossary</a>
     </div>
 
@@ -592,6 +594,8 @@
       <a class="nav-link" href="#usecase-auditlog"><span class="num">Y</span>Audit Logging at Scale</a>
       <a class="nav-link" href="#usecase-observability"><span class="num">Z</span>Observability &amp; Alerting</a>
       <a class="nav-link" href="#usecase-platform"><span class="num">★</span>Microservices Platform</a>
+      <a class="nav-link" href="#usecase-trusteddevice"><span class="num">◆</span>Trusted Device Login Approval</a>
+      <a class="nav-link" href="#usecase-sociallogin"><span class="num">◇</span>Password &amp; Social Login</a>
     </div>
 
     <div class="nav-group">
@@ -1116,16 +1120,25 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
 
       <div class="card" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">When math actually changes the design</h3>
-        <p class="tight" style="font-size:12.5px; margin-bottom:10px;">The row below lights up to match the peak QPS from the calculator above.</p>
+        <p class="tight" style="font-size:12.5px; margin-bottom:10px;">The row below lights up to match the peak QPS from the calculator above. The middle column is the one worth reading — <strong>a number only changes your design by telling you which bounded resource saturates next.</strong></p>
         <div class="table-wrap">
 <table class="ref-table" id="scale-table">
-          <tr class="rt-head"><th>Scale</th><th>What it implies</th></tr>
-          <tr data-bucket="lt1k"><td class="mono">&lt; 1K QPS</td><td>Single DB instance is usually fine — don't over-engineer.</td></tr>
-          <tr data-bucket="1k-10k"><td class="mono">1K – 10K QPS</td><td>Add caching + read replicas.</td></tr>
-          <tr data-bucket="10k-100k"><td class="mono">10K – 100K QPS</td><td>Sharding, CDN for read-heavy/static content, async processing off the critical path.</td></tr>
-          <tr data-bucket="100k-plus"><td class="mono">100K+ QPS</td><td>Multi-region, deliberate consistency trade-offs, real capacity planning.</td></tr>
+          <tr class="rt-head"><th style="width:17%">Scale</th><th style="width:38%">What saturates first</th><th>What that forces, and what it costs</th></tr>
+          <tr data-bucket="lt1k"><td class="mono">&lt; 1K QPS</td>
+              <td>Nothing architectural. If it's slow here it's an N+1 query, a missing index, or a synchronous third-party call.</td>
+              <td>One app tier, one primary database. <strong>Reaching for a cache or a queue at this rung creates problems you then have to solve.</strong></td></tr>
+          <tr data-bucket="1k-10k"><td class="mono">1K – 10K QPS</td>
+              <td>DB connections — <span class="mono">instances × pool size</span> exceeds <span class="mono">max_connections</span> long before CPU does. Then read IOPS start stealing from writes.</td>
+              <td>Connection pooler, read replicas, cache-aside for hot keys. Costs you <strong>replication lag</strong> — read-after-write breaks visibly.</td></tr>
+          <tr data-bucket="10k-100k"><td class="mono">10K – 100K QPS</td>
+              <td>Synchronous write throughput on one primary. A single Redis node. Cache stampedes on viral keys.</td>
+              <td>Async writes behind a queue, sharded cache, partitioned tables. Costs you <strong>durability at response time</strong> — you now owe the client a way to check the outcome.</td></tr>
+          <tr data-bucket="100k-plus"><td class="mono">100K+ QPS</td>
+              <td>Random write I/O on B-trees. Cross-region latency. Coordination between shards rather than any single node.</td>
+              <td>LSM engines, regional sharding, in-process L1 cache. Costs you <strong>global strong consistency</strong> — this is where CAP stops being theoretical.</td></tr>
         </table>
 </div>
+        <p style="margin:12px 0 0; font-size:13px; color:var(--ink-dim);">The full version — what else saturates, the arithmetic behind connection limits, Little's Law, and the cost of every common fix — is in the <a href="#scaleladder" style="color:var(--accent);">Scale Ladder</a>.</p>
       </div>
     </section>
 
@@ -1410,6 +1423,421 @@ Local cache vs. shared cache, for a key known to run hot:
       </div>
     </section>
 
+    <section class="section" id="scaleladder">
+      <div class="eyebrow">Toolkit</div>
+      <h2 class="section-title">The Scale Ladder</h2>
+      <p style="margin-top:10px; max-width:680px;">The single most useful reframe for scale questions: <strong>a system almost never fails because "traffic got high."</strong> It fails because one bounded resource saturated, and everything behind it queued. Scale questions are therefore not "what's the architecture at 1M RPS" — they're "which bound do I hit next, and what does hitting it look like."</p>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">First: the bounded things</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Before any tier table, know what can actually saturate. In practice it's almost always one of these, and the first one is far more common than the rest combined.</p>
+        <div class="example-panel" style="margin:0;"><span class="label">What saturates, roughly in order of how often it bites first</span>DB CONNECTIONS      the #1 first wall, and it is pure arithmetic:
+                    app instances × pool size = connections needed
+                    40 instances × 25 pool = 1,000 connections
+                    Postgres default max_connections = 100
+                    → you hit this at trivial traffic, and the symptom
+                      is "the database is down" when it is fine
+
+THREADS / WORKERS   per instance. A blocking call to a slow dependency
+                    holds one for its whole duration — see the API
+                    Gateway example's bulkhead dive.
+
+SINGLE-THREADED     Redis executes commands on one core. Node has one
+COMPONENTS          event loop. One slow O(n) command or one CPU-bound
+                    handler stalls everything behind it.
+
+DISK IOPS           random writes on a B-tree, or unindexed reads
+                    scanning pages and stealing IOPS from writes.
+
+LOCK CONTENTION     a hot row. 50k RPS against one counter row is a
+                    serialisation point no amount of hardware fixes.
+
+PARTITION COUNT     Kafka consumer parallelism is capped by partitions.
+                    More consumers than partitions = idle consumers.
+
+MEMORY / FDs        cache working set exceeding RAM, or file-descriptor
+                    limits on a connection-heavy service.
+
+NETWORK             bandwidth rarely; packets-per-second and NAT/conntrack
+                    table limits more often than people expect.</div>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">The ladder — what breaks, and what it costs to fix</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Numbers are deliberately rough and assume a typical read-heavy web workload on ordinary hardware. A write-heavy or fan-out-heavy system hits each rung far earlier. Use them to locate yourself, not as thresholds to quote.</p>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:14%">Rung</th><th style="width:29%">What actually breaks</th><th style="width:29%">The move</th><th>What the move costs you</th></tr>
+
+        <tr><td><strong>&lt; 100 RPS</strong><br><span style="font-size:11px; color:var(--ink-faint);">most systems, forever</span></td>
+            <td>Nothing architectural. If it's slow here it's an N+1 query, a missing index, or a synchronous third-party call — not scale.</td>
+            <td>One app tier, one primary database, managed backups. Stop.</td>
+            <td>Nothing. Reaching for a queue or a cache at this rung is how teams create problems they then have to solve.</td></tr>
+
+        <tr><td><strong>~1k RPS</strong></td>
+            <td>Connection exhaustion (the arithmetic above). Slow queries under concurrency that were fine in isolation. Tail latency starts diverging badly from the mean.</td>
+            <td>Connection pooler (<span class="tool-tag">PgBouncer</span>) in transaction mode. Fix the top 5 slow queries. Add the indexes the query planner is asking for.</td>
+            <td>Transaction-mode pooling breaks session state — prepared statements, <span style="font-family:var(--mono)">SET</span>, advisory locks, some ORMs. Real migration work, not a config flag.</td></tr>
+
+        <tr><td><strong>~10k RPS</strong></td>
+            <td>Read volume saturates the primary's IOPS and steals them from writes. One instance can no longer hold the working set.</td>
+            <td>Read replicas for read traffic. Cache-aside in <span class="tool-tag">Redis</span> for hot keys. CDN for anything static or semi-static.</td>
+            <td><strong>Replication lag</strong> — read-after-write breaks visibly ("I saved it and it's gone"). <strong>Invalidation</strong> — now your correctness depends on cache eviction being right.</td></tr>
+
+        <tr><td><strong>~100k RPS</strong></td>
+            <td>Synchronous ACID writes max out disk. Replication lag balloons under write pressure. A single Redis node caps out. Cache stampedes on viral keys melt nodes.</td>
+            <td>Accept writes asynchronously (<span style="font-family:var(--mono)">202</span> + queue + batch flush). Shard the cache. Partition hot tables by tenant or entity.</td>
+            <td><strong>The write is no longer durable when you answer.</strong> You now owe the client a way to find out if it succeeded, plus retries, duplicate delivery, and ordering concerns.</td></tr>
+
+        <tr><td><strong>~1M RPS</strong></td>
+            <td>B-tree random-write I/O stalls SSD controllers. Cross-region latency dominates. Coordination between shards becomes the bottleneck rather than any single node.</td>
+            <td>LSM-tree engines for write-heavy tables (<span class="tool-tag">Cassandra</span>, <span class="tool-tag">ScyllaDB</span>, <span class="tool-tag">DynamoDB</span>). In-process L1 cache. Regional sharding with local writes.</td>
+            <td>LSM trades write speed for read amplification and compaction load. Regional writes mean giving up global strong consistency — this is where CAP stops being theoretical.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Every fix creates its next problem</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">This is the part that separates a rehearsed answer from a real one. Naming the move is easy; naming what it costs is the actual signal.</p>
+        <div class="example-panel" style="margin:0 0 12px;"><span class="label">The trade you are making, every time</span>caching        → invalidation, stampedes, and a second source of truth
+                 that can silently disagree with the first
+
+replication    → stale reads, and read-after-write that works in dev
+                 (one node) and breaks in prod (many)
+
+queues         → at-least-once delivery, so every consumer must be
+                 idempotent; plus ordering, and a backlog that can
+                 grow silently with no caller timing out
+
+sharding       → rebalancing, hot partitions, and cross-shard queries
+                 that used to be one JOIN
+
+async writes   → the client no longer knows if it worked; you owe them
+                 a status endpoint or a webhook
+
+read replicas  → someone will eventually point a write at one, or
+                 route a read-after-write to a lagging node
+
+more retries   → amplification. Three layers × three retries = 27×
+                 load on the thing already struggling. Retry budgets,
+                 not retry counts.
+
+denormalisation→ multiple copies to keep in sync, and the sync itself
+                 becomes a correctness problem</div>
+        <p style="margin:0; color:var(--ink);">A useful habit: when you propose a move, say the cost in the same breath. "Add a read replica — and I'd need to decide which reads tolerate being a few seconds stale" is a far stronger answer than "add a read replica."</p>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Two numbers worth knowing by heart</h3>
+        <div class="example-panel" style="margin:0 0 12px;"><span class="label">Little's Law, and the connection arithmetic</span>LITTLE'S LAW        concurrency = throughput × latency
+
+  It tells you how many things are in flight at once, which is what
+  actually determines pool sizes, thread counts, and whether you are
+  about to saturate something bounded.
+
+    2,000 RPS × 50ms  =  100 concurrent requests in flight
+    2,000 RPS × 500ms =  1,000 concurrent  ← same traffic, 10× the
+                                             resources held
+
+  This is why a dependency getting SLOWER looks exactly like traffic
+  getting HIGHER from inside your service. Latency and load are the
+  same problem wearing different clothes.
+
+CONNECTION MATH     instances × pool_size ≤ max_connections
+
+    40 instances × 25 = 1,000 wanted
+    Postgres max_connections = 100 (default)
+    → 900 connections refused; the app reports "database down"
+
+  With PgBouncer in transaction mode:
+    40 instances × 25 app-side = 1,000 client connections
+    multiplexed onto ~50 real server connections
+    → the pooler is doing the arithmetic for you</div>
+        <p style="margin:0; color:var(--ink);">The second one is worth internalising because it is the most common production incident in this entire list, it happens at embarrassingly low traffic, and the error message points at the wrong component.</p>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">How to actually use this in an interview</h3>
+        <ul class="item-list">
+          <li><strong>Trace one request end to end before scaling anything</strong> — client → gateway → service → cache → database → queue → worker → dependency. You cannot say what saturates first without knowing what it touches.</li>
+          <li><strong>Estimate only enough to pick a rung</strong> — peak QPS, read/write ratio, payload size, and working-set size. At 50 writes/sec, a distributed write architecture is a wrong answer. At 500k, partitioning and backpressure deserve real discussion.</li>
+          <li><strong>Peak, not average</strong> — daily traffic divided by 86,400 is the number that makes systems fall over. Real traffic concentrates; a 3–10× peak-to-mean ratio is ordinary, and event-driven spikes are far worse.</li>
+          <li><strong>Design for the next rung, not the last one</strong> — building for 1M RPS at 1k is as wrong as ignoring growth entirely, and it is the more expensive mistake because you pay the complexity immediately.</li>
+          <li><strong>Watch p99, not the mean</strong> — the mean hides the queueing that precedes every saturation event. When p99 rises while the mean is flat, something bounded is filling up.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section class="section" id="statuscodes">
+      <div class="eyebrow">Toolkit</div>
+      <h2 class="section-title">HTTP Status Codes, Decided Properly</h2>
+      <p style="margin-top:10px; max-width:680px;">The reason this matters more than it looks: <strong>the status code is the contract that decides what every client, SDK, proxy and load balancer does next.</strong> It is not documentation. A <span style="font-family:var(--mono)">5xx</span> tells a client library to retry; a <span style="font-family:var(--mono)">4xx</span> tells it to stop and surface the error. Get it wrong and you either hammer a struggling service with retries, or silently swallow a transient failure that would have worked on the second attempt.</p>
+
+      <div class="hld-diagram-wrap wide">
+        <svg viewBox="0 0 1020 960" style="width:100%; min-width:900px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="sc-red" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker>
+            <marker id="sc-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="sc-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="sc-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+            <marker id="sc-violet" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#C08CE0"/></marker>
+          </defs>
+          <rect x="340" y="22" width="180" height="44" rx="22" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.55" stroke-width="1.4"/>
+          <text x="430" y="50" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Request received</text>
+          <line x1="430" y1="66" x2="430" y2="92" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#sc-cyan)"/>
+          <rect x="330" y="96" width="200" height="48" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="430" y="125" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="600" fill="#EAF4FF">1 · Can you parse it?</text>
+          <rect x="60" y="96" width="200" height="48" rx="8" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="160" y="117" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#FF6B5E">400 Bad Request</text>
+          <text x="160" y="133" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">malformed body or bad syntax</text>
+          <line x1="327" y1="120" x2="264" y2="120" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#sc-red)"/>
+          <text x="296" y="114" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#FF6B5E">no</text>
+          <text x="600" y="116" font-family="Inter" font-size="9" fill="#94B8D4">Parse failure only. Valid JSON carrying nonsense</text>
+          <text x="600" y="130" font-family="Inter" font-size="9" fill="#94B8D4">values is step 6 — a different code and a different alert.</text>
+          <line x1="430" y1="144" x2="430" y2="164" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#sc-cyan)"/>
+          <text x="442" y="158" font-family="JetBrains Mono" font-size="8.5" fill="#6FE0F0">yes</text>
+          <rect x="330" y="168" width="200" height="48" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="430" y="197" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="600" fill="#EAF4FF">2 · Does the route exist?</text>
+          <rect x="60" y="168" width="200" height="48" rx="8" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="160" y="189" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#FF6B5E">404 Not Found</text>
+          <text x="160" y="205" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">no such path on this service</text>
+          <line x1="327" y1="192" x2="264" y2="192" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#sc-red)"/>
+          <text x="296" y="186" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#FF6B5E">no</text>
+          <text x="600" y="188" font-family="Inter" font-size="9" fill="#94B8D4">The path, not the record. A missing row is step 7 —</text>
+          <text x="600" y="202" font-family="Inter" font-size="9" fill="#94B8D4">same code, different cause, worth logging separately.</text>
+          <line x1="430" y1="216" x2="430" y2="236" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#sc-cyan)"/>
+          <text x="442" y="230" font-family="JetBrains Mono" font-size="8.5" fill="#6FE0F0">yes</text>
+          <rect x="330" y="240" width="200" height="48" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="430" y="269" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="600" fill="#EAF4FF">3 · Credentials valid?</text>
+          <rect x="60" y="240" width="200" height="48" rx="8" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="160" y="261" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#FF6B5E">401 Unauthorized</text>
+          <text x="160" y="277" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">absent, invalid or expired</text>
+          <line x1="327" y1="264" x2="264" y2="264" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#sc-red)"/>
+          <text x="296" y="258" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#FF6B5E">no</text>
+          <text x="600" y="260" font-family="Inter" font-size="9" fill="#94B8D4">401 means UNAUTHENTICATED. Client SDKs refresh a token</text>
+          <text x="600" y="274" font-family="Inter" font-size="9" fill="#94B8D4">on 401 — send 403 here and they never will.</text>
+          <line x1="430" y1="288" x2="430" y2="308" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#sc-cyan)"/>
+          <text x="442" y="302" font-family="JetBrains Mono" font-size="8.5" fill="#6FE0F0">yes</text>
+          <rect x="330" y="312" width="200" height="48" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="430" y="341" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="600" fill="#EAF4FF">4 · Permitted to do this?</text>
+          <rect x="60" y="312" width="200" height="48" rx="8" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="160" y="333" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#FF6B5E">403 Forbidden</text>
+          <text x="160" y="349" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">or 404, to hide existence</text>
+          <line x1="327" y1="336" x2="264" y2="336" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#sc-red)"/>
+          <text x="296" y="330" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#FF6B5E">no</text>
+          <text x="600" y="332" font-family="Inter" font-size="9" fill="#94B8D4">403 admits the resource exists. For private resources</text>
+          <text x="600" y="346" font-family="Inter" font-size="9" fill="#94B8D4">that is itself a leak — prefer 404.</text>
+          <line x1="430" y1="360" x2="430" y2="380" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#sc-cyan)"/>
+          <text x="442" y="374" font-family="JetBrains Mono" font-size="8.5" fill="#6FE0F0">yes</text>
+          <rect x="330" y="384" width="200" height="48" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="430" y="413" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="600" fill="#EAF4FF">5 · Within rate and quota?</text>
+          <rect x="60" y="384" width="200" height="48" rx="8" fill="#0A2540" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="160" y="405" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#FFD166">429 Too Many Requests</text>
+          <text x="160" y="421" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">ALWAYS with Retry-After</text>
+          <line x1="327" y1="408" x2="264" y2="408" stroke="#FFD166" stroke-width="1.5" marker-end="url(#sc-amber)"/>
+          <text x="296" y="402" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#FFD166">no</text>
+          <text x="600" y="404" font-family="Inter" font-size="9" fill="#94B8D4">Retryable, but only after the interval. Retry-After is</text>
+          <text x="600" y="418" font-family="Inter" font-size="9" fill="#94B8D4">what turns a retry storm back into an orderly queue.</text>
+          <line x1="430" y1="432" x2="430" y2="452" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#sc-cyan)"/>
+          <text x="442" y="446" font-family="JetBrains Mono" font-size="8.5" fill="#6FE0F0">yes</text>
+          <rect x="330" y="456" width="200" height="48" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="430" y="485" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="600" fill="#EAF4FF">6 · Semantically valid?</text>
+          <rect x="60" y="456" width="200" height="48" rx="8" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="160" y="477" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#FF6B5E">422 Unprocessable</text>
+          <text x="160" y="493" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">parsed fine, contents wrong</text>
+          <line x1="327" y1="480" x2="264" y2="480" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#sc-red)"/>
+          <text x="296" y="474" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#FF6B5E">no</text>
+          <text x="600" y="476" font-family="Inter" font-size="9" fill="#94B8D4">end_date before start_date. Separates 'the client is</text>
+          <text x="600" y="490" font-family="Inter" font-size="9" fill="#94B8D4">broken' from 'the user typed something odd'.</text>
+          <line x1="430" y1="504" x2="430" y2="524" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#sc-cyan)"/>
+          <text x="442" y="518" font-family="JetBrains Mono" font-size="8.5" fill="#6FE0F0">yes</text>
+          <rect x="330" y="528" width="200" height="48" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="430" y="557" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="600" fill="#EAF4FF">7 · Does the record exist?</text>
+          <rect x="60" y="528" width="200" height="48" rx="8" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="160" y="549" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#FF6B5E">404 Not Found</text>
+          <text x="160" y="565" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">valid request, no such row</text>
+          <line x1="327" y1="552" x2="264" y2="552" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#sc-red)"/>
+          <text x="296" y="546" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#FF6B5E">no</text>
+          <text x="600" y="548" font-family="Inter" font-size="9" fill="#94B8D4">Same code as step 2, entirely different cause.</text>
+          <text x="600" y="562" font-family="Inter" font-size="9" fill="#94B8D4">Keep the two distinguishable in your metrics.</text>
+          <line x1="430" y1="576" x2="430" y2="596" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#sc-cyan)"/>
+          <text x="442" y="590" font-family="JetBrains Mono" font-size="8.5" fill="#6FE0F0">yes</text>
+          <rect x="330" y="600" width="200" height="48" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="430" y="629" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="600" fill="#EAF4FF">8 · Conflicts with state?</text>
+          <rect x="60" y="600" width="200" height="48" rx="8" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="160" y="621" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#FF6B5E">409 Conflict</text>
+          <text x="160" y="637" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">duplicate, version mismatch</text>
+          <line x1="327" y1="624" x2="264" y2="624" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#sc-red)"/>
+          <text x="296" y="618" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#FF6B5E">yes</text>
+          <text x="600" y="620" font-family="Inter" font-size="9" fill="#94B8D4">409 is wrong RIGHT NOW and may succeed later.</text>
+          <text x="600" y="634" font-family="Inter" font-size="9" fill="#94B8D4">422 is wrong forever. Clients treat them differently.</text>
+          <line x1="430" y1="648" x2="430" y2="668" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#sc-cyan)"/>
+          <text x="442" y="662" font-family="JetBrains Mono" font-size="8.5" fill="#6FE0F0">no</text>
+          <rect x="330" y="672" width="200" height="48" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/>
+          <text x="430" y="701" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="600" fill="#EAF4FF">9 · Did YOUR side fail?</text>
+          <rect x="60" y="648" width="200" height="96" rx="8" fill="#0A2540" stroke="#C08CE0" stroke-width="1.6"/>
+          <text x="160" y="668" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" font-weight="700" fill="#C08CE0">500 · 502 · 503 · 504</text>
+          <text x="160" y="686" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">500 unhandled exception</text>
+          <text x="160" y="701" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">502 upstream sent garbage</text>
+          <text x="160" y="716" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">503 shedding load, + Retry-After</text>
+          <text x="160" y="731" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">504 upstream never answered</text>
+          <line x1="327" y1="696" x2="264" y2="696" stroke="#C08CE0" stroke-width="1.6" marker-end="url(#sc-violet)"/>
+          <text x="296" y="690" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#C08CE0">yes</text>
+          <text x="600" y="692" font-family="Inter" font-size="9" fill="#94B8D4">All retryable — but 504 does NOT mean the work didn't happen.</text>
+          <text x="600" y="706" font-family="Inter" font-size="9" fill="#94B8D4">The upstream may have finished and simply answered too slowly.</text>
+          <line x1="430" y1="720" x2="430" y2="744" stroke="#7CE0A8" stroke-width="1.6" marker-end="url(#sc-green)"/>
+          <text x="442" y="736" font-family="JetBrains Mono" font-size="8.5" fill="#7CE0A8">no</text>
+          <rect x="330" y="744" width="200" height="44" rx="8" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.7"/>
+          <text x="430" y="771" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="600" fill="#7CE0A8">It worked — which kind?</text>
+          <rect x="30" y="846" width="234" height="66" rx="8" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.4"/>
+          <text x="147" y="868" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#7CE0A8">200 OK</text>
+          <text x="147" y="885" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">GET, or a write that</text>
+          <text x="147" y="899" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">returns the updated thing</text>
+          <path d="M 430,788 C 430,820 147,816 147,842" fill="none" stroke="#7CE0A8" stroke-width="1.3" marker-end="url(#sc-green)"/>
+          <rect x="272" y="846" width="234" height="66" rx="8" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.4"/>
+          <text x="389" y="868" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#7CE0A8">201 Created</text>
+          <text x="389" y="885" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">POST that made something</text>
+          <text x="389" y="899" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">+ a Location header</text>
+          <path d="M 430,788 C 430,820 389,816 389,842" fill="none" stroke="#7CE0A8" stroke-width="1.3" marker-end="url(#sc-green)"/>
+          <rect x="514" y="846" width="234" height="66" rx="8" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.4"/>
+          <text x="631" y="868" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#7CE0A8">202 Accepted</text>
+          <text x="631" y="885" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">durably queued, not done —</text>
+          <text x="631" y="899" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">you owe a status endpoint</text>
+          <path d="M 430,788 C 430,820 631,816 631,842" fill="none" stroke="#7CE0A8" stroke-width="1.3" marker-end="url(#sc-green)"/>
+          <rect x="756" y="846" width="234" height="66" rx="8" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.4"/>
+          <text x="873" y="868" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#7CE0A8">204 No Content</text>
+          <text x="873" y="885" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">DELETE, or a write with</text>
+          <text x="873" y="899" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">genuinely nothing to say</text>
+          <path d="M 430,788 C 430,820 873,816 873,842" fill="none" stroke="#7CE0A8" stroke-width="1.3" marker-end="url(#sc-green)"/>
+          <line x1="60" y1="938" x2="88" y2="938" stroke="#FF6B5E" stroke-width="2.4"/>
+          <text x="94" y="942" font-family="Inter" font-size="10" fill="#9FC1E0">Client error — do NOT retry</text>
+          <line x1="300" y1="938" x2="328" y2="938" stroke="#FFD166" stroke-width="2.4"/>
+          <text x="334" y="942" font-family="Inter" font-size="10" fill="#9FC1E0">Retry, but only after Retry-After</text>
+          <line x1="580" y1="938" x2="608" y2="938" stroke="#C08CE0" stroke-width="2.4"/>
+          <text x="614" y="942" font-family="Inter" font-size="10" fill="#9FC1E0">Server error — retry with backoff</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">Nine checks, in the order that avoids leaking information — authentication before validation, so an anonymous caller never learns whether their body was well-formed. Two things the common version of this chart leaves out: <strong>429</strong>, which is the most frequent real rejection in any public API, and <strong>409</strong>, which is the only 4xx that means "try again later" rather than "fix your request." Colour encodes what a client should <em>do</em>, which is the actual job of a status code.</div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">The decision, in order</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Walk these top to bottom and stop at the first match. The order matters — checking authentication before parsing, for instance, avoids telling an anonymous caller whether their malformed body was valid.</p>
+        <div class="example-panel" style="margin:0;"><span class="label">One pass, first match wins</span>1 · Could you parse it at all?
+     malformed JSON, bad syntax            → 400 Bad Request
+
+2 · Does the route exist?
+     no such path                          → 404 Not Found
+
+3 · Who is calling?
+     no credentials, or invalid/expired    → 401 Unauthorized
+     ← the name is wrong; 401 means UNAUTHENTICATED
+
+4 · Are they allowed?
+     authenticated, but lacks permission   → 403 Forbidden
+     ← 403 means authenticated and still no
+
+     leaking existence is a concern?       → 404 instead
+     ← "this repo exists but isn't yours" IS information
+
+5 · Over their limit?
+     rate or quota exceeded                → 429 Too Many Requests
+     ← ALWAYS with Retry-After
+
+6 · Is the shape right but the meaning wrong?
+     valid JSON, fails validation          → 422 Unprocessable Entity
+     ← e.g. end_date before start_date, or a negative amount
+
+7 · Does the target resource exist?
+     valid request, no such record         → 404 Not Found
+
+8 · Does it conflict with current state?
+     duplicate, version mismatch,          → 409 Conflict
+     already-consumed idempotency key      ← "not now" rather than
+                                             "never"
+
+9 · Did YOUR side fail?
+     unhandled exception                   → 500 Internal Server Error
+     upstream returned garbage             → 502 Bad Gateway
+     deliberately shedding load / draining → 503 Service Unavailable
+     upstream timed out                    → 504 Gateway Timeout
+
+10 · It worked. What kind of worked?
+     GET with a body                       → 200 OK
+     POST that created something           → 201 Created + Location
+     accepted, not yet done                → 202 Accepted
+     succeeded, nothing to say             → 204 No Content
+     ← DELETE and many PUTs land here</div>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">The pairs people actually get wrong</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:18%">The confusion</th><th style="width:41%">The rule</th><th>Why it matters operationally</th></tr>
+        <tr><td><strong>401 vs 403</strong></td><td>401 = I don't know who you are. 403 = I know, and no.</td><td>A client SDK should <em>refresh the token</em> on 401 and <em>give up</em> on 403. Returning 403 for an expired token means the client never refreshes and the user is stuck logged out.</td></tr>
+        <tr><td><strong>400 vs 422</strong></td><td>400 = I couldn't parse it. 422 = I parsed it, and the contents are wrong.</td><td>Mostly a clarity win, but it separates "the client is broken" from "the user typed something invalid" in your dashboards — two very different alerts.</td></tr>
+        <tr><td><strong>403 vs 404</strong></td><td>403 admits the thing exists. 404 doesn't.</td><td>A deliberate choice, not an accident. For private resources, 403 leaks existence — an attacker can enumerate what's there. Most systems return 404 for anything the caller can't see.</td></tr>
+        <tr><td><strong>409 vs 422</strong></td><td>422 is wrong forever. 409 is wrong <em>right now</em>.</td><td>409 implies retry-after-resolving; 422 implies fix-your-input. A well-behaved client treats them completely differently.</td></tr>
+        <tr><td><strong>500 vs 503</strong></td><td>500 = something broke unexpectedly. 503 = I'm deliberately not serving you.</td><td>503 with <span style="font-family:var(--mono)">Retry-After</span> is how you shed load gracefully during a deploy or overload. 500 tells a load balancer the instance may be sick; 503 tells it this is intentional.</td></tr>
+        <tr><td><strong>502 vs 504</strong></td><td>502 = upstream answered with nonsense. 504 = upstream never answered.</td><td>These almost always come from your gateway or proxy, not your app — so which one you see tells you <em>where</em> the failure is before you open a single log.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Retryability — the thing the code is really encoding</h3>
+        <div class="example-panel" style="margin:0 0 12px;"><span class="label">What a client library does with each class</span>RETRY, with backoff
+  408 Request Timeout      transient
+  429 Too Many Requests    retry AFTER the Retry-After interval,
+                           not immediately — that is the whole point
+  500 Internal Server Err  might be a blip
+  502 Bad Gateway          upstream hiccup
+  503 Service Unavailable  explicitly "try later"
+  504 Gateway Timeout      ← but see the warning below
+
+DO NOT RETRY — retrying changes nothing
+  400  the body is still malformed
+  401  the token is still invalid (refresh it, then retry once)
+  403  permission will not appear on its own
+  404  it still will not exist
+  422  the data is still semantically wrong
+
+THE 504 TRAP, worth stating plainly
+  A timeout does NOT mean the work didn't happen. The upstream may
+  have completed it and simply answered too slowly.
+  → retrying a 504 on a non-idempotent write can double-charge a
+    customer
+  → this is exactly why the payment example puts an idempotency key
+    on the request BEFORE any of this matters
+
+NEVER DO THIS
+  200 OK
+  { "success": false, "error": "insufficient funds" }
+
+  → every proxy, cache, load balancer, retry policy and monitoring
+    dashboard now believes this request succeeded
+  → your error rate graph is a flat line while customers fail
+  → the status code is machine-readable; the body is not</div>
+        <p style="margin:0; color:var(--ink);">If you remember one thing: <strong>choose the code by asking what you want the caller to do next</strong>, not by which one best describes your internal state. That reframing resolves most arguments about 400 versus 422 in about five seconds.</p>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Codes worth using that most APIs never reach for</h3>
+        <ul class="item-list">
+          <li><strong><span style="font-family:var(--mono)">201 Created</span> with a <span style="font-family:var(--mono)">Location</span> header</strong> — tells the client where the new thing lives, so it doesn't have to guess a URL or re-query to find out.</li>
+          <li><strong><span style="font-family:var(--mono)">202 Accepted</span></strong> — the honest answer for async work. It means "I have durably recorded your request and will process it," and it obliges you to give the client a way to check the outcome. The flash sale and payment examples on this page both depend on it.</li>
+          <li><strong><span style="font-family:var(--mono)">204 No Content</span></strong> — the right answer for most <span style="font-family:var(--mono)">DELETE</span>s. Returning <span style="font-family:var(--mono)">200</span> with <span style="font-family:var(--mono)">{"deleted": true}</span> is noise the client has to parse to learn nothing.</li>
+          <li><strong><span style="font-family:var(--mono)">410 Gone</span></strong> — for an endpoint you retired deliberately. Unlike 404, it says "this existed and was removed," which points a confused consumer at your migration guide instead of at their own routing config. The versioning example uses this.</li>
+          <li><strong><span style="font-family:var(--mono)">412 Precondition Failed</span></strong> — with <span style="font-family:var(--mono)">If-Match</span>, this is how you do optimistic concurrency over HTTP properly rather than inventing a version field in the body.</li>
+          <li><strong><span style="font-family:var(--mono)">207 Multi-Status</span></strong> — for genuine batch endpoints where some items succeed and some fail. The alternative, a 200 containing a mixed results array, hits the same problem as the 200-with-error above.</li>
+        </ul>
+        <p style="margin:12px 0 0; color:var(--ink);">One structural recommendation: pair the code with a machine-readable error body in a consistent shape — <span class="tool-tag">RFC 9457</span> (Problem Details) is the standard worth adopting, because it gives you a stable <span style="font-family:var(--mono)">type</span> field clients can branch on without parsing prose.</p>
+      </div>
+    </section>
+
+
     <section class="section" id="glossary">
       <div class="eyebrow">Toolkit</div>
       <h2 class="section-title">Glossary</h2>
@@ -1474,8 +1902,8 @@ Local cache vs. shared cache, for a key known to run hot:
 
     <section class="section" id="usecases-intro" style="padding-bottom:0;">
       <div class="eyebrow">Worked Examples</div>
-      <h2 class="section-title">27 Systems, Run Through the Framework</h2>
-      <p style="max-width:680px;">Each one is collapsed by default — open the ones you want. They're roughly ordered from simplest to most specialised, and later examples reference earlier ones rather than repeating them. The last one assembles the platform pieces into a single architecture.</p>
+      <h2 class="section-title">29 Systems, Run Through the Framework</h2>
+      <p style="max-width:680px;">Each one is collapsed by default — open the ones you want. They're roughly ordered from simplest to most specialised, and later examples reference earlier ones rather than repeating them. The last few assemble the platform pieces into a single architecture, then work through identity — a login gate that blocks on a human, and the account model behind sign-in.</p>
       <div class="uc-controls">
         <button type="button" class="uc-btn" id="uc-expand-all">Expand all</button>
         <button type="button" class="uc-btn" id="uc-collapse-all">Collapse all</button>
@@ -6330,6 +6758,7 @@ announced instant has the same odds as a script that fired in 2ms.</div>
               <li>The auth service must not become a hard synchronous dependency whose outage takes down every API in the company.</li>
               <li>Revocation of an external partner's token must take effect quickly — measured in seconds, not "whenever it expires."</li>
               <li>Signing keys must be rotatable without invalidating tokens already in flight.</li>
+              <li>A token intercepted or copied should be unusable by whoever holds the string, not just eventually expired.</li>
             </ul>
           </div>
           <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: how fast is "quickly" for revocation? The answer drives the whole design. We'll assume seconds for external partners (a real security requirement) and tolerate token-lifetime delay for internal services (where the network is already trusted and the blast radius is smaller).</p>
@@ -6367,7 +6796,7 @@ announced instant has the same odds as a script that fired in 2ms.</div>
         </div></div>
         <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
           <div class="mini-title">Deep Dives</div>
-          <p>Three below: <strong>(a)</strong> stateless JWT vs. introspection, and why the answer differs by caller, <strong>(b)</strong> revocation without giving up statelessness, and <strong>(c)</strong> refresh token rotation as a theft-detection mechanism.</p>
+          <p>Four below: <strong>(a)</strong> stateless JWT vs. introspection, and why the answer differs by caller, <strong>(b)</strong> revocation without giving up statelessness, <strong>(c)</strong> refresh token rotation as a theft-detection mechanism, and <strong>(d)</strong> a stolen access token, and the layers that bound the damage.</p>
         </div></div>
       </div>
 
@@ -6578,6 +7007,67 @@ of the two is genuine, and guessing wrong leaves the attacker inside.</div>
         </ul>
       </div>
 
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — a stolen access token, and the layers that bound the damage</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Bounded blast radius from a leaked credential</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>State the risk precisely, because "stolen token" isn't one problem: an access token intercepted in transit is one scenario; a refresh token exfiltrated from insecure client storage is another; a token replayed from a different device than the one it was issued to is a third. Each has a different fix.</li>
+          <li>Rule out the fantasy of preventing theft entirely — a bearer token is, by definition, a string that grants access to whoever holds it. No design eliminates that; the design question is how much a thief can do with it and for how long.</li>
+          <li>Separate what's already covered from what isn't. Short expiry bounds the window; refresh rotation catches reuse after the fact. Neither stops the token from working <em>during</em> its valid window, from wherever it was stolen.</li>
+          <li>Attack the "from wherever" part directly: if the token only works for the client that requested it, interception becomes far less useful — the thief has the string, but not what's needed to use it.</li>
+          <li>Accept that cryptographic binding only helps if the token is stolen — it does nothing if the theft happens by watching unencrypted traffic, which means the transport itself is still a first-class part of the mitigation, not a separate concern.</li>
+        </ol>
+        <p>Short expiry and rotation answer "how do we notice theft." This is the other half: "how do we make a stolen token less useful even before anyone notices."</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — four layers, stacked because none of them alone is enough</span>LAYER 1 — SHORT EXPIRY (already the default)
+  access token: minutes      → bounds the window, does nothing during it
+
+LAYER 2 — TRANSPORT SECURITY (not cryptographic, and the highest-value fix)
+  TLS everywhere, HSTS, no token in a URL query string or a log line
+  → most real "interception" isn't a clever attack on the crypto —
+    it's a token sitting in plaintext somewhere it shouldn't: a proxy
+    log, a browser history entry, an unencrypted debug capture
+
+LAYER 3 — TOKEN BINDING (DPoP — RFC 9449)
+  At issuance, the client generates a private/public keypair and
+  proves possession of it. The token is bound to that public key.
+
+  On EVERY subsequent request, the client signs a fresh proof with
+  the SAME private key:
+
+    Authorization: DPoP eyJhbGci...          ← the access token
+    DPoP: eyJ0eXAiOiJkcG9wK2p3dCJ9...         ← proof, unique per request,
+                                                includes the URL + timestamp
+
+  Gateway verifies: does this proof's signature match the public key
+  the token was bound to at issuance?
+
+  → thief steals the TOKEN STRING via interception, replay, a leaked
+    log line — doesn't matter how
+  → thief does NOT have the private key, which never left the
+    original client
+  → thief cannot produce a valid DPoP proof
+  → request rejected, even with the "correct" token in hand
+
+  This is the actual answer to "anyone can use it until it expires" —
+  binding makes that sentence false. Only the original client can use it.
+
+LAYER 4 — ANOMALY-BASED STEP-UP (a backstop, not a guarantee)
+  Token suddenly used from a new country, a new device fingerprint,
+  or an impossible-travel pattern (Tokyo, then Paris, 4 minutes later)
+  → treat as suspicious even though the token itself is technically valid
+  → force re-authentication rather than trusting it blindly
+
+  Catches what binding can't: a token stolen from the SAME device
+  it was issued to (malware, a compromised browser extension) still
+  has access to the private key, and binding alone won't flag that.</div>
+        <ul class="item-list">
+          <li><strong>DPoP is the direct fix for "intercepted in transit"</strong> — it's specifically designed so a copied token string, on its own, is worthless. Worth naming as the answer to the literal risk stated, rather than only offering detection-after-the-fact.</li>
+          <li><strong>None of these replace revocation and rotation</strong> — binding narrows who can use a stolen token; it doesn't help once the legitimate client itself is compromised, which is exactly when the revocation list and refresh-family kill-switch from the deep dives above are what actually stop it.</li>
+          <li><strong>The honest trade is client complexity</strong> — DPoP requires every client to generate and manage a keypair and sign a proof per request, which is real implementation weight. Many systems accept plain bearer tokens plus short expiry and strong transport security as good enough, and reserve binding for the highest-value tokens (admin sessions, payment flows) rather than applying it universally.</li>
+        </ul>
+      </div>
+
       <div class="result-card nfr-card">
         <h3 class="subhead">Does it hold up?</h3>
         <div class="table-wrap">
@@ -6588,6 +7078,7 @@ of the two is genuine, and guessing wrong leaves the attacker inside.</div>
         <tr><td>External revocation takes effect in seconds</td><td>A small, self-pruning revocation list pushed to every gateway's local cache, checked in memory on external tokens only.</td></tr>
         <tr><td>Stolen refresh credentials are detected</td><td>Rotation makes reuse of an already-used token unambiguous evidence of theft; family_id makes the response cover the whole lineage.</td></tr>
         <tr><td>Keys rotate without breaking tokens in flight</td><td>JWKS serves several keys at once, each identified by kid — a token signed with a retiring key still verifies until it expires.</td></tr>
+        <tr><td>A stolen token string is unusable on its own</td><td>Token binding (DPoP) requires a per-request proof signed by a private key the thief never obtained — the token string alone can't complete a request.</td></tr>
       </table>
 </div>
       </div>
@@ -6599,6 +7090,7 @@ of the two is genuine, and guessing wrong leaves the attacker inside.</div>
         <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
         <tr><td>Stateless JWT vs. introspection on every call</td><td>Removes the auth service from the hot path entirely — no latency, no shared point of failure — at the cost of revocation not being instant. Bounded by keeping token lifetimes short, and closed for external tokens with a revocation cache.</td></tr>
         <tr><td>Different validation paths for internal vs. external</td><td>Each caller pays only what its threat model warrants, at the cost of two code paths to maintain and reason about instead of one uniform rule.</td></tr>
+        <tr><td>Token binding (DPoP) vs. plain bearer tokens</td><td>Makes a stolen token string worthless without the matching private key, at the cost of every client generating and signing a per-request proof — real implementation weight, often reserved for the highest-value tokens rather than applied everywhere.</td></tr>
         <tr><td>Killing the whole family on refresh reuse</td><td>Guarantees the attacker is ejected, at the cost of also logging out the legitimate user — accepted deliberately, because the alternative is guessing which party is genuine.</td></tr>
       </table>
 </div>
@@ -9772,6 +10264,58 @@ flag on for the rest of the request.</div>
         </div></div>
       </div>
 
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Before the diagram — what mTLS actually is</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Every east-west arrow in the diagram below is drawn on top of one mechanism. It's worth understanding once, precisely, because the gap-and-fix deep dive later in this example turns entirely on the difference between what mTLS proves and what a header merely claims.</p>
+
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">High level — one word does all the work: "mutual"</div>
+        <p style="margin:0 0 10px; font-size:13.5px;">Ordinary TLS — what your browser does with any HTTPS site — is <strong>one-directional</strong>. The client checks the server's certificate and trusts it; the server never checks who the client is at the TLS layer at all. That's fine for a browser talking to a public website, because the site doesn't need to cryptographically know who's visiting.</p>
+        <p style="margin:0 0 12px; font-size:13.5px;">Service-to-service traffic has the opposite requirement: <strong>both sides need to know who the other one is</strong>, because either could be malicious or compromised. <strong>Mutual</strong> TLS is exactly that — both sides present a certificate, and both sides verify the other's, before any application data flows. "mTLS proves it is service-a" in the diagram means literally this: service-a's sidecar presented a certificate, and the other side's sidecar checked it against a certificate authority it trusts.</p>
+
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">Low level — the handshake, and why it can't be faked</div>
+        <div class="example-panel" style="margin:0 0 14px;"><span class="label">Illustration — five steps, and the one nobody can skip</span>BEFORE any of this — issued once, well before the request (see the
+T-45 min entry in the request-journey timeline earlier in this example):
+  the Mesh Control Plane, acting as the CA, gave service-a's sidecar:
+    - a certificate saying "this is service-a", signed by the CA
+    - the PRIVATE KEY that matches it — held only by service-a's sidecar,
+      never transmitted, never logged
+
+THE HANDSHAKE — service-a calling service-b
+
+  1. TCP connects. Nothing is trusted yet.
+
+  2. SERVER (service-b) sends its certificate.
+     service-a's sidecar checks: "was this signed by the CA I trust?"
+     Yes → continue. No → connection refused, right here.
+
+  3. CLIENT (service-a) ALSO sends its certificate.        ← the "mutual"
+     service-b's sidecar checks the same thing, the other direction.
+     Yes → continue. No → connection refused, right here.
+
+  4. Both sides prove they hold the PRIVATE KEY matching their
+     certificate — not just that they can show a certificate, which
+     alone would prove nothing. This is the step a stolen or copied
+     certificate without its key cannot pass.
+
+  5. A session key is negotiated. ENCRYPTED application data starts
+     flowing — this is the point where "Hands plain HTTP to the app
+     on localhost" becomes true; everything before this line was
+     the sidecar's job, not the app's.
+
+WHY THIS CAN'T BE TYPED INTO POSTMAN
+  A header is a string. Anyone who can reach the port can write
+  "x-user-id: whoever" by hand.
+  A private key is not a string anyone can write — it's a secret only
+  the CA-issued sidecar holds. Postman has no certificate the CA ever
+  signed, and no private key to prove possession of one. The handshake
+  fails at step 2 or 3, before the app ever sees a byte.
+
+  This is the exact distinction the later deep dive is built on:
+  a claim (a header) versus a proof (a completed mTLS handshake).</div>
+
+        <p style="margin:0; color:var(--ink);">Keep that distinction in mind reading the diagram: every dashed line into a sidecar is <em>configuration</em> (certificates, endpoints, policy) arriving before any request exists. Every solid line crossing a pod boundary is a request that already survived this handshake. The header work — claims, scopes, trace ids — only begins <em>after</em> mTLS has already decided the connection is real.</p>
+      </div>
+
       <div class="hld-diagram-wrap wide">
         <svg viewBox="0 0 1300 640" style="width:100%; min-width:1040px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -10377,6 +10921,51 @@ than decorative.</div>
           <li><strong>Claims must be un-spoofable, which the sidecar provides</strong> — a header is trivially forged by anything that can reach the service, so the guarantee comes from mTLS proving the sender is the gateway, not from the header itself.</li>
           <li><strong>The trace id is the only thing that never changes</strong> — span ids differ per hop and identities differ per hop, but one trace id spans the whole request, and that is what lets a metric spike lead to a log line.</li>
         </ul>
+
+        <p style="margin:14px 0 0; padding:11px 14px; background:rgba(255,209,102,0.06); border-left:2px solid var(--marker); border-radius:0 6px 6px 0; font-size:13px; color:var(--ink);"><strong>One risk this dive doesn't cover:</strong> everything above assumes the bearer token presented at the gateway is legitimate. If it was intercepted or copied before it ever arrives — leaked from client storage, sniffed off an insecure connection, replayed from a stolen session — the gateway has no way to tell, because a bearer token is by definition usable by whoever holds it. That's a client-facing risk rather than an internal-propagation one, so it's covered where it belongs: the OAuth Authorization Service example's deep dive on <a href="#usecase-authservice" style="color:var(--accent);">a stolen access token, and the layers that bound the damage</a> — short expiry, transport security, DPoP token binding, and anomaly-based step-up.</p>
+
+        <div class="subsection-box" style="margin-top:14px;">
+          <h3 class="subhead" style="margin-top:0;">The gap this creates — and why it's a real vulnerability, not a hypothetical</h3>
+          <p class="tight" style="font-size:12.5px; margin-bottom:10px;">Say that plainly: <span style="font-family:var(--mono)">x-user-id</span> carries zero cryptographic weight on its own. It's an assertion, not a credential. Its trustworthiness depends entirely on one thing holding — that Service A's app can <em>only</em> ever receive a request that already passed through the gateway.</p>
+          <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">Thought process</div>
+          <ol class="process" style="margin-bottom:14px;">
+            <li>Ask what actually happens if mTLS is bypassed — a misconfigured sidecar, a debug port left open, a NetworkPolicy hole, someone on the internal VPN.</li>
+            <li>Trace it forward: a raw HTTP request reaches Service A's app directly, carrying a hand-typed <span style="font-family:var(--mono)">x-user-id</span> header.</li>
+            <li>Ask whether the app has any reason to doubt it. It doesn't — the entire design's premise was "the gateway already verified identity, so I don't have to," and nothing downstream was ever built to re-check that.</li>
+            <li>Notice what that means precisely: mTLS isn't <em>a</em> layer of defense here, it's the <em>only</em> layer. If it fails, there is nothing else standing between Postman and a fully trusted identity claim.</li>
+          </ol>
+          <div class="example-panel" style="margin:0 0 14px;"><span class="label">Illustration — one control failing collapses the whole guarantee</span>THE INTENDED PATH
+  Postman ──✗ blocked, no route──▶ Service A
+  Postman ──✗ blocked, no client cert──▶ Service A's sidecar
+
+IF NETWORK ISOLATION HAS A HOLE
+  Postman ──raw TCP, reaches the pod──▶ Service A's sidecar
+                                         ✗ mTLS handshake fails
+                                         → request dropped here.
+                                           Still safe. ONE control held.
+
+IF mTLS IS ALSO MISCONFIGURED — sidecar in permissive mode, or
+a debug port that skips it entirely
+  Postman ──plain HTTP, no cert, header typed by hand──▶ Service A
+    POST /profile
+    x-user-id: admin_0001        ← Postman just wrote this
+    x-user-scopes: profile:write
+
+  Service A's app reads x-user-id. It was NEVER told to doubt it.
+  → fully trusted as admin_0001. Nothing else was checking.
+
+This is the named failure pattern "trusting internal traffic
+implicitly" — the thing zero-trust architecture specifically
+exists to close. A single misconfiguration away from a full
+identity bypass is not defense in depth; it's one hard shell
+around a soft center.</div>
+          <p style="margin:0 0 10px;"><strong>The fix moves the check from the app to the sidecar</strong> — the same component already terminating mTLS is the one positioned to also police which headers are allowed to carry identity at all:</p>
+          <ul class="item-list">
+            <li><strong>Strip, don't trust, by default</strong> — the sidecar drops any incoming <span style="font-family:var(--mono)">x-user-id</span> / <span style="font-family:var(--mono)">x-user-scopes</span> header unless it arrived on a connection whose verified mTLS identity is specifically the gateway's. Postman's plain HTTP request never has that identity, so the header it typed is deleted before the app ever sees it.</li>
+            <li><strong>This closes the gap even if network isolation fails</strong> — the control has moved from "can you reach the port" (network-layer, brittle) to "can you cryptographically prove you're the gateway" (identity-layer, the same guarantee mTLS already gives every other hop). Some meshes support this natively — Istio's <span style="font-family:var(--mono)">RequestAuthentication</span> combined with authorization policy scoped to the calling identity.</li>
+            <li><strong>Defense in depth means no single failure is total</strong> — with this in place, a NetworkPolicy hole is still a problem worth fixing, but it stops being a full authentication bypass on its own. That's the actual bar "zero trust" is naming.</li>
+          </ul>
+        </div>
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
@@ -10751,7 +11340,7 @@ Three rules that matter more at fleet scale than in one service:
         <tr class="rt-head"><th style="width:24%">Component</th><th style="width:20%">Plane · position</th><th>Owns</th></tr>
         <tr><td>CDN · WAF · L4 LB</td><td>Data · internet edge</td><td>Caching, volumetric and L7 attack absorption, and spreading <em>connections</em> across gateway instances — everything rejectable before identity is known. Usually managed services, not yours to debug</td></tr>
         <tr><td>API Gateway</td><td>Data · edge (north-south)</td><td>An L7 proxy: TLS termination, routing, <em>per-request</em> balancing across a service's pods, user authN, per-consumer quota, trace origination, token stripping and claim injection</td></tr>
-        <tr><td>Sidecar proxy</td><td>Data · every pod (east-west)</td><td>Also an L7 proxy: mTLS both directions, service-to-service authZ, <em>per-request</em> balancing across the callee's pods, retries, per-dependency budgets, egress allow-listing, free telemetry</td></tr>
+        <tr><td>Sidecar proxy</td><td>Data · every pod (east-west)</td><td>Also an L7 proxy: mTLS both directions, service-to-service authZ, <em>per-request</em> balancing across the callee's pods, retries, per-dependency budgets, egress allow-listing, free telemetry — and, done correctly, the only component that should be trusted to set identity headers at all</td></tr>
         <tr><td>Service Registry</td><td>Control</td><td>Which instances are alive; consumed by the mesh control plane, never called during a request. Readiness is what removes a draining pod from this set</td></tr>
         <tr><td>Auth Server</td><td>Control</td><td>Token issuance and revocation, JWKS publication; cached by the gateway so it stays off the request path</td></tr>
         <tr><td>Rate limiting</td><td>Both</td><td>Commercial quota at the edge; stability-oriented concurrency budgets in the sidecars — different constructs sharing a name</td></tr>
@@ -10770,7 +11359,7 @@ Three rules that matter more at fleet scale than in one service:
 <table class="ref-table">
         <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
         <tr><td>Sidecar per pod vs. a library in each service</td><td>Language-agnostic, upgradeable without touching application code, and telemetry comes free — at the cost of a proxy process per pod, its memory and latency overhead, and a harder debugging story when the proxy itself misbehaves.</td></tr>
-        <tr><td>Strip the user token at the edge vs. forward it inward</td><td>No internal service holds a replayable user credential, at the cost of downstream services having to trust gateway-asserted claims — which only holds because mTLS proves those claims came from the gateway.</td></tr>
+        <tr><td>Strip the user token at the edge vs. forward it inward</td><td>No internal service holds a replayable user credential, at the cost of downstream services having to trust gateway-asserted claims — which only holds because mTLS proves those claims came from the gateway. If mTLS is ever bypassed and the sidecar isn't also policing which identity may set those headers, this trust collapses to zero, not to a degraded state.</td></tr>
         <tr><td>Cache everything in the data plane vs. query the control plane live</td><td>Control plane outages degrade change rather than stopping traffic, at the cost of every cached thing having a staleness window that must be chosen deliberately.</td></tr>
         <tr><td>A gateway at all vs. exposing services directly</td><td>One consistent place for auth, quota and observability, at the cost of a genuine single point of failure that only redundancy can mitigate — no cache saves you if every gateway instance is down.</td></tr>
         <tr><td>Per-request L7 balancing in sidecars vs. relying on L4 alone</td><td>Load actually spreads for gRPC and HTTP/2, and enables least-request and outlier ejection — at the cost of a proxy in every pod that must hold and refresh an accurate view of every callee's endpoints.</td></tr>
@@ -10899,6 +11488,981 @@ THE ORDER THAT MATTERS MORE THAN THE TOOLS
   operational surface and a debugging story your team has not yet
   needed. A monolith with a managed database and good telemetry
   beats this entire diagram for most teams, most of the time.</div>
+      </div>
+        </div>
+      </details>
+    </section>
+
+
+
+
+    <section class="section" id="usecase-trusteddevice">
+      <details class="uc-details">
+        <summary class="uc-summary">
+          <div class="eyebrow">Worked Example ◆ — A Human Decision on the Critical Path</div>
+          <div class="usecase-head">
+            <h2 class="section-title">Design Trusted Device Login Approval</h2>
+            <span class="uc-tag">number matching · both-ends promotion · time-locked recovery</span>
+          </div>
+          <div class="uc-hint">Click to expand</div>
+        </summary>
+        <div class="uc-body">
+      <p style="max-width:680px;">"A login from an unrecognised device must be approved from a device the account already trusts, before any session is issued." Every other example on this page completes in milliseconds without a person involved. This one <em>deliberately blocks on a human</em> — someone has to look at a phone and decide. That inverts the usual design instincts: the interesting problems are no longer throughput or latency, but what happens when the human is asleep, offline, holding a broken phone, or being socially engineered into tapping yes.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>A login from an unrecognised device is held pending until approved from a trusted device.</li>
+              <li>The approving user sees enough context to make a real decision — what device, where, when.</li>
+              <li>A user can promote another device to trusted, and revoke one, without contacting support.</li>
+              <li>A user who has lost every trusted device can still recover their account.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>An attacker who already has the password must not be able to get in by spamming approval prompts.</li>
+              <li>Losing one device must not lock the account, and must not be a reason to weaken the gate.</li>
+              <li>Approval must not depend on push notifications being delivered, because they aren't guaranteed.</li>
+              <li>The recovery path must never be easier to exploit than the front door it bypasses.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: what's the approval actually proving — possession of a phone, or possession of a key that phone holds? We'll require a signature from hardware-backed key material, so a cloned app on a rooted device can't approve on the real device's behalf.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>Device</strong> <span class="fields">(id, user_id, tier, public_key, platform, label, first_seen, last_seen)</span> — tier is Unverified, Verified, or Trusted, and is the whole authority model in one column.</li>
+            <li><strong>LoginAttempt</strong> <span class="fields">(id, user_id, requesting_device_id, state, match_code, decoy_codes[], context, expires_at)</span> — the pending decision; state is Pending, Approved, Denied, or Expired.</li>
+            <li><strong>Approval</strong> <span class="fields">(attempt_id, approving_device_id, chosen_code, signature, at)</span> — signature is what makes this a proof rather than a claim.</li>
+            <li><strong>RecoveryRequest</strong> <span class="fields">(id, user_id, state, initiated_at, effective_at, cancelled_by)</span> — effective_at is deliberately in the future, which is the entire point of it.</li>
+          </ul>
+
+          <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:16px 0 8px;">Three fields worth expanding</div>
+          <p style="margin:0 0 10px; font-size:13.5px;"><strong style="font-family:var(--mono); color:var(--optional);">public_key</strong> and <strong style="font-family:var(--mono); color:var(--optional);">signature</strong> are two halves of one mechanism, so they're easier to read together. <strong style="font-family:var(--mono); color:var(--marker);">context</strong> is unrelated — it's the only field here that exists purely for the human.</p>
+
+          <div class="example-panel" style="margin:0 0 12px;"><span class="label">public_key + signature — what turns an approval into a proof</span>AT PROMOTION — the device makes a keypair in secure hardware
+  private key   stays on the device, physically NON-EXTRACTABLE.
+                The app can ask the hardware to sign things with it,
+                but can never read the key out. Malware can't copy it.
+  public key    sent to the server once, stored in Device.public_key.
+                Safe to store openly — it can only VERIFY signatures,
+                never create them.
+
+  Like a signature specimen kept on file at a bank: useful for
+  checking authenticity, useless for forging.
+
+AT APPROVAL — the private key gets used
+
+  The device does NOT just send the tap:
+      { "chosen_code": 47 }                  ← a CLAIM. Anyone
+                                               could POST this.
+
+  It signs the meaningful parts:
+      signature = sign(attempt_id + chosen_code + timestamp)
+
+      { "chosen_code": 47,
+        "signature": "MEUCIQD..." }          ← a PROOF
+
+  Server looks up that device's public_key and asks:
+      does this signature verify, for THIS attempt and THIS code?
+  Only the matching private key could have produced it.
+
+WHY IT MATTERS — the hole it closes
+  Without a signature, anyone holding a valid session token for the
+  trusted device (stolen, replayed from a log) could simply POST an
+  approval and be done.
+  With it, they would also need the private key — which never left
+  the hardware.
+
+  Signing attempt_id specifically also blocks replay: a captured
+  signature approves that ONE attempt, not the next one.
+
+  Same claim-versus-proof distinction as the mTLS primer earlier
+  on this page: a header or a JSON field is something anyone can
+  write; a signature is something only one device can produce.</div>
+
+          <div class="example-panel" style="margin:0;"><span class="label">context — what the human needs in order to decide well</span>Not cryptography at all. It is the descriptive information rendered
+on the approval screen so the decision is INFORMED rather than reflexive.
+
+  context: {
+      device_label: "Samsung Galaxy S26",
+      os:           "Android 16",
+      ip:           "103.xx.xx.xx",
+      location:     "Jakarta, Indonesia",    ← geo-IP lookup
+      timestamp:    "03:12 local"
+  }
+
+  shown as:  New sign-in attempt
+             Samsung S26 · Jakarta, ID · 03:12
+             You are approving on: iPhone 18
+
+WHY IT EARNS A COLUMN
+  A bare "Approve login? [Yes] [No]" gives the user nothing to
+  reason about. With context, someone sitting in Surabaya at 3am
+  knows instantly that something is wrong — the location and the
+  device are the signal, not the prompt.
+
+  It is the difference between a yes/no reflex and a judgement.
+
+HONEST CAVEAT
+  Geo-IP is APPROXIMATE. VPNs, mobile carrier routing and CGNAT
+  routinely place users in the wrong city.
+  → good for "that is definitely not me"
+  → unreliable as a basis for blocking automatically</div>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p><span style="font-family:var(--mono)">POST /login</span> → password verified, returns <span style="font-family:var(--mono)">attempt_id</span> and the match code to display<br>
+          <span style="font-family:var(--mono)">GET /login/{id}</span> → the new device polls this for the outcome<br>
+          <span style="font-family:var(--mono)">GET /approvals/pending</span> → what the trusted device fetches on app open<br>
+          <span style="font-family:var(--mono)">POST /approvals/{id}</span> → <span style="font-family:var(--mono)">{chosen_code, signature}</span> — approve or deny<br>
+          <span style="font-family:var(--mono)">POST /devices/{id}/promote</span> → called <em>from</em> the device being promoted<br>
+          <span style="font-family:var(--mono)">POST /recovery</span> → starts the time-locked path; <span style="font-family:var(--mono)">DELETE /recovery/{id}</span> cancels it</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>New device submits credentials; the password check passes but no session is issued.</li>
+            <li>The service generates one match code plus two decoys, stores the attempt as Pending, and returns only the match code to the new device.</li>
+            <li>Every trusted device is pushed a prompt — and will also see it on next app open, because push is not trusted to arrive.</li>
+            <li>The user picks the code that matches what the new device is showing, and their device signs that choice.</li>
+            <li>The signature is verified against that device's registered public key; only then is a session issued to the waiting device.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>The waiting device polls, the trusted devices are pushed <em>and</em> pollable, and recovery runs on a delay — diagrammed below.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Four below: <strong>(a)</strong> why the code is matched rather than tapped, <strong>(b)</strong> the two-tier model and both-ends promotion, <strong>(c)</strong> approval without reliable delivery, and <strong>(d)</strong> why recovery is the real attack surface.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 880 570" style="width:100%; min-width:800px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="td-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="td-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="td-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="td-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+            <marker id="td-red" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker>
+          </defs>
+
+          <rect x="265" y="35" width="240" height="100" rx="10" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.4"/>
+          <text x="385" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Device Registry</text>
+          <text x="385" y="82" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">Unverified · Verified · Trusted</text>
+          <text x="385" y="99" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">tier decides authority;</text>
+          <text x="385" y="115" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">public key per device</text>
+
+          <rect x="570" y="35" width="200" height="100" rx="10" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.3" stroke-dasharray="5 4"/>
+          <text x="670" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Push (APNs/FCM)</text>
+          <text x="670" y="82" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">best effort — NOT</text>
+          <text x="670" y="98" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">guaranteed delivery</text>
+          <text x="670" y="116" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">a speed-up, not the path</text>
+
+          <rect x="25" y="180" width="180" height="130" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.6"/>
+          <text x="115" y="206" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">New Device</text>
+          <text x="115" y="223" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">Samsung S26 · unknown</text>
+          <rect x="38" y="234" width="154" height="30" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1.1"/>
+          <text x="115" y="253" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#FFD166">shows code 47</text>
+          <text x="115" y="281" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">polls for the outcome —</text>
+          <text x="115" y="297" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#9FC1E0">holds no session yet</text>
+
+          <rect x="265" y="160" width="240" height="170" rx="10" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.7"/>
+          <text x="385" y="187" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Trust Service</text>
+          <text x="385" y="205" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">password verified — but no</text>
+          <text x="385" y="221" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">session issued yet</text>
+          <rect x="278" y="232" width="214" height="30" rx="5" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.1"/>
+          <text x="385" y="251" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">generates 1 code + 2 decoys</text>
+          <text x="385" y="280" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">attempt state machine:</text>
+          <text x="385" y="296" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">Pending → Approved / Denied</text>
+          <text x="385" y="312" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">→ Expired (90s)</text>
+
+          <rect x="582" y="168" width="188" height="130" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-opacity="0.45" stroke-width="1.3"/>
+          <rect x="576" y="174" width="194" height="130" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.6"/>
+          <text x="673" y="200" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Trusted Devices ×2</text>
+          <rect x="589" y="210" width="168" height="30" rx="5" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.1"/>
+          <text x="673" y="229" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#7CE0A8">12 · 47 · 83</text>
+          <text x="673" y="256" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">user taps the one that</text>
+          <text x="673" y="272" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">matches, then it is signed</text>
+          <text x="673" y="290" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">with a Secure Enclave key</text>
+
+          <rect x="265" y="385" width="240" height="125" rx="10" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="385" y="412" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Time-Locked Recovery</text>
+          <text x="385" y="431" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">identity + PIN + OTP</text>
+          <text x="385" y="449" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">accepted immediately —</text>
+          <text x="385" y="465" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">but takes effect in 48h</text>
+          <text x="385" y="488" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">the delay IS the control</text>
+
+          <rect x="570" y="385" width="200" height="125" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.4"/>
+          <text x="670" y="412" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Owner Notified</text>
+          <text x="670" y="431" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">every trusted device,</text>
+          <text x="670" y="447" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">plus email and SMS</text>
+          <text x="670" y="470" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">can CANCEL any time</text>
+          <text x="670" y="486" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">inside the window</text>
+
+          <line x1="205" y1="205" x2="262" y2="205" stroke="#FFD166" stroke-width="1.8" marker-end="url(#td-amber)"/>
+          <text x="233" y="195" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#FFD166">1</text>
+
+          <line x1="505" y1="200" x2="572" y2="200" stroke="#6FE0F0" stroke-width="1.8" marker-end="url(#td-cyan)"/>
+          <text x="538" y="190" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6FE0F0">2</text>
+
+          <line x1="576" y1="288" x2="508" y2="288" stroke="#7CE0A8" stroke-width="1.8" marker-end="url(#td-green)"/>
+          <text x="542" y="278" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#7CE0A8">3</text>
+
+          <line x1="262" y1="300" x2="208" y2="300" stroke="#7CE0A8" stroke-width="1.8" marker-end="url(#td-green)"/>
+          <text x="235" y="290" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#7CE0A8">4</text>
+
+          <line x1="385" y1="135" x2="385" y2="157" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#td-ink)"/>
+          <path d="M 500,162 C 540,140 570,136 640,136" fill="none" stroke="#FF6B5E" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#td-red)"/>
+          <line x1="690" y1="135" x2="690" y2="170" stroke="#FF6B5E" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#td-red)"/>
+
+          <line x1="385" y1="330" x2="385" y2="382" stroke="#FF6B5E" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#td-red)"/>
+          <text x="299" y="360" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">no trusted device</text>
+          <text x="299" y="374" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">reachable at all</text>
+
+          <line x1="505" y1="447" x2="567" y2="447" stroke="#FFD166" stroke-width="1.5" marker-end="url(#td-amber)"/>
+
+          <line x1="25" y1="540" x2="55" y2="540" stroke="#7CE0A8" stroke-width="2.2"/>
+          <text x="61" y="544" font-family="Inter" font-size="10.5" fill="#9FC1E0">Proven by signature</text>
+          <line x1="215" y1="540" x2="245" y2="540" stroke="#FF6B5E" stroke-width="2.2" stroke-dasharray="5 4"/>
+          <text x="251" y="544" font-family="Inter" font-size="10.5" fill="#9FC1E0">Unreliable, or deliberately slow</text>
+          <line x1="510" y1="540" x2="540" y2="540" stroke="#94B8D4" stroke-width="2.2" stroke-dasharray="4 3"/>
+          <text x="546" y="544" font-family="Inter" font-size="10.5" fill="#9FC1E0">Lookup, off the decision path</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">The new device never holds a session while it waits — it polls. Push is drawn dashed and red because the design must work without it. The recovery path runs downward and deliberately slowly: it's the only route that bypasses the trusted devices, so it's the one that gets a 48-hour delay and a cancel window rather than an instant answer.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col write">
+          <div class="flow-title">Approving a legitimate login</div>
+          <ol>
+            <li>Samsung submits the right password; the service creates a Pending attempt and shows <strong>47</strong> on the Samsung.</li>
+            <li>Both trusted devices get a push, and would show the same prompt on app open regardless.</li>
+            <li>The iPhone displays <strong>12 · 47 · 83</strong> with the device, location and time; the user taps 47.</li>
+            <li>That choice is signed by the iPhone's hardware key, verified server-side, and the Samsung's next poll returns a session.</li>
+          </ol>
+        </div>
+        <div class="flow-col read">
+          <div class="flow-title">An attacker who already has the password</div>
+          <ol>
+            <li>They submit it from their own device; an attempt goes Pending and their screen shows a code they cannot influence.</li>
+            <li>The real user's phone lights up showing three numbers and an unfamiliar device in an unfamiliar city.</li>
+            <li>The attacker cannot tell the user which number to tap — they have no channel to the approval screen.</li>
+            <li>A wrong tap denies the attempt outright, and repeated wrong taps are themselves a signal worth alerting on.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — why the code is matched, not just tapped</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Password alone can't be spammed into access</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the obvious design: push a prompt with Approve and Deny. It's one tap and the UX is excellent.</li>
+          <li>Put an attacker who already holds the password in front of it. They can now generate a prompt on the real user's phone, on demand, as often as they like.</li>
+          <li>Follow that to its conclusion — the attacker doesn't need to break anything, they need the user to make one mistake, once. Send prompts at 3am until a half-asleep person taps the wrong button to stop the buzzing. This has a name, <em>MFA fatigue</em>, and it is how real accounts get taken over.</li>
+          <li>Notice what's structurally wrong: a yes/no prompt asks the user to make a decision they have no information to make, and rewards the attacker for persistence.</li>
+          <li>Change the question. Instead of "do you approve?", ask "which of these three numbers is on your other screen?" — a question that cannot be answered correctly by guessing habitually, and that the attacker has no way to coach.</li>
+          <li>Check the attacker's options against the new design. They see a code on their own screen, but they have no channel to the approval device to tell the user what it is. Guessing is one-in-three, and wrong guesses are loud.</li>
+        </ol>
+        <p>Number matching isn't extra friction for its own sake — it converts an approval into a question only someone actually looking at both screens can answer.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the same attack against both designs</span>APPROVE / DENY PROMPT
+  attacker has the password, submits login at 03:12
+  → user's phone: "Approve login? [Yes] [No]"
+  → user is asleep. Buzz. Buzz. Buzz.
+  → attacker repeats 40 times
+  → ONE mistaken tap and the attacker is in
+  → the attacker needed no skill, only persistence
+
+NUMBER MATCHING
+  attacker submits login → their screen shows 47
+                           (server-generated; they cannot choose it)
+  → user's phone: "Which number is shown on the new device?"
+                    [ 12 ]  [ 47 ]  [ 83 ]
+  → attacker has no way to tell the user "tap 47" — there is no
+    channel from the attacker's screen to the user's phone
+  → random tap = 1-in-3, and a WRONG tap DENIES the attempt
+    outright rather than just doing nothing
+  → 40 repeated attempts now produce 40 denials and an alert,
+    which is detection rather than a slow leak toward compromise
+
+The context shown alongside matters as much as the number:
+    New sign-in attempt
+    Samsung S26 · Jakarta, ID · 03:12 local
+    You are approving on: iPhone 18
+  → "I am in Surabaya and it is 3am" is information a bare
+    yes/no prompt never gave the user a chance to act on.</div>
+        <ul class="item-list">
+          <li><strong>The decoys must be server-generated and unguessable</strong> — if the client picks them, a compromised client can make all three the same number, and the defence evaporates.</li>
+          <li><strong>A wrong tap should deny, not silently retry</strong> — treating a mismatch as "try again" hands the attacker repeated one-in-three chances. One wrong answer ends that attempt.</li>
+          <li><strong>Short expiry matters here too</strong> — 60 to 90 seconds keeps a stale prompt from being approved later, out of context, by a user who has forgotten why it appeared.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — two tiers, and why promotion needs both ends</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Promote and revoke without support</span><span class="explains-tag nfr"><b>NFR</b>Losing one device doesn't lock the account</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with one flat idea of "known device" and test it. A device that merely logged in successfully once is not the same as a device you'd let approve <em>other</em> logins — conflating them means every device you've ever used has veto power over your account.</li>
+          <li>Split the concept. <strong>Verified</strong> means we've seen this device complete authentication. <strong>Trusted</strong> means this device has authority over other devices. Many of the first, few of the second.</li>
+          <li>Now design promotion, and notice it's the most dangerous operation in the system — whoever controls promotion controls the account permanently.</li>
+          <li>Consider promoting remotely from the existing trusted device: "make my Samsung trusted." It's convenient, and it means anyone with momentary access to your unlocked phone can silently grant permanent authority to a device you'll never see.</li>
+          <li>Invert it: require the promotion to be <em>initiated from the device being promoted</em>. Now the attacker needs that device physically in hand, not just yours.</li>
+          <li>Then require the existing trusted device to approve it too. Promotion now needs both devices at once — which is exactly the property that makes it safe, and exactly why it must not be the only path (see recovery below).</li>
+        </ol>
+        <p>The two-tier split is what keeps the trusted set small on purpose. The both-ends promotion rule is what stops that set from being quietly expanded by someone holding one device for thirty seconds.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the tiers, and what promotion costs an attacker</span>THE LADDER
+  Unverified   just submitted a password. Can do nothing yet.
+  Verified     completed an approved login. Can use the account.
+               CANNOT approve other devices.
+  Trusted      can approve logins and promote devices.
+               Small set, deliberately.
+
+PROMOTING Samsung (Verified) → Trusted
+
+  step 1  initiate FROM the Samsung          ← physical possession
+                                               of the NEW device
+  step 2  re-authenticate on the Samsung     ← password + PIN
+  step 3  existing trusted device approves   ← physical possession
+          via the same number-match flow       of the OLD device
+
+  → an attacker needs BOTH devices, at the same time
+  → holding only your unlocked phone is NOT enough, because
+    step 1 has to happen on THEIR device and step 3 on yours
+
+WHY MORE THAN ONE TRUSTED DEVICE
+  With exactly one, a dropped phone means every login forever
+  goes through the recovery path — which pushes real users into
+  the weakest route as a matter of routine, and trains support
+  to expect it.
+
+  Requiring at least two at setup keeps the normal path usable
+  when one dies, so recovery stays genuinely exceptional.
+
+  The trade: two trusted devices is two devices an attacker could
+  target. Sound, because compromising either still requires
+  passing a hardware-signed number match — and the alternative
+  is far worse: everyone funnelled into recovery.</div>
+        <ul class="item-list">
+          <li><strong>Revocation must be instant and must not need the revoked device</strong> — "my phone was stolen" is exactly when you cannot tap anything on that phone. Any trusted device revokes any other, immediately.</li>
+          <li><strong>Revoking down to zero trusted devices should be blocked</strong> — otherwise a user one tap away from locking themselves into the recovery path forever. Require promoting a replacement first, or treat it as starting recovery explicitly.</li>
+          <li><strong>The attestation matters at promotion time</strong> — checking the device's key is genuinely hardware-backed is worth doing once, at promotion, rather than on every approval.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — approval without reliable delivery</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Doesn't depend on push arriving</span><span class="explains-tag"><b>FR</b>Login held pending until decided</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the natural design: push the prompt to the trusted device and wait for the answer.</li>
+          <li>Check what push actually guarantees. APNs and FCM are best-effort — they drop messages under load, when the device is offline, when the app was force-quit, when the OS decides to defer. None of that surfaces as an error you can act on.</li>
+          <li>Notice the consequence: a design that <em>waits for a push to be answered</em> has a failure mode where nothing ever happens and nobody is told why. The login just hangs.</li>
+          <li>Separate the two roles. Push is a <em>notification</em> — an optimisation to make the prompt arrive fast. The pending approval itself must live as durable state on the server, retrievable on demand.</li>
+          <li>Give the trusted device a pull path: on app open, fetch pending approvals. The user who didn't get a push simply opens the app and the prompt is there.</li>
+          <li>Give the waiting device a pull path too, because it also cannot be pushed to reliably — it polls its own attempt for the outcome.</li>
+          <li>Bound the whole thing with an expiry, so an undecided attempt fails closed rather than lingering as something that could be approved out of context later.</li>
+        </ol>
+        <p>The rule that falls out: the prompt is state, not a message. Push makes it fast; the state makes it work.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — who is waiting on whom, and what happens when push fails</span>WRONG — push IS the mechanism
+  new device → server → push → trusted device
+                          ✗ dropped by FCM
+  → trusted device never knows
+  → new device waits forever
+  → user has no action available except "try again", which
+    generates another push that may also vanish
+
+RIGHT — push is a hint; state is the mechanism
+
+  server holds:  attempt_9f3  state=Pending  expires_at=+90s
+
+  TRUSTED DEVICE, two ways in:
+    push arrives    → tap notification → prompt        (fast path)
+    push never came → open the app → GET /approvals/pending
+                      → the same prompt is right there  (reliable path)
+
+  NEW DEVICE:
+    polls GET /login/attempt_9f3 every ~2s
+    → Pending  → keep waiting, show the code
+    → Approved → session issued
+    → Denied   → clear message, do not retry automatically
+    → Expired  → offer to start a fresh attempt
+
+  Nothing is lost if push is lost. It only gets slower.
+
+  The 90-second expiry is the safety property: an attempt that
+  nobody answered dies. It cannot sit around for an hour and be
+  approved by someone who has forgotten the context.</div>
+        <ul class="item-list">
+          <li><strong>Every trusted device gets the prompt, and the first decisive answer wins</strong> — with more than one trusted device, whichever the user actually has in hand resolves it, and the rest should see the prompt disappear.</li>
+          <li><strong>Deny should be as easy as approve, and mean something</strong> — a denial is the clearest signal available that someone has the password. It should end the attempt, and ideally trigger a password-change prompt rather than being treated as a dismissed notification.</li>
+          <li><strong>Polling is fine at this scale</strong> — one waiting device polling every couple of seconds for at most ninety seconds is trivial load, and far simpler than holding a long-lived connection open for a human to wake up.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — recovery is the real attack surface</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Recoverable after losing every trusted device</span><span class="explains-tag nfr"><b>NFR</b>Recovery no weaker than the front door</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Accept the requirement honestly: people lose phones, and an account that cannot be recovered is a product failure, not a security win.</li>
+          <li>Then state the uncomfortable consequence — you have just committed to building a path that bypasses the entire mechanism above.</li>
+          <li>Apply the principle that governs this whole area: <strong>security is the weakest path, not the strongest.</strong> An attacker never attacks the number-matching flow if "I lost my phone" is easier. Every hour spent hardening approval is wasted if recovery is a form and a support ticket.</li>
+          <li>Ask what an attacker actually needs for the recovery path, and make sure it isn't a subset of what they already have. If recovery needs only an emailed code, then compromising email defeats everything — so it must require something email compromise doesn't grant.</li>
+          <li>Notice what you cannot fix with more factors: a sufficiently convincing social engineer will eventually satisfy a human reviewer. So add a control that doesn't depend on the reviewer being right.</li>
+          <li>Make recovery <em>slow and loud</em> rather than merely hard. Accept the request, then wait — and spend the waiting period shouting at every channel the real owner might still control.</li>
+        </ol>
+        <p>The delay is the part that actually works. Every other control tries to distinguish the real owner from an attacker; the delay doesn't bother, and instead gives the real owner time to object.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — why 48 hours beats one more verification step</span>WHAT RECOVERY MUST NOT BE
+  "email a code to the address on file" → email compromise
+                                          defeats the entire design
+  "answer security questions"           → answers are frequently
+                                          public or guessable
+  "convince a support agent"            → the single most exploited
+                                          path in real takeovers
+
+WHAT IT IS INSTEAD — accepted instantly, effective slowly
+
+  t+0      request accepted after identity data + PIN + OTP
+           ← note: PIN is the anchor. It is the one factor an
+             email-only compromise does not grant.
+  t+0      EVERY channel is notified at once:
+             all trusted devices (they may still be reachable)
+             email · SMS · in-app
+           "A recovery request was started from Jakarta.
+            If this wasn't you, CANCEL — one tap."
+  t+0→48h  the account keeps working normally for existing
+           sessions. Nothing is revoked yet.
+           ANY trusted device, or the cancel link, kills it instantly.
+  t+48h    no cancellation → trusted set is reset, new device
+           becomes trusted, all other sessions revoked
+
+WHY THE DELAY IS THE LOAD-BEARING PART
+  The attacker's problem is no longer "can I pass verification?"
+  It becomes "can I pass verification AND stop the real owner from
+  noticing, across every channel they own, for two full days?"
+
+  That is a much harder problem, and it does not depend on any
+  reviewer correctly telling attacker from owner.
+
+  Cost, stated honestly: a real user who genuinely lost their phone
+  waits 48 hours. That is a bad experience. It is accepted on
+  purpose, because the alternative is an instant path that undoes
+  everything else in this design.</div>
+        <ul class="item-list">
+          <li><strong>Cancelling must be far easier than initiating</strong> — one tap from any notification, no login required, because the person cancelling may be locked out. Asymmetry in favour of the defender is the point.</li>
+          <li><strong>A cancelled recovery is a security event, not a dismissed notification</strong> — it means someone had enough of your identity data and PIN to get that far. It should force a password and PIN change, not just close quietly.</li>
+          <li><strong>Consider a shorter window for lower-risk accounts</strong> — the delay can scale with what's at stake. An account holding tradeable assets justifies 48 hours in a way a reading-list app does not, and pretending otherwise just trains users to hate the feature.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Same instinct as the flash sale's reservation expiry and the payment saga's sweeper: when you cannot make a decision correctly in the moment, make the system wait, and give the party who would object a chance to speak.</p>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>Password alone can't be spammed into access</td><td>Number matching makes a habitual tap a denial rather than an approval, and repeated wrong answers are an alertable signal.</td></tr>
+        <tr><td>Doesn't depend on push arriving</td><td>The pending approval is durable server state; push is a hint. The trusted device pulls it on app open, the waiting device polls for the outcome.</td></tr>
+        <tr><td>Losing one device doesn't lock the account</td><td>At least two trusted devices are required at setup, so the normal path survives one loss and recovery stays exceptional.</td></tr>
+        <tr><td>Promotion can't be done with one device alone</td><td>Initiation must happen on the device being promoted, and approval on an existing trusted device — both, at once.</td></tr>
+        <tr><td>Recovery no weaker than the front door</td><td>It requires a factor email compromise doesn't grant, then runs on a 48-hour delay with every channel notified and one-tap cancellation.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Number matching vs. a single approve button</td><td>Defeats fatigue attacks and makes a careless tap safe, at the cost of real friction on every new-device login — and of users who find three numbers confusing the first time they see them.</td></tr>
+        <tr><td>Requiring two trusted devices vs. allowing one</td><td>Keeps the normal path working when a phone dies, at the cost of a harder setup flow and a second device an attacker could target — worth it, because the alternative routes ordinary users through recovery.</td></tr>
+        <tr><td>Both-ends promotion vs. remote promotion</td><td>Someone holding your unlocked phone cannot grant permanent authority to their own device, at the cost of genuinely needing both devices present to add one.</td></tr>
+        <tr><td>Time-locked recovery vs. instant recovery</td><td>Turns "beat the verification" into "beat the verification and stay unnoticed for 48 hours", at the cost of a real user with a genuinely lost phone waiting two days to get back in.</td></tr>
+        <tr><td>Hardware-signed approvals vs. a simple API call</td><td>A cloned or emulated app can't approve on a real device's behalf, at the cost of platform-specific key handling and a worse story on devices without secure hardware.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>Device key material</td><td><span class="tool-tag">iOS Secure Enclave</span>, <span class="tool-tag">Android Keystore</span> with StrongBox — non-extractable keys, with attestation checked at promotion</td></tr>
+        <tr><td>Attempt state</td><td><span class="tool-tag">Redis</span> with a TTL matching the expiry, or <span class="tool-tag">PostgreSQL</span> when approvals must be auditable long-term</td></tr>
+        <tr><td>Push delivery</td><td><span class="tool-tag">APNs</span>, <span class="tool-tag">FCM</span> — treated as best-effort notification, never as the mechanism</td></tr>
+        <tr><td>Recovery notification fan-out</td><td>the same channels the OAuth example uses for OTP — email, SMS, WhatsApp — plus in-app to every trusted device</td></tr>
+        <tr><td>Standards worth borrowing from</td><td><span class="tool-tag">WebAuthn</span>/<span class="tool-tag">FIDO2</span> and passkeys solve much of this natively; worth checking before building device trust by hand</td></tr>
+      </table>
+</div>
+      </div>
+        </div>
+      </details>
+    </section>
+
+
+
+
+    <section class="section" id="usecase-sociallogin">
+      <details class="uc-details">
+        <summary class="uc-summary">
+          <div class="eyebrow">Worked Example ◇ — A Button That Is Really an Identity Model</div>
+          <div class="usecase-head">
+            <h2 class="section-title">Design Password &amp; Social Login</h2>
+            <span class="uc-tag">one user, many identities · the linking attack · provider outages</span>
+          </div>
+          <div class="uc-hint">Click to expand</div>
+        </summary>
+        <div class="uc-body">
+      <p style="max-width:680px;">"Let people sign in with an email and password, or with Google, Facebook, or LinkedIn — and have all of those reach the same account." This looks like adding three buttons. It is actually a set of identity-model decisions that are painful to reverse once real users exist, and it contains one genuine account-takeover vulnerability that a very reasonable-sounding implementation walks straight into.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>Sign up and sign in with email and password, or with any supported social provider.</li>
+              <li>One person has one account, however many ways they sign in to it.</li>
+              <li>A user can add a password to a social-only account, and add a provider to a password account.</li>
+              <li>A user can unlink a provider, and see every identity currently attached to their account.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>Signing in with a provider must never grant access to an account the user doesn't control.</li>
+              <li>One provider being down must not lock out users who have another way in.</li>
+              <li>The account must survive a user changing their email address at the provider.</li>
+              <li>Unlinking must not be able to leave an account with no way to sign in.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking early: is email the account key, or just an attribute? Treating it as the key is the intuitive choice and the source of most of the problems below — Facebook can return no email at all, and Google users change theirs.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>User</strong> <span class="fields">(id, display_name, primary_email, email_verified, created_at)</span> — the person. Deliberately holds no credentials at all.</li>
+            <li><strong>Identity</strong> <span class="fields">(id, user_id, provider, provider_user_id, email_at_provider, linked_at)</span> — one way of proving you are that user. <span style="font-family:var(--mono)">provider</span> is <span style="font-family:var(--mono)">password</span>, <span style="font-family:var(--mono)">google</span>, <span style="font-family:var(--mono)">facebook</span>, <span style="font-family:var(--mono)">linkedin</span>.</li>
+            <li><strong>PasswordCredential</strong> <span class="fields">(identity_id, hash, algorithm, updated_at)</span> — kept separate so a password is just one identity among several, not a column on User.</li>
+            <li><strong>LinkRequest</strong> <span class="fields">(id, user_id, pending_provider, pending_provider_user_id, expires_at)</span> — a link waiting on proof of ownership, which is what closes the attack below.</li>
+          </ul>
+          <p style="margin:12px 0 0; font-size:13.5px;">The unique constraint that matters: <strong style="font-family:var(--mono); color:var(--optional);">(provider, provider_user_id)</strong> — not email. The provider's subject id is stable; the email address is not.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p><span style="font-family:var(--mono)">POST /auth/password</span> → email + password, returns a session<br>
+          <span style="font-family:var(--mono)">GET /auth/{provider}/start</span> → redirect to the provider with a <span style="font-family:var(--mono)">state</span> nonce<br>
+          <span style="font-family:var(--mono)">GET /auth/{provider}/callback</span> → exchange code for tokens, resolve to a user, or return a link challenge<br>
+          <span style="font-family:var(--mono)">GET /me/identities</span> → everything currently attached to this account<br>
+          <span style="font-family:var(--mono)">POST /me/identities</span> → link a provider, from an already-authenticated session<br>
+          <span style="font-family:var(--mono)">DELETE /me/identities/{id}</span> → unlink; rejected if it would remove the last one</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>User picks a provider; the service stores a <span style="font-family:var(--mono)">state</span> nonce and redirects them out.</li>
+            <li>The provider authenticates them and redirects back with a one-time code; the service checks <span style="font-family:var(--mono)">state</span> matches.</li>
+            <li>The service exchanges that code server-side for an ID token, and validates its signature, issuer, audience and expiry.</li>
+            <li>It looks up <span style="font-family:var(--mono)">(provider, sub)</span> — an exact match means this is a known identity, and a session is issued immediately.</li>
+            <li>No match means a decision: create a new user, or link to an existing one — and that decision is where the vulnerability lives.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>Identities fan into one user; the resolution step in the middle is the whole design — diagrammed below.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Four below: <strong>(a)</strong> one user, many identities, <strong>(b)</strong> the linking attack, with both designs compared, <strong>(c)</strong> why email is not a key, and <strong>(d)</strong> what happens when a provider is down.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 900 520" style="width:100%; min-width:800px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="sl-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="sl-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="sl-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="sl-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+            <marker id="sl-red" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker>
+          </defs>
+
+          <text x="16" y="22" font-family="JetBrains Mono" font-size="10" fill="#FFD166">WAYS IN — each is an Identity row, none is the account</text>
+
+          <rect x="16" y="38" width="170" height="44" rx="8" fill="#0E2F52" stroke="#FFD166" stroke-width="1.4"/>
+          <text x="101" y="58" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#EAF4FF">Email + Password</text>
+          <text x="101" y="73" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FFD166">you verify this yourself</text>
+
+          <rect x="16" y="92" width="170" height="40" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.3"/>
+          <text x="101" y="110" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#EAF4FF">Google</text>
+          <text x="101" y="124" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#6FE0F0">email_verified: true</text>
+
+          <rect x="16" y="142" width="170" height="40" rx="8" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.3"/>
+          <text x="101" y="160" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#EAF4FF">Facebook</text>
+          <text x="101" y="174" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FF6B5E">may return NO email</text>
+
+          <rect x="16" y="192" width="170" height="40" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.3"/>
+          <text x="101" y="210" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#EAF4FF">LinkedIn</text>
+          <text x="101" y="224" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#6FE0F0">OIDC, same shape</text>
+
+          <rect x="250" y="60" width="230" height="175" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.7"/>
+          <text x="365" y="86" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Identity Resolution</text>
+          <rect x="262" y="96" width="206" height="28" rx="5" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.1"/>
+          <text x="365" y="114" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#7CE0A8">1 · validate the ID token</text>
+          <rect x="262" y="128" width="206" height="28" rx="5" fill="#0A2540" stroke="#6FE0F0" stroke-width="1.1"/>
+          <text x="365" y="146" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#6FE0F0">2 · look up (provider, sub)</text>
+          <rect x="262" y="160" width="206" height="28" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.2"/>
+          <text x="365" y="178" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FF6B5E">3 · no match → THE DECISION</text>
+          <text x="365" y="208" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">never keys on email —</text>
+          <text x="365" y="223" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">sub is stable, email isn't</text>
+
+          <rect x="545" y="38" width="200" height="72" rx="9" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="645" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Known identity</text>
+          <text x="645" y="80" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">exact (provider, sub) hit</text>
+          <text x="645" y="96" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">→ session issued</text>
+
+          <rect x="545" y="122" width="200" height="72" rx="9" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.4"/>
+          <text x="645" y="146" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Brand new person</text>
+          <text x="645" y="164" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">no identity, no email match</text>
+          <text x="645" y="180" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">→ create User + Identity</text>
+
+          <rect x="545" y="206" width="200" height="86" rx="9" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.7"/>
+          <text x="645" y="230" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Email already exists</text>
+          <text x="645" y="248" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">the dangerous branch —</text>
+          <text x="645" y="264" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">auto-linking here is an</text>
+          <text x="645" y="280" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">account takeover</text>
+
+          <rect x="545" y="318" width="200" height="80" rx="9" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="645" y="342" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Prove ownership</text>
+          <text x="645" y="360" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">log in the existing way,</text>
+          <text x="645" y="376" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">THEN attach the provider</text>
+
+          <rect x="250" y="330" width="230" height="110" rx="10" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.4"/>
+          <text x="365" y="356" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">One User</text>
+          <text x="365" y="375" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">holds NO credentials</text>
+          <text x="365" y="393" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">many Identity rows point</text>
+          <text x="365" y="409" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">at it — password is just</text>
+          <text x="365" y="425" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">one of them</text>
+
+          <line x1="186" y1="60" x2="246" y2="100" stroke="#FFD166" stroke-width="1.4" marker-end="url(#sl-amber)"/>
+          <line x1="186" y1="112" x2="246" y2="128" stroke="#6FE0F0" stroke-width="1.4" marker-end="url(#sl-cyan)"/>
+          <line x1="186" y1="162" x2="246" y2="152" stroke="#FF6B5E" stroke-width="1.4" marker-end="url(#sl-red)"/>
+          <line x1="186" y1="212" x2="246" y2="176" stroke="#6FE0F0" stroke-width="1.4" marker-end="url(#sl-cyan)"/>
+
+          <line x1="480" y1="90" x2="542" y2="74" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#sl-green)"/>
+          <line x1="480" y1="140" x2="542" y2="158" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#sl-cyan)"/>
+          <line x1="480" y1="180" x2="542" y2="240" stroke="#FF6B5E" stroke-width="1.6" marker-end="url(#sl-red)"/>
+
+          <line x1="645" y1="292" x2="645" y2="314" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#sl-green)"/>
+          <text x="760" y="308" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">the safe resolution</text>
+
+          <path d="M 640,398 C 560,430 480,398 484,388" fill="none" stroke="#7CE0A8" stroke-width="1.4" marker-end="url(#sl-green)"/>
+          <line x1="645" y1="110" x2="645" y2="118" stroke="#7CE0A8" stroke-width="0"/>
+          <path d="M 548,96 C 500,300 470,330 484,352" fill="none" stroke="#7CE0A8" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#sl-green)"/>
+
+          <line x1="16" y1="478" x2="46" y2="478" stroke="#7CE0A8" stroke-width="2.2"/>
+          <text x="52" y="482" font-family="Inter" font-size="10.5" fill="#9FC1E0">Safe path</text>
+          <line x1="160" y1="478" x2="190" y2="478" stroke="#FF6B5E" stroke-width="2.2"/>
+          <text x="196" y="482" font-family="Inter" font-size="10.5" fill="#9FC1E0">Where the takeover happens</text>
+          <line x1="420" y1="478" x2="450" y2="478" stroke="#7CE0A8" stroke-width="2.2" stroke-dasharray="4 3"/>
+          <text x="456" y="482" font-family="Inter" font-size="10.5" fill="#9FC1E0">Resolves to the same user</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">Four ways in, one user. The resolution box is the whole design: an exact hit on <span style="font-family:var(--mono)">(provider, sub)</span> is trivial, a genuinely new person is trivial, and the third branch — a social login whose email already belongs to someone — is where a reasonable-looking shortcut becomes an account takeover.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col read">
+          <div class="flow-title">A returning Google user</div>
+          <ol>
+            <li>They click Login with Google; the service stores a <span style="font-family:var(--mono)">state</span> nonce and redirects them out.</li>
+            <li>Google authenticates them and redirects back with a code; <span style="font-family:var(--mono)">state</span> matches, so this isn't a forged callback.</li>
+            <li>The code is exchanged server-side for an ID token, whose signature, issuer, audience and expiry all validate.</li>
+            <li><span style="font-family:var(--mono)">(google, sub_117…)</span> hits an existing Identity row. Session issued. Their email could have changed and nothing breaks.</li>
+          </ol>
+        </div>
+        <div class="flow-col write">
+          <div class="flow-title">Adding a password to a social-only account</div>
+          <ol>
+            <li>They signed up with Google and now want to sign in when Google is unavailable.</li>
+            <li>There's no existing password to verify against, so "enter your current password" is not an option.</li>
+            <li>The service sends a verification link to the address on file and waits for it to be used.</li>
+            <li>They set a password, which creates a second Identity row of type <span style="font-family:var(--mono)">password</span> pointing at the same User.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — one user, many identities</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>One person, one account</span><span class="explains-tag"><b>FR</b>Add or remove sign-in methods</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start with the schema most teams actually write first: a users table with <span style="font-family:var(--mono)">email</span>, <span style="font-family:var(--mono)">password_hash</span>, and then — when Google is added — a nullable <span style="font-family:var(--mono)">google_id</span> column.</li>
+          <li>Add the second provider and watch it degrade: <span style="font-family:var(--mono)">facebook_id</span>, <span style="font-family:var(--mono)">linkedin_id</span>, each nullable, each needing its own uniqueness handling. Every new provider is a migration on your largest table.</li>
+          <li>Notice the deeper problem underneath the ugliness — credentials are being stored on the <em>person</em>. A person is not a credential; they have credentials, possibly several.</li>
+          <li>Split them. User holds who someone is; Identity holds one way of proving it. Adding a provider becomes an insert, not a migration.</li>
+          <li>Follow the consequence for passwords: a password stops being special. It's one identity row among several, which is exactly why "social-only account adds a password later" stops being an awkward edge case.</li>
+          <li>Find the constraint that must hold: one account must never be reachable by two different people, so <span style="font-family:var(--mono)">(provider, provider_user_id)</span> is unique across the whole table.</li>
+        </ol>
+        <p>The test of this model is whether adding a fourth provider requires a schema change. If it does, credentials are still attached to the person rather than beside them.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — columns per provider vs. rows per identity</span>THE SHAPE THAT ROTS
+  users
+    id · email · password_hash · google_id · facebook_id · linkedin_id
+                                 ↑ nullable  ↑ nullable    ↑ nullable
+
+  → every provider is a migration on your biggest table
+  → "which of these six columns is set?" logic everywhere
+  → a social-only user has a NULL password_hash, so every password
+    code path needs a special case
+
+THE SHAPE THAT HOLDS
+  users
+    id: u_9f3 · display_name: "Budi" · primary_email: budi@gmail.com
+
+  identities                             UNIQUE (provider, provider_user_id)
+    id: i_1 · user_id: u_9f3 · provider: password · provider_user_id: budi@gmail.com
+    id: i_2 · user_id: u_9f3 · provider: google   · provider_user_id: sub_117xyz
+    id: i_3 · user_id: u_9f3 · provider: facebook · provider_user_id: fb_4471
+
+  password_credentials
+    identity_id: i_1 · hash: $argon2id$... 
+
+  → adding LinkedIn is an INSERT
+  → "how do I sign in?" is SELECT * FROM identities WHERE user_id = ...
+  → the password is just i_1. Nothing about it is structurally special.
+
+THE RULE THAT PREVENTS LOCKOUT
+  DELETE on the last remaining identity must be refused.
+  Unlinking Google when it is your only way in is a support ticket
+  you created for yourself.</div>
+        <ul class="item-list">
+          <li><strong>Keep the provider's email as an attribute, never as the join</strong> — <span style="font-family:var(--mono)">email_at_provider</span> is useful for display and for detecting changes, but the identity is the subject id.</li>
+          <li><strong>Session issuance is provider-agnostic</strong> — once resolution returns a user id, everything downstream is identical regardless of how they signed in. That's the payoff of the split.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — the linking attack, with both designs compared</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Never grants access to an account you don't control</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Set the scene precisely: a social login arrives, <span style="font-family:var(--mono)">(provider, sub)</span> matches nothing, but the email it carries already belongs to an existing account.</li>
+          <li>Take the obvious reading — it's the same email, so it's the same person, so attach the identity and sign them in. Convenient, and it feels safe because email is being treated as proof.</li>
+          <li>Ask what that assumption actually rests on: <strong>that the provider verified the email before asserting it.</strong> Not every provider does, and not every provider does it for every account.</li>
+          <li>Follow what happens if one doesn't. An attacker registers an account at that provider claiming <span style="font-family:var(--mono)">budi@gmail.com</span>, never proving they own it, then clicks the social button on your site. Your system hands them Budi's account.</li>
+          <li>Notice how complete that failure is. It needs no password, no phishing, no token theft — just a provider with weaker email verification than yours, which is entirely outside your control.</li>
+          <li>Decide what the email claim is actually worth. It's a <em>hint</em> that two records may be the same person. It is never, on its own, proof that the person in front of you controls the existing account.</li>
+        </ol>
+        <p>The safe versions differ in convenience, and both are defensible — what's not defensible is auto-linking without checking whether the provider verified the address.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the attack, then the two safe designs</span>THE ATTACK — against naive auto-link
+
+  Budi's real account:  budi@gmail.com + password, on your site.
+                        He has never used social login.
+
+  1. Attacker signs up at a provider with WEAK email verification,
+     entering budi@gmail.com. They never prove they own it.
+  2. Attacker clicks "Login with <that provider>" on your site.
+  3. Provider asserts: { sub: "atk_99", email: "budi@gmail.com" }
+  4. Your service: no (provider, sub) match... but that email exists!
+     → attaches the attacker's identity to Budi's user
+     → issues a session
+  5. Attacker is now inside Budi's account. Full takeover.
+
+     No password was cracked. No token was stolen. Your security
+     was decided by a third party's signup form.
+
+DESIGN A — AUTO-LINK, BUT ONLY ON A VERIFIED EMAIL
+
+  if id_token.email_verified == true  → link and sign in
+  else                                → refuse, fall back to Design B
+
+  ✓ one click for the overwhelming majority of real users
+  ✓ closes the attack above, because the unverified case is refused
+  ✗ you are trusting the provider's email_verified claim to be
+    truthful and to actually mean what you think it means
+  ✗ a provider bug or policy change silently becomes your breach
+  ✗ Facebook may send no email at all, so this path just isn't
+    available there
+
+DESIGN B — ALWAYS PROVE OWNERSHIP FIRST
+
+  → "That email already has an account. Sign in the way you
+     normally do, and we'll connect <provider> to it."
+  → user authenticates with their EXISTING method
+  → only then is the pending identity attached
+
+  ✓ does not depend on any provider's verification quality
+  ✓ works identically when the provider returns no email
+  ✓ the user proves control of the account, which is the actual
+    question being asked
+  ✗ an extra step for a legitimate user, at the exact moment they
+    were trying to take a shortcut
+  ✗ confusing if they have genuinely forgotten which method they used
+
+THE PRACTICAL ANSWER MOST SYSTEMS LAND ON
+  Design A where email_verified is true AND the provider is one you
+  actively trust; Design B everywhere else — unverified email, no
+  email, or a provider you have less confidence in.
+
+  Either way the LinkRequest is short-lived. A pending link that sits
+  around for a day is a second attack surface.</div>
+        <ul class="item-list">
+          <li><strong>Never link on an unverified email, whatever the provider claims about itself</strong> — this is the single rule that turns a full takeover into a refused login, and it costs one conditional.</li>
+          <li><strong>Notify on every link</strong> — email the account when a new provider is attached, with a one-tap "this wasn't me". Linking is exactly the kind of quiet, permanent change that should never happen silently.</li>
+          <li><strong>The reverse direction needs the same care</strong> — a password <em>reset</em> to an email address that a social identity also asserts is the same problem wearing different clothes, and deserves the same suspicion.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Same instinct as the trusted-device example's recovery path: the dangerous route is always the convenient one that bypasses proof, and the fix is to demand proof precisely where the shortcut wanted to skip it.</p>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — email is not a key</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Survives a user changing their provider email</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from why email feels like the right key: it's unique, it's human-readable, users already know it, and every provider seems to return one.</li>
+          <li>Test "every provider returns one" and it fails immediately — Facebook accounts registered by phone number, or where the user declined the email permission, return nothing usable.</li>
+          <li>Test "it's stable" and it fails too. People change the email on their Google account. If that's your key, the same human comes back as a stranger and gets a second account.</li>
+          <li>Test "it's unique per person" and it fails in the other direction — two providers returning the same address is precisely the collision the linking dive is about.</li>
+          <li>Look for something with the properties email was supposed to have. Every OIDC provider issues <span style="font-family:var(--mono)">sub</span>: opaque, stable for the lifetime of that account, and unique within that provider.</li>
+          <li>Accept the consequence — <span style="font-family:var(--mono)">sub</span> is meaningless to a human, so you still store email for display and communication. It's just not what you look up by.</li>
+        </ol>
+        <p>Email is how you talk to a user. The subject id is how you recognise them. Conflating the two is the root of most of the failures in this example.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — four ways an email key breaks</span>1 · THE USER CHANGES THEIR GOOGLE EMAIL
+     keyed on email → budi.new@gmail.com matches nothing
+                    → a brand new account, empty. Their data is
+                      "gone" as far as they can tell.
+     keyed on sub   → sub_117xyz still matches. Update the stored
+                      email, sign them in, nothing else happens.
+
+2 · FACEBOOK RETURNS NO EMAIL
+     keyed on email → nothing to key on. The flow cannot complete.
+     keyed on sub   → fb_4471 is a perfectly good identity. Ask for
+                      an email separately if you need one for comms.
+
+3 · TWO PROVIDERS, SAME ADDRESS
+     keyed on email → collision. Are these the same person? Email
+                      alone cannot answer that — see the linking dive.
+     keyed on sub   → two distinct identities. Whether they attach
+                      to one user is a separate, deliberate decision.
+
+4 · EMAIL RECYCLED BY THE PROVIDER
+     Corporate domains reassign addresses when staff leave.
+     keyed on email → the new employee inherits the old one's account.
+     keyed on sub   → different person, different sub, no collision.
+
+WHAT THIS MEANS FOR THE SCHEMA
+  identities.provider_user_id   ← sub. The lookup key. Never changes.
+  identities.email_at_provider  ← last seen value. Display and
+                                  change-detection only.
+  users.primary_email           ← where you actually send mail.
+                                  The user controls this directly.</div>
+        <ul class="item-list">
+          <li><strong>A changed email at the provider is worth noticing, not acting on</strong> — update the stored value, and consider notifying the old address, but don't treat it as a new identity.</li>
+          <li><strong>Normalise before comparing, when you do compare</strong> — case differences and Gmail's dot-and-plus handling mean the same mailbox has many spellings, which matters for the "does this email already exist" check even though it's not the key.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — when the provider is down</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>One provider failing doesn't lock users out</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice what a social login actually is operationally: a synchronous network call to a company you don't control, sitting on your login path.</li>
+          <li>Ask what happens when it's slow rather than down — your login page hangs, users retry, and the retries pile more load onto a dependency that is already struggling.</li>
+          <li>Apply the patterns that already exist elsewhere on this page: a tight timeout on the token exchange, and a circuit breaker so a failing provider fails fast instead of holding connections.</li>
+          <li>Then ask the harder question — what does a user actually do about it? A fast failure is better than a hang, but they still can't get in.</li>
+          <li>Find the real mitigation, and notice it's a product decision rather than an infrastructure one: users with a second identity are fine. So the design should actively encourage having one, before it's needed.</li>
+          <li>Handle the partial-failure case that's easy to miss: the provider's <em>authorization</em> redirect may work while its <em>token endpoint</em> is failing, so the user gets bounced back to you and then hits an error. That needs a message that says what happened, not a generic failure.</li>
+        </ol>
+        <p>A social-login-only user is, in availability terms, depending on two services being up instead of one — and only one of them is yours.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — degrading usefully rather than hanging</span>WHAT FAILURE LOOKS LIKE
+
+  token endpoint slow    → your login hangs → users retry → worse
+  token endpoint down    → redirect back works, exchange 500s
+  JWKS endpoint down     → you cannot verify signatures
+                           ← unless you CACHED the keys, which you
+                             should, exactly as the gateway does
+                             in the platform example
+  provider fully down    → the button cannot work at all
+
+HANDLING IT
+
+  timeout on token exchange   3-5s, not the default 30
+  circuit breaker per provider  open → hide or grey out that button
+                                with an honest message rather than
+                                letting people click into a failure
+  cached JWKS                 signature verification survives a JWKS
+                              outage entirely
+  clear messaging             "Google sign-in is unavailable right
+                              now. If you have a password, use that."
+                              ← only useful if they HAVE one
+
+THE REAL MITIGATION IS UPSTREAM OF THE OUTAGE
+
+  After signup via a provider, prompt for a second way in:
+    "Add a password so you can always get in, even if Google is down."
+
+  This is a product nudge, not an infrastructure control, and it is
+  the only thing that actually helps a user during an outage.
+
+  It is also the same reasoning as the trusted-device example
+  requiring two trusted devices: the time to add the second way in
+  is before you need it, and a design that waits until the user is
+  locked out has already failed them.</div>
+        <ul class="item-list">
+          <li><strong>Never let a provider outage take down password login too</strong> — shared timeouts, a shared connection pool, or a shared circuit can do exactly that. The bulkhead reasoning from the API gateway example applies here in miniature.</li>
+          <li><strong>Grey out rather than hide</strong> — a button that silently disappears makes users think they never had that option; one that's visibly unavailable tells them the truth and sets expectations.</li>
+        </ul>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>One person, one account</td><td>User holds no credentials; many Identity rows point at it, and adding a provider is an insert rather than a schema change.</td></tr>
+        <tr><td>Never grants access to someone else's account</td><td>Linking requires either a provider-verified email from a trusted provider, or proof of control via the existing sign-in method.</td></tr>
+        <tr><td>Survives an email change at the provider</td><td>Lookup is on <span style="font-family:var(--mono)">(provider, sub)</span>; the email is stored as a display attribute and simply updated when it changes.</td></tr>
+        <tr><td>One provider down doesn't lock users out</td><td>Per-provider circuit breakers and cached JWKS, plus an active prompt to add a second sign-in method before it's needed.</td></tr>
+        <tr><td>Unlinking can't orphan an account</td><td>Deleting the last remaining identity is refused outright.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Identity rows vs. a column per provider</td><td>Adding providers becomes an insert and passwords stop being structurally special, at the cost of a join on every login and a schema that looks over-engineered until the second provider arrives.</td></tr>
+        <tr><td>Auto-link on verified email vs. always prove ownership</td><td>One click for most real users, at the cost of your account security depending on a third party's email verification being both correct and unchanging.</td></tr>
+        <tr><td>Keying on <span style="font-family:var(--mono)">sub</span> vs. keying on email</td><td>Survives email changes, missing emails and recycled addresses, at the cost of an opaque key that's useless for support queries and debugging by eye.</td></tr>
+        <tr><td>Offering social login at all</td><td>Removes password friction and outsources credential security to companies who are good at it, at the cost of taking a hard dependency on their uptime, their policies, and their definition of a verified email.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>Protocol</td><td><span class="tool-tag">OpenID Connect</span> for Google and LinkedIn; Facebook Login is OAuth 2.0 with its own userinfo shape, which is why "just OIDC" isn't quite true</td></tr>
+        <tr><td>Password hashing</td><td><span class="tool-tag">Argon2id</span> or <span class="tool-tag">bcrypt</span> — never a general-purpose hash, and stored beside the identity rather than on the user</td></tr>
+        <tr><td>Buy instead of build</td><td><span class="tool-tag">Auth0</span>, <span class="tool-tag">Clerk</span>, <span class="tool-tag">Supabase Auth</span>, <span class="tool-tag">Keycloak</span> — all of them have already made the linking decision above, so check <em>which</em> one they made</td></tr>
+        <tr><td>State and link requests</td><td><span class="tool-tag">Redis</span> with short TTLs — both the OAuth <span style="font-family:var(--mono)">state</span> nonce and any pending LinkRequest should expire in minutes</td></tr>
+        <tr><td>Session issuance</td><td>identical regardless of provider — this is where the OAuth Authorization Service example on this page picks up</td></tr>
+      </table>
+</div>
       </div>
         </div>
       </details>
@@ -11093,10 +12657,10 @@ THE ORDER THAT MATTERS MORE THAN THE TOOLS
       '≈ ' + fmtInt(concurrentRequests) + ' request(s) in flight at once';
 
     let bucket, bucketLabel, advice;
-    if (peakQps < 1000){ bucket='lt1k'; bucketLabel='< 1K QPS'; advice="a single DB instance is usually fine — don't over-engineer."; }
-    else if (peakQps < 10000){ bucket='1k-10k'; bucketLabel='1K–10K QPS'; advice='add caching + read replicas.'; }
-    else if (peakQps < 100000){ bucket='10k-100k'; bucketLabel='10K–100K QPS'; advice='sharding, a CDN for read-heavy content, and async processing off the critical path.'; }
-    else { bucket='100k-plus'; bucketLabel='100K+ QPS'; advice='multi-region, deliberate consistency trade-offs, and real capacity planning.'; }
+    if (peakQps < 1000){ bucket='lt1k'; bucketLabel='< 1K QPS'; advice="one app tier and one database is the right answer. Slowness here is a query problem, not a scale problem."; }
+    else if (peakQps < 10000){ bucket='1k-10k'; bucketLabel='1K–10K QPS'; advice='connection limits bite first — pooler, read replicas, cache-aside. Accept replication lag on reads.'; }
+    else if (peakQps < 100000){ bucket='10k-100k'; bucketLabel='10K–100K QPS'; advice='synchronous writes are the wall — queue them, shard the cache, partition hot tables. Accept async durability.'; }
+    else { bucket='100k-plus'; bucketLabel='100K+ QPS'; advice='write I/O and cross-region coordination dominate — LSM engines, regional sharding. Give up global strong consistency.'; }
 
     document.getElementById('calc-verdict').innerHTML =
       "At this peak load, you're in the <strong>" + bucketLabel + '</strong> bucket → ' + advice;
