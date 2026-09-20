@@ -101,7 +101,7 @@
   }
   .nav-link:hover{ background:var(--hairline-soft); color:var(--ink); }
   .nav-link.active{ color:var(--accent); border-left-color:var(--accent); background:var(--accent-soft); }
-  .nav-link .num{ font-family:var(--mono); font-size:11px; color:var(--ink-faint); width:14px; flex:none; }
+  .nav-link .num{ font-family:var(--mono); font-size:11px; color:var(--ink-faint); width:18px; flex:none; }
   .nav-link.active .num{ color:var(--accent); }
 
   .main{
@@ -593,13 +593,15 @@
       <a class="nav-link" href="#usecase-payments"><span class="num">X</span>Idempotent Payment API</a>
       <a class="nav-link" href="#usecase-auditlog"><span class="num">Y</span>Audit Logging at Scale</a>
       <a class="nav-link" href="#usecase-observability"><span class="num">Z</span>Observability &amp; Alerting</a>
-      <a class="nav-link" href="#usecase-platform"><span class="num">★</span>Microservices Platform</a>
-      <a class="nav-link" href="#usecase-trusteddevice"><span class="num">◆</span>Trusted Device Login Approval</a>
-      <a class="nav-link" href="#usecase-sociallogin"><span class="num">◇</span>Password &amp; Social Login</a>
+      <a class="nav-link" href="#usecase-platform"><span class="num">AA</span>Microservices Platform</a>
+      <a class="nav-link" href="#usecase-trusteddevice"><span class="num">AB</span>Trusted Device Login Approval</a>
+      <a class="nav-link" href="#usecase-sociallogin"><span class="num">AC</span>Password &amp; Social Login</a>
+      <a class="nav-link" href="#usecase-apikeys"><span class="num">AD</span>API Key Management</a>
     </div>
 
     <div class="nav-group">
       <div class="nav-group-label">Before You Walk In</div>
+      <a class="nav-link" href="#answerspines"><span class="num">?</span>Answer Spines</a>
       <a class="nav-link" href="#checklist"><span class="num">✓</span>Interview-Day Checklist</a>
     </div>
   </nav>
@@ -1902,7 +1904,7 @@ NEVER DO THIS
 
     <section class="section" id="usecases-intro" style="padding-bottom:0;">
       <div class="eyebrow">Worked Examples</div>
-      <h2 class="section-title">29 Systems, Run Through the Framework</h2>
+      <h2 class="section-title">30 Systems, Run Through the Framework</h2>
       <p style="max-width:680px;">Each one is collapsed by default — open the ones you want. They're roughly ordered from simplest to most specialised, and later examples reference earlier ones rather than repeating them. The last few assemble the platform pieces into a single architecture, then work through identity — a login gate that blocks on a human, and the account model behind sign-in.</p>
       <div class="uc-controls">
         <button type="button" class="uc-btn" id="uc-expand-all">Expand all</button>
@@ -10180,7 +10182,7 @@ flag on for the rest of the request.</div>
     <section class="section" id="usecase-platform">
       <details class="uc-details">
         <summary class="uc-summary">
-          <div class="eyebrow">Worked Example ★ — The Platform Layer, End to End</div>
+          <div class="eyebrow">Worked Example AA — The Platform Layer, End to End</div>
           <div class="usecase-head">
             <h2 class="section-title">Design a Microservices Platform: One Request Through Every Layer</h2>
             <span class="uc-tag">north-south vs east-west · control vs data plane · L4 vs L7</span>
@@ -11499,7 +11501,7 @@ THE ORDER THAT MATTERS MORE THAN THE TOOLS
     <section class="section" id="usecase-trusteddevice">
       <details class="uc-details">
         <summary class="uc-summary">
-          <div class="eyebrow">Worked Example ◆ — A Human Decision on the Critical Path</div>
+          <div class="eyebrow">Worked Example AB — A Human Decision on the Critical Path</div>
           <div class="usecase-head">
             <h2 class="section-title">Design Trusted Device Login Approval</h2>
             <span class="uc-tag">number matching · both-ends promotion · time-locked recovery</span>
@@ -12015,7 +12017,7 @@ WHY THE DELAY IS THE LOAD-BEARING PART
     <section class="section" id="usecase-sociallogin">
       <details class="uc-details">
         <summary class="uc-summary">
-          <div class="eyebrow">Worked Example ◇ — A Button That Is Really an Identity Model</div>
+          <div class="eyebrow">Worked Example AC — A Button That Is Really an Identity Model</div>
           <div class="usecase-head">
             <h2 class="section-title">Design Password &amp; Social Login</h2>
             <span class="uc-tag">one user, many identities · the linking attack · provider outages</span>
@@ -12466,6 +12468,556 @@ THE REAL MITIGATION IS UPSTREAM OF THE OUTAGE
       </div>
         </div>
       </details>
+    </section>
+
+
+
+
+    <section class="section" id="usecase-apikeys">
+      <details class="uc-details">
+        <summary class="uc-summary">
+          <div class="eyebrow">Worked Example AD — The Credential That Never Expires</div>
+          <div class="usecase-head">
+            <h2 class="section-title">Design API Key Management</h2>
+            <span class="uc-tag">hash without losing lookup · rotate without downtime · keys leak</span>
+          </div>
+          <div class="uc-hint">Click to expand</div>
+        </summary>
+        <div class="uc-body">
+      <p style="max-width:680px;">"Issue long-lived credentials for server-to-server integrations, where no human is present to complete an OAuth flow." Every instinct from the OAuth example inverts here. There is no user to consent, no refresh token, no short expiry doing the heavy lifting — just a string that grants access until someone takes it away. That makes three problems load-bearing that barely matter for short-lived tokens: how you store it, how you replace it without an outage, and what you do when it inevitably ends up in a public repository.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>Issue a key scoped to one tenant and a specific set of permissions.</li>
+              <li>Verify a presented key on every request, fast enough to sit on the hot path.</li>
+              <li>Rotate a key without any window in which the integration is broken.</li>
+              <li>Revoke a key immediately, and show operators when each key was last used.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>A database breach must not yield usable credentials.</li>
+              <li>Verification must not require scanning the key table.</li>
+              <li>A leaked key must be findable by automated scanners before an attacker uses it.</li>
+              <li>Revocation must take effect in seconds, despite verification being cached.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking first: why not just use OAuth client credentials? Often you should — but a key is operationally simpler for the integrator, and that simplicity is exactly why it gets chosen and exactly why it's dangerous. The first deep dive is about when the trade is right.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>ApiKey</strong> <span class="fields">(key_id, tenant_id, secret_hash, prefix, label, scopes[], status, created_by, created_at, expires_at, last_used_at)</span> — note there is no column containing the key itself.</li>
+            <li><strong>Tenant</strong> <span class="fields">(id, name, max_active_keys)</span> — the entity the key acts on behalf of; a key is never scoped to a person.</li>
+            <li><strong>KeyEvent</strong> <span class="fields">(key_id, type, actor, at, source)</span> — created, rotated, revoked, leak-detected. The audit trail regulators ask for.</li>
+            <li><strong>RevocationEntry</strong> <span class="fields">(key_id, revoked_at)</span> — small, short-lived, pushed to verifiers so a cached decision can be overridden.</li>
+          </ul>
+          <p style="margin:12px 0 0; font-size:13.5px;"><strong style="font-family:var(--mono); color:var(--optional);">key_id</strong> is the indexed lookup handle and is <em>not</em> secret. <strong style="font-family:var(--mono); color:var(--optional);">secret_hash</strong> is the only thing derived from the secret half. That split is what makes the next section work.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p><span style="font-family:var(--mono)">POST /tenants/{id}/keys</span> → issue; the plaintext key is in this response and <strong>never retrievable again</strong><br>
+          <span style="font-family:var(--mono)">GET /tenants/{id}/keys</span> → list metadata only — label, prefix, scopes, <span style="font-family:var(--mono)">last_used_at</span><br>
+          <span style="font-family:var(--mono)">POST /keys/{key_id}/rotate</span> → issue a successor while the current key stays valid<br>
+          <span style="font-family:var(--mono)">DELETE /keys/{key_id}</span> → revoke immediately<br>
+          <span style="font-family:var(--mono)">POST /internal/leak-report</span> → called by a secret-scanning partner on a confirmed match</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>A request arrives carrying a key; the gateway parses its structure and rejects anything malformed without touching storage.</li>
+            <li>The <span style="font-family:var(--mono)">key_id</span> segment is extracted and used for a single indexed lookup — no scan.</li>
+            <li>The presented secret is hashed and compared in constant time against the stored hash.</li>
+            <li>The result — tenant, scopes, status — is cached briefly, so the vast majority of requests never reach the database at all.</li>
+            <li>Revocations are pushed to verifiers separately, so a cached allow can be overridden inside seconds.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>Structure in the key itself is what makes lookup, scanning, and revocation all tractable — diagrammed below.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Four below: <strong>(a)</strong> when a key beats OAuth, <strong>(b)</strong> hashing without losing lookup, <strong>(c)</strong> rotation without downtime, and <strong>(d)</strong> keys leak — design for it.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 900 540" style="width:100%; min-width:800px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="ak-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="ak-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="ak-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+            <marker id="ak-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+            <marker id="ak-red" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker>
+          </defs>
+
+          <text x="16" y="22" font-family="JetBrains Mono" font-size="10" fill="#FFD166">THE KEY IS STRUCTURED ON PURPOSE — every segment does a job</text>
+          <rect x="16" y="34" width="600" height="52" rx="8" fill="#0A2540" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="32" y="60" font-family="JetBrains Mono" font-size="14" font-weight="700" fill="#FFD166">mfc_live_7a2f9c1e_kR8vN2pQxW4mZ7tB…</text>
+          <text x="32" y="78" font-family="Inter" font-size="9" fill="#9FC1E0">vendor · environment · key_id (indexed, not secret) · secret (256 bits, hashed)</text>
+
+          <rect x="16" y="150" width="150" height="76" rx="9" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="91" y="176" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Integration</text>
+          <text x="91" y="194" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">server-to-server,</text>
+          <text x="91" y="210" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">no human present</text>
+
+          <rect x="215" y="120" width="240" height="180" rx="10" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.7"/>
+          <text x="335" y="146" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Verifier (at the gateway)</text>
+          <rect x="228" y="156" width="214" height="28" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.1"/>
+          <text x="335" y="174" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FF6B5E">1 · parse shape — reject junk free</text>
+          <rect x="228" y="188" width="214" height="28" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1.1"/>
+          <text x="335" y="206" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FFD166">2 · indexed lookup on key_id</text>
+          <rect x="228" y="220" width="214" height="28" rx="5" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.1"/>
+          <text x="335" y="238" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#7CE0A8">3 · SHA-256 + constant-time compare</text>
+          <rect x="228" y="252" width="214" height="28" rx="5" fill="#0A2540" stroke="#94B8D4" stroke-width="1.1"/>
+          <text x="335" y="270" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#94B8D4">4 · cache result ~30s</text>
+
+          <rect x="510" y="120" width="180" height="84" rx="9" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="600" y="146" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Key Store</text>
+          <text x="600" y="164" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">RDBMS — hashes only,</text>
+          <text x="600" y="180" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">never the key itself</text>
+          <text x="600" y="196" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">UNIQUE on key_id</text>
+
+          <rect x="510" y="228" width="180" height="72" rx="9" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.4"/>
+          <text x="600" y="253" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Revocation Push</text>
+          <text x="600" y="271" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">small list, overrides</text>
+          <text x="600" y="287" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">a cached allow in seconds</text>
+
+          <rect x="735" y="150" width="150" height="76" rx="9" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.4"/>
+          <text x="810" y="176" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Product API</text>
+          <text x="810" y="194" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">receives tenant + scopes,</text>
+          <text x="810" y="210" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">never the key</text>
+
+          <rect x="215" y="382" width="240" height="90" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/>
+          <text x="335" y="408" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Secret Scanning</text>
+          <text x="335" y="427" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">the vendor prefix is what</text>
+          <text x="335" y="443" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">makes a key greppable —</text>
+          <text x="335" y="459" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">that is why it exists</text>
+
+          <rect x="510" y="382" width="180" height="90" rx="10" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="600" y="408" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Leak Response</text>
+          <text x="600" y="427" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">auto-revoke, notify owner,</text>
+          <text x="600" y="443" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">record a KeyEvent —</text>
+          <text x="600" y="459" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">an outage you chose</text>
+
+          <line x1="166" y1="188" x2="211" y2="188" stroke="#FFD166" stroke-width="1.8" marker-end="url(#ak-amber)"/>
+          <line x1="455" y1="172" x2="506" y2="160" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#ak-cyan)"/>
+          <text x="480" y="148" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#6FE0F0">miss only</text>
+          <line x1="455" y1="230" x2="731" y2="196" stroke="#7CE0A8" stroke-width="1.6" marker-end="url(#ak-green)"/>
+          <text x="590" y="222" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#7CE0A8">verified — forward with tenant + scopes</text>
+          <path d="M 560,300 C 520,330 420,300 400,296" fill="none" stroke="#FF6B5E" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#ak-red)"/>
+          <line x1="455" y1="427" x2="506" y2="427" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#ak-red)"/>
+          <line x1="600" y1="378" x2="600" y2="306" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#ak-red)"/>
+          <text x="716" y="345" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FF6B5E">revoke on confirmed leak</text>
+
+          <line x1="16" y1="506" x2="44" y2="506" stroke="#7CE0A8" stroke-width="2.2"/>
+          <text x="50" y="510" font-family="Inter" font-size="10" fill="#9FC1E0">Verified request path</text>
+          <line x1="215" y1="506" x2="243" y2="506" stroke="#FF6B5E" stroke-width="2.2" stroke-dasharray="5 4"/>
+          <text x="249" y="510" font-family="Inter" font-size="10" fill="#9FC1E0">Revocation — overrides the cache</text>
+          <line x1="530" y1="506" x2="558" y2="506" stroke="#FFD166" stroke-width="2.2"/>
+          <text x="564" y="510" font-family="Inter" font-size="10" fill="#9FC1E0">Leak detection loop</text>
+        </svg>
+      </div>
+      <div class="diagram-caption">The structure of the key is the design. The prefix makes it greppable by scanners, the <span style="font-family:var(--mono)">key_id</span> makes verification an indexed lookup instead of a table scan, and the secret half is the only part ever hashed. Get that layout wrong and every problem below becomes harder.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col read">
+          <div class="flow-title">A verified request</div>
+          <ol>
+            <li>The key's shape is checked first — wrong prefix or wrong length is rejected without a database call.</li>
+            <li><span style="font-family:var(--mono)">key_id</span> is extracted and looked up on a unique index; one row or none.</li>
+            <li>The presented secret is hashed and compared in constant time; status and expiry are checked.</li>
+            <li>Tenant and scopes are cached for ~30 seconds and forwarded inward — the product API never sees the key.</li>
+          </ol>
+        </div>
+        <div class="flow-col write">
+          <div class="flow-title">A key appears in a public repo</div>
+          <ol>
+            <li>A scanning partner matches the <span style="font-family:var(--mono)">mfc_live_</span> pattern and calls the leak endpoint with the key.</li>
+            <li>It's verified as real, revoked immediately, and a KeyEvent is recorded with the source.</li>
+            <li>A revocation entry is pushed to every verifier, overriding any cached allow within seconds.</li>
+            <li>The owning team is notified with the key's label and <span style="font-family:var(--mono)">last_used_at</span> — which tells them how much is now broken.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — when a key beats OAuth</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Scoped to a tenant, not a person</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the default position, which is correct most of the time: OAuth exists, it's the standard, use it and don't invent a second credential system.</li>
+          <li>Then look at what OAuth's security actually rests on — short-lived access tokens, refreshed by a long-lived refresh token, with a user present at least once to consent.</li>
+          <li>Find the case where that breaks down. A nightly job syncing one company's expense records has no user at the keyboard at 3am, and no browser to redirect.</li>
+          <li>Notice OAuth already has an answer: the client credentials grant. So the real question is narrower than "keys versus OAuth" — it's whether the extra round trip and token lifecycle earns its complexity for this integrator.</li>
+          <li>Weigh who the integrator actually is. A partner engineering team will implement token refresh correctly. A customer's in-house script written once and left running for three years will not, and a key that simply works is the difference between an integration existing and not.</li>
+          <li>Accept the trade honestly: you are choosing operational simplicity for the integrator and taking on a long-lived bearer credential in exchange. Everything else in this example is paying that debt.</li>
+        </ol>
+        <p>The scoping difference matters as much as the lifetime one. An OAuth token says <em>a user authorised this</em>; a key says <em>this tenant's systems are allowed to do this</em>. Those answer different questions.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the fork, and what each answer costs</span>                  OAUTH (user-present)      API KEY (server-to-server)
+
+who authorised    a human, once, via a      an admin, once, in a
+                  consent screen             settings page
+
+scoped to         a user, and what THEY      a TENANT, and what the
+                  may access                 integration may access
+
+lifetime          minutes; refreshed         until revoked. Possibly
+                                             years.
+
+if stolen         expires on its own,        works forever, silently,
+                  refresh reuse is           and nothing about it
+                  detectable                 looks unusual
+
+integrator effort redirect flow, token       put a string in a header
+                  storage, refresh logic
+
+WHEN THE KEY IS THE RIGHT ANSWER
+  · no user is present and none can be (batch jobs, webhooks, ETL)
+  · the data is tenant-scoped, not user-scoped — "this company's
+    invoices", not "what Budi personally may see"
+  · the integrator is a small team or a single script, and OAuth
+    complexity would mean the integration simply doesn't get built
+
+WHEN IT IS NOT
+  · the action is on behalf of a specific person
+  · third-party apps you do not control — they need consent and
+    revocation per user, which is precisely what OAuth is for
+  · anything where "who did this" must name a human in the audit log</div>
+        <ul class="item-list">
+          <li><strong>Offering both is a deliberate product decision, not indecision</strong> — the platform serves integrators with very different capabilities, and forcing OAuth everywhere pushes the least sophisticated ones toward worse workarounds, like sharing a real user's password.</li>
+          <li><strong>A key should never impersonate a user</strong> — if the audit trail needs a human name, a key is the wrong credential. Keep <span style="font-family:var(--mono)">created_by</span> for accountability, but the acting principal is the tenant.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — hashing without losing lookup</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>A breach yields nothing usable</span><span class="explains-tag nfr"><b>NFR</b>No table scan on the hot path</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the non-negotiable: never store the key in plaintext. A database breach must not hand the attacker working credentials for every tenant at once.</li>
+          <li>Reach for the obvious tool — hash it like a password, with bcrypt or Argon2 — and then try to <em>verify</em> one. You have a key and a table of salted hashes. There is nothing to look up by, so you must hash the candidate against every row.</li>
+          <li>Notice how badly that fails. A deliberately slow KDF, run across every row in the table, on every single request. It is not slow — it is unusable.</li>
+          <li>Find the real constraint: you need something non-secret in the key that identifies <em>which row</em>, so verification is one indexed read.</li>
+          <li>Split the key. One segment is a public identifier stored in an indexed column; the rest is the secret, and only that half is hashed.</li>
+          <li>Now revisit the hash choice, because the usual reasoning does not apply. Slow KDFs exist because human passwords are low-entropy and guessable. A key is 256 bits of randomness you generated — brute force is infeasible regardless of hash speed, so a fast hash is not a compromise here, it is correct.</li>
+        </ol>
+        <p>This is one of the few places where "just SHA-256 it" is the right answer rather than a red flag — and being able to say <em>why</em> is the part that matters.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — three designs, only one of which works</span>DESIGN 1 — store the key plaintext
+  SELECT * FROM api_keys WHERE key = $1
+  ✓ fast, trivially simple
+  ✗ one breach = every tenant's credentials, immediately usable
+  → disqualified
+
+DESIGN 2 — bcrypt the whole key, like a password
+  no lookup handle exists, so:
+    for every row: bcrypt_verify(candidate, row.hash)
+  ✗ 100ms × 50,000 rows × every request
+  ✗ the slowness that PROTECTS a password DESTROYS you here
+  → disqualified
+
+DESIGN 3 — structured key, hash only the secret half
+
+  mfc_live_7a2f9c1e_kR8vN2pQxW4mZ7tB9jL3
+  └──┬───┘ └───┬──┘ └──────────┬────────┘
+   prefix   key_id           secret
+            indexed,        256 bits of CSPRNG output,
+            NOT secret      never stored anywhere
+
+  verification:
+    1. shape check                → reject junk with zero I/O
+    2. SELECT ... WHERE key_id=$1 → ONE indexed read
+    3. sha256(secret) vs stored   → constant-time compare
+    4. check status + expiry
+
+  ✓ breach yields hashes of 256-bit randoms — not crackable
+  ✓ verification is O(1) and sub-millisecond
+  ✓ cacheable, so most requests never touch the database
+
+WHY SHA-256 AND NOT ARGON2 HERE
+  passwords    low entropy, human-chosen, guessable
+               → you WANT slowness, to make guessing expensive
+  api keys     256 bits from a CSPRNG
+               → guessing is infeasible at ANY hash speed, and you
+                 must do this on every request
+  → a fast hash is the correct engineering choice, not a shortcut
+
+  The rule underneath: KDF slowness buys you nothing when the
+  secret was never guessable to begin with.</div>
+        <ul class="item-list">
+          <li><strong>Constant-time comparison still matters</strong> — a naive byte-by-byte compare leaks how much of the hash matched via timing. Cheap to get right, awkward to explain after an incident.</li>
+          <li><strong>Show the key exactly once</strong> — at creation. If it can be retrieved later, your key store is a plaintext store with extra steps, and every support agent becomes an attack path.</li>
+          <li><strong>Store a display hint, not the key</strong> — the prefix plus last four characters is enough for a human to identify which key a dashboard row refers to, and useless to an attacker.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — rotation without downtime</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Replace a key with no broken window</span><span class="explains-tag"><b>FR</b>Show when each key was last used</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice why rotation is mandatory even with nothing wrong: a credential that lives for years accumulates exposure — old laptops, departed staff, CI logs, screenshots.</li>
+          <li>Try the naive model, one key per tenant, and trace a rotation. Generate a new key, the old one dies, and every deployment still holding it starts failing. Rotation is now an outage, so nobody does it.</li>
+          <li>Notice the second-order effect, which is worse than the first: <strong>making rotation painful means it never happens</strong>, so keys quietly live forever and the risk you were managing grows unchecked.</li>
+          <li>Fix the model rather than the process — allow several keys active per tenant at once, so a new one can exist before the old one is gone.</li>
+          <li>Find what makes the cutover <em>safe</em> rather than merely possible. You need to know the old key has genuinely stopped being used, across every deployment you may not know about.</li>
+          <li><span style="font-family:var(--mono)">last_used_at</span> answers exactly that, which is why it is worth the write cost. Rotation stops being a leap of faith and becomes an observation.</li>
+        </ol>
+        <p>The design goal is not "rotation is possible" — it is "rotation is boring enough that people actually do it."</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — overlap, then evidence, then revoke</span>THE SEQUENCE
+
+  t0   POST /keys/{old}/rotate
+       → new key issued, shown ONCE
+       → old key still fully valid. Nothing has broken.
+
+  t1   integrator deploys the new key at their own pace
+       → both keys work. This window is the entire point.
+
+  t2   watch the dashboard:
+         key_old   last_used_at  4 hours ago   ← going quiet
+         key_new   last_used_at  12 seconds ago ← took over
+
+  t3   old key shows no use for a full business cycle
+       → NOW revoke it, on evidence rather than hope
+
+  The gap between t1 and t3 is deliberate and should be generous.
+  A weekly batch job will not touch the old key for six days — revoke
+  on day two and you break something nobody was watching.
+
+WHY last_used_at IS WORTH ITS COST
+  A naive implementation writes to the key row on every request,
+  which turns a read-mostly table into a write-hot one.
+
+  Cheaper: update at most once per minute per key, asynchronously.
+  Precision here is worthless — you need "today" versus "not for
+  six days", not millisecond accuracy.
+
+MAX LIFETIME, AND WHY IT IS AWKWARD
+  Long-lived is why integrators chose a key. Forcing 90-day expiry
+  gives them OAuth's operational burden with none of its security
+  benefits.
+
+  A workable middle: an optional expiry, warnings at 30/7/1 days to
+  the owner, and for high-privilege scopes make expiry mandatory.
+  Tie the strictness to what the key can DO, not to a global policy.</div>
+        <ul class="item-list">
+          <li><strong>Cap the number of simultaneously active keys</strong> — two or three. Unlimited keys means nobody ever cleans up, and the list becomes a set of forgotten credentials nobody dares revoke.</li>
+          <li><strong>Label keys at creation and require it</strong> — "billing-sync-prod" tells you what breaks if you revoke it. An unlabelled key is one nobody will ever be confident enough to remove.</li>
+          <li><strong>Rotation and revocation are different operations</strong> — conflating them in the UI is how someone kills production while trying to do routine hygiene.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — keys leak, so design for it</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Findable by scanners before use</span><span class="explains-tag nfr"><b>NFR</b>Revocation beats the cache</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the empirical fact rather than the ideal: credentials get committed to public repositories constantly, by competent people, at every company. Treat it as a certainty, not a risk.</li>
+          <li>Ask what you can do about a string that has already escaped. You cannot recall it — so the only levers are <em>finding it fast</em> and <em>making it dead fast</em>.</li>
+          <li>Find what makes a key findable, and notice this is a <em>format</em> decision made long before any incident. A bare random string is indistinguishable from any other base64 blob. A distinctive prefix is greppable at internet scale.</li>
+          <li>Follow that to the mechanism — scanning providers match registered patterns across public code and notify the issuer. Your prefix is what makes you eligible to participate at all.</li>
+          <li>Then confront the awkward decision: on a confirmed match, do you revoke automatically and break the integrator's production, or notify and leave a live credential exposed while you wait?</li>
+          <li>Resolve it by asymmetry of harm. A wrongly-revoked key causes a visible, fixable outage. A live leaked key on a financial API causes something you may not detect for months. Auto-revoke, and make the notification excellent.</li>
+        </ol>
+        <p>The prefix on the key is not branding. It is the single design decision that makes automated leak detection possible at all, and it has to be made before you issue your first key.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the leak loop, and the decision inside it</span>WHY THE PREFIX EARNS ITS BYTES
+
+  bare random   "kR8vN2pQxW4mZ7tB9jL3"
+                → indistinguishable from a base64 blob, a hash,
+                  an asset filename. Unsearchable.
+
+  prefixed      "mfc_live_7a2f9c1e_kR8vN2pQ…"
+                → a distinctive, registrable pattern
+                → scanning providers can match it across public
+                  code and tell you within minutes of the push
+
+  Also note live vs test in the prefix: a leaked TEST key is a
+  shrug, a leaked LIVE key is an incident. Encoding that in the
+  string means humans and scanners can both tell instantly.
+
+THE LOOP
+
+  push → scanner matches pattern → calls your leak endpoint
+       → you verify it is a real, active key
+       → REVOKE + KeyEvent(type=leak, source=github)
+       → push revocation to all verifiers  (beats the 30s cache)
+       → notify the owning tenant with label + last_used_at
+
+AUTO-REVOKE OR NOTIFY-FIRST?
+
+  notify-first   ✓ no self-inflicted outage
+                 ✗ credential is live while you wait for a human
+                   who may be asleep, on leave, or gone
+
+  auto-revoke    ✗ integration breaks immediately
+                 ✓ exposure window is minutes, not days
+                 ✓ the outage is loud, so it gets fixed now
+
+  The trade turns on asymmetry: a wrongly-revoked key produces an
+  obvious, recoverable outage. A live leaked key on a financial
+  API produces unauthorised access you may never notice.
+  → revoke, and spend the effort on making the alert unmissable
+
+THE UNGLAMOROUS PART THAT PREVENTS MORE LEAKS THAN ANY OF THIS
+  · never log the Authorization header — log key_id, never the key
+  · scrub keys from error reports and crash dumps before they ship
+  · the creation response is the ONLY place plaintext ever appears
+  · in dashboards show mfc_live_7a2f…9jL3, never the whole thing</div>
+        <ul class="item-list">
+          <li><strong>Revocation must outrank the cache</strong> — verification is cached for performance, so a revoked key stays usable for the cache TTL unless revocations are pushed separately. That list is tiny and short-lived, which is what makes pushing it cheap.</li>
+          <li><strong>Record the source on every KeyEvent</strong> — "revoked because found in a public repo" and "revoked by an admin" look identical afterwards without it, and only one of them warrants investigating what else that repo contained.</li>
+          <li><strong>Anomaly detection is the layer beneath</strong> — a key that has only ever called one endpoint from one IP range suddenly enumerating another tenant's data is a signal worth acting on, and it catches leaks no scanner will ever find.</li>
+        </ul>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>A breach yields nothing usable</td><td>Only a SHA-256 of a 256-bit random is stored; the plaintext exists in exactly one response and is never retrievable again.</td></tr>
+        <tr><td>No table scan on the hot path</td><td>The non-secret <span style="font-family:var(--mono)">key_id</span> segment gives an indexed single-row lookup, and results are cached for seconds.</td></tr>
+        <tr><td>Rotation with no broken window</td><td>Several keys active at once, with <span style="font-family:var(--mono)">last_used_at</span> proving the old one has gone quiet before it's revoked.</td></tr>
+        <tr><td>Leaks found before they're used</td><td>A distinctive registrable prefix makes keys greppable by scanning providers, which is a format decision made at design time.</td></tr>
+        <tr><td>Revocation in seconds despite caching</td><td>Revocations are pushed to verifiers as a small separate list that overrides a cached allow.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Offering keys at all, alongside OAuth</td><td>Integrations get built that otherwise wouldn't, at the cost of a long-lived bearer credential — everything else in this example is the price of that convenience.</td></tr>
+        <tr><td>Fast hash vs. a slow KDF</td><td>Verification stays viable on every request and the security argument still holds because the secret is high-entropy — but it depends entirely on generating keys from a CSPRNG, which makes that the load-bearing detail.</td></tr>
+        <tr><td>Caching verification vs. checking live</td><td>Most requests never touch the database, at the cost of a revocation window that must be closed by a separate push — added complexity to buy back correctness.</td></tr>
+        <tr><td>Auto-revoke on leak vs. notify first</td><td>Cuts exposure from days to minutes, at the cost of occasionally taking down a production integration on a scanner's say-so.</td></tr>
+        <tr><td>Optional expiry vs. mandatory rotation</td><td>Respects why integrators chose a key in the first place, at the cost of keys that genuinely live for years — which is why expiry is tied to privilege level rather than applied globally.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>Key store</td><td><span class="tool-tag">PostgreSQL</span> — unique index on <span style="font-family:var(--mono)">key_id</span>, and the ACID guarantees that make issuance and revocation trustworthy</td></tr>
+        <tr><td>Key generation</td><td>the platform CSPRNG — <span class="tool-tag">crypto/rand</span> in Go, never <span style="font-family:var(--mono)">math/rand</span>. This is the detail the whole hashing argument rests on</td></tr>
+        <tr><td>Verification cache</td><td><span class="tool-tag">Redis</span> or in-process with a short TTL, layered under a pushed revocation list</td></tr>
+        <tr><td>Leak detection</td><td><span class="tool-tag">GitHub Secret Scanning</span> partner program, <span class="tool-tag">GitGuardian</span> — both require a registered, distinctive pattern</td></tr>
+        <tr><td>Enforcement point</td><td>the gateway's filter chain from the API Gateway example — keys and OAuth tokens resolve to the same downstream identity headers</td></tr>
+      </table>
+</div>
+      </div>
+        </div>
+      </details>
+    </section>
+
+
+    <section class="section" id="answerspines">
+      <div class="eyebrow">Turning Examples Into Answers</div>
+      <h2 class="section-title">Answer Spines</h2>
+      <p style="margin-top:10px; max-width:680px;">The examples on this page run to a few thousand words each. An interview answer runs fifteen to twenty minutes. So the skill this section covers is not recall — it is <strong>selection</strong>: three or four moves from one primary example, plus one borrowed move from another that quietly demonstrates breadth. Reciting a whole example reads worse than a focused answer, not better.</p>
+      <p style="max-width:680px; font-size:13px; color:var(--ink-dim);">Each spine below names a primary example, what to borrow, and the order to move through. The numbered steps are roughly a minute or two each.</p>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Q1 · "Design the public API gateway for our product suite"</h3>
+        <div class="explains-row" style="margin-bottom:10px;">
+          <span class="explains-tag"><b>PRIMARY</b><a href="#usecase-apigateway" style="color:inherit;">S · API Gateway</a></span>
+          <span class="explains-tag nfr"><b>BORROW</b><a href="#usecase-devportal" style="color:inherit;">T · Developer Portal</a></span>
+          <span class="explains-tag nfr"><b>BORROW</b><a href="#usecase-platform" style="color:inherit;">AA · Platform</a></span>
+        </div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li><strong>The reframe, before any boxes.</strong> "Who deploys a route change? If the answer is my team, I've already failed the requirement." Thirty seconds, and it converts the question from proxy design into platform design.</li>
+          <li><strong>Requirements — pick the two NFRs that matter.</strong> The platform team stays off the critical path, and one product's failure does not degrade the others. Everything else is table stakes.</li>
+          <li><strong>Draw a federation, not one backend behind a proxy.</strong> Many independently-deployed products, each with its own team and release cadence. That shape is the whole difference between a generic answer and this one.</li>
+          <li><strong>Filter chain ordering</strong> — rate limit before auth so junk dies cheaply, but per-consumer quota <em>after</em>, because it needs an identity that doesn't exist yet. Order is a cost and security decision, not configuration.</li>
+          <li><strong>Bulkheads.</strong> The highest-value move here: you front N products you don't control, so "one slow product must not starve the rest" is the daily reality rather than a hypothetical.</li>
+          <li><strong>Hot config</strong> — build, validate, swap a pointer. Then hand off: route registration is self-service, which is the Developer Portal answer.</li>
+          <li><strong>Close honestly.</strong> Gateway down means every product's API is down simultaneously. That is mitigated by redundancy, not by caching — say so rather than hoping nobody asks.</li>
+        </ol>
+        <p style="margin:0; padding:11px 14px; background:rgba(255,209,102,0.06); border-left:2px solid var(--marker); border-radius:0 6px 6px 0; font-size:13px; color:var(--ink);"><strong>The line that lands:</strong> the shared-pool illustration — one service degrades, 200 worker slots fill with its traffic inside ten seconds, and <em>it never returned a single error</em>. That's the moment bulkheads stop sounding like jargon.</p>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Q2 · "Design the OAuth authorization server"</h3>
+        <div class="explains-row" style="margin-bottom:10px;">
+          <span class="explains-tag"><b>PRIMARY</b><a href="#usecase-authservice" style="color:inherit;">Q · OAuth Service</a></span>
+          <span class="explains-tag nfr"><b>BORROW</b><a href="#usecase-apikeys" style="color:inherit;">AD · API Keys</a></span>
+        </div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li><strong>Frame the direction first.</strong> We <em>are</em> the authorization server — third-party apps want access to our users' financial data. This is the Stripe direction, not "integrate an identity provider."</li>
+          <li><strong>The caller fork.</strong> The validation model differs by caller type; internal callers and untrusted external apps do not get the same answer, and saying why shows you've thought past the protocol.</li>
+          <li><strong>Revocation without giving up statelessness</strong> — carried by the asymmetry: listing revoked tokens is tiny, listing valid ones would be enormous. That one sentence justifies the whole design.</li>
+          <li><strong>Refresh rotation as theft detection.</strong> Reuse of an already-consumed refresh token is not suspicious, it is <em>proof</em> — so kill the entire family rather than the one token.</li>
+          <li><strong>Then the twist that separates you:</strong> API keys coexist with OAuth by design. No user is present at 3am for a batch sync, and the data is tenant-scoped rather than user-scoped. Most candidates answer "use OAuth" and stop there.</li>
+        </ol>
+        <p style="margin:0; padding:11px 14px; background:rgba(255,209,102,0.06); border-left:2px solid var(--marker); border-radius:0 6px 6px 0; font-size:13px; color:var(--ink);"><strong>Why step 5 matters:</strong> it demonstrates you've looked at the actual product surface rather than reciting the protocol. Two schemes existing is a deliberate decision, and being able to say when each applies is the senior signal.</p>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Q3 · "Design rate limiting for the public API"</h3>
+        <div class="explains-row" style="margin-bottom:10px;">
+          <span class="explains-tag"><b>PRIMARY</b><a href="#usecase-multitenantlimits" style="color:inherit;">V · Multi-Tenant Limits</a></span>
+          <span class="explains-tag nfr"><b>BORROW</b><a href="#usecase-apigateway" style="color:inherit;">S · Gateway</a></span>
+        </div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li><strong>Separate rate from quota immediately.</strong> Different purposes, different storage, opposite failure behaviour. Conflating them produces a system that is wrong at both.</li>
+          <li><strong>Answer the partner-app question head-on.</strong> One app serving a thousand client companies — one quota or a thousand? Layered: per-app for commercial quota, per-entity for fairness, global ceiling for infrastructure.</li>
+          <li><strong>Oversubscription</strong> — the sharpest content available. Three tenants at 390 each against 1,000 capacity: everyone inside their own limit, backend saturated, nothing breached. Per-tenant limits structurally cannot detect this.</li>
+          <li><strong>Leasing</strong>, if they push on implementation. Hierarchy makes the least granular counter the hottest key in the system; instances lease slices and spend them locally.</li>
+          <li><strong>Placement</strong> — it lives in the gateway's filter chain, after authentication, because a per-consumer quota needs an identity to key on.</li>
+        </ol>
+        <p style="margin:0; padding:11px 14px; background:rgba(255,209,102,0.06); border-left:2px solid var(--marker); border-radius:0 6px 6px 0; font-size:13px; color:var(--ink);"><strong>The line that lands:</strong> "everyone is inside their limit and the backend is saturated anyway." It reframes fairness as a property of how tenants interact, not of any single tenant's ceiling.</p>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Q4 · "A product team wants to ship a new API — walk me through what happens"</h3>
+        <div class="explains-row" style="margin-bottom:10px;">
+          <span class="explains-tag"><b>PRIMARY</b><a href="#usecase-devportal" style="color:inherit;">T · Developer Portal</a></span>
+        </div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li><strong>Restate the requirement as the design constraint.</strong> "The platform team appears nowhere in the critical path." Everything that follows is judged against that sentence.</li>
+          <li><strong>Spec as single source of truth</strong> — one artifact generating docs, SDKs, mocks and route config, so drift is structurally impossible rather than a discipline problem. The test: <em>if adding an API needs platform-team work, you did it wrong.</em></li>
+          <li><strong>Governance in CI, not review</strong> — with the arithmetic said out loud: thirty teams shipping weekly is roughly 120 reviews a month landing on a team of eight who also have a roadmap. Review latency becomes everyone's release latency.</li>
+          <li><strong>The breaking-change gate</strong> — spec diffing classifies changes mechanically, so compatibility stops depending on anyone remembering.</li>
+          <li><strong>Be honest about the limit.</strong> CI cannot tell you whether this is the right resource model, or whether the endpoint belongs in this API at all. That still needs a human — just not as a gate.</li>
+        </ol>
+        <p style="margin:0; padding:11px 14px; background:rgba(255,209,102,0.06); border-left:2px solid var(--marker); border-radius:0 6px 6px 0; font-size:13px; color:var(--ink);"><strong>Step 5 is not a weakness to hide.</strong> Naming what your automation cannot do is what makes the rest of the answer credible — and it is the difference between "automate everything" and having actually run this.</p>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Q5 · "How do you ship a breaking change to a public API?"</h3>
+        <div class="explains-row" style="margin-bottom:10px;">
+          <span class="explains-tag"><b>PRIMARY</b><a href="#usecase-apiversioning" style="color:inherit;">W · Versioning</a></span>
+          <span class="explains-tag nfr"><b>BORROW</b><a href="#usecase-devportal" style="color:inherit;">T · Developer Portal</a></span>
+        </div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li><strong>Detection is mechanical, not a judgement call.</strong> Carry it with the asymmetry rule: widening what you <em>accept</em> is safe; widening what you <em>return</em> is not, because a consumer may switch exhaustively on the values you previously promised.</li>
+          <li><strong>Runtime coexistence</strong> — old versions live in adapters at the edge, never as forks or as conditionals scattered through handlers. An old version becomes one directory you can delete.</li>
+          <li><strong>Where the version lives</strong> — major version in the path, defended explicitly: visible in every log, cache key and bug report, with operability beating theoretical purity.</li>
+          <li><strong>The payload:</strong> retirement fails for <em>informational</em> reasons, not technical ones. Deleting an adapter is trivial; knowing it is safe to delete is the entire problem, and per-consumer usage telemetry is what solves it.</li>
+          <li><strong>The forcing function</strong> — a hard ceiling on concurrent live versions makes retirement a precondition for shipping the next one, rather than cleanup that never reaches the top of a backlog.</li>
+        </ol>
+        <p style="margin:0; padding:11px 14px; background:rgba(255,209,102,0.06); border-left:2px solid var(--marker); border-radius:0 6px 6px 0; font-size:13px; color:var(--ink);"><strong>The line that lands:</strong> "most platforms accumulate versions and retire almost none — and the blocker is never technical." Then explain why, and you've answered a question they probably live with.</p>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Two questions with no example behind them — handle verbally</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Both are specific to a multi-product API platform, and neither has a worked example on this page yet. Know the argument well enough to reason aloud.</p>
+        <ul class="item-list">
+          <li><strong>"How would you design scopes across the whole product suite?"</strong> — scope granularity is a UX problem wearing security clothes. Thirty products × resource types × read/write produces a consent screen nobody reads, and a user shown sixty checkboxes clicks accept. Namespace by product, keep per-product granularity deliberately coarse, and use step-up authorisation at call time for the genuinely dangerous operations rather than pre-granting them. Close with the part that makes it the platform team's call: <em>scopes outlive every implementation — you cannot rename one once partners depend on it.</em></li>
+          <li><strong>"Our customers are companies, not people — how does a token work?"</strong> — a token has to carry two orthogonal facts: which human authorised this, and which business's data it grants access to. One accountant with forty client companies is a single identity with forty entity grants. The follow-up to be ready for is what happens when that accountant is removed from one client: entity grants must be revocable independently of the user's identity, which makes them a first-class relational record rather than a claim baked into a long-lived token.</li>
+        </ul>
+      </div>
     </section>
 
 
