@@ -362,6 +362,14 @@
   .contrast-card ul{ margin:0; padding-left:16px; }
   .contrast-card ul li{ font-size:12.5px; color:var(--ink-dim); margin-bottom:6px; line-height:1.55; }
   .contrast-card ul li:last-child{ margin-bottom:0; }
+  /* boundary variants — what a team owns vs. what it never does */
+  .contrast-card.own{ background:rgba(124,224,168,0.055); border-color:rgba(124,224,168,0.30); }
+  .contrast-card.own .contrast-title{ color:var(--optional); }
+  .contrast-card.own .contrast-dot{ background:var(--optional); box-shadow:0 0 8px rgba(124,224,168,0.55); }
+  .contrast-card.never{ background:rgba(255,107,94,0.05); border-color:rgba(255,107,94,0.28); }
+  .contrast-card.never .contrast-title{ color:var(--redline); }
+  .contrast-card.never .contrast-dot{ background:var(--redline); }
+  .contrast-card .owner{ color:var(--ink-faint); font-style:italic; }
   .contrast-card ul li strong{ color:var(--ink); }
 
   /* Which requirement a deep dive explains — subtle, reuses existing accent/marker colors */
@@ -7430,7 +7438,7 @@ The CP failure is not recoverable by the caller at all.</div>
         <div class="eyebrow">Worked Example S — The Cost of a Shared Chokepoint</div>
         <div class="usecase-head">
         <h2 class="section-title">Design an API Gateway</h2>
-        <span class="uc-tag">filter ordering · blast radius isolation · config without restarts</span>
+        <span class="uc-tag">five gates in cost order · blast radius · hot config · limits that aren't rate limits · safe caching</span>
       </div>
           <div class="uc-hint">Click to expand</div>
         </summary>
@@ -7444,7 +7452,7 @@ The CP failure is not recoverable by the caller at all.</div>
             <span class="req-label fr">Functional</span>
             <ul class="item-list">
               <li>Route an incoming request to the correct backend service based on path, host, or header.</li>
-              <li>Enforce authentication and per-consumer rate limits before the request reaches any backend.</li>
+              <li>Enforce authentication, coarse per-API authorization, and per-consumer rate limits before the request reaches any backend.</li>
               <li>Let product teams add, change, or remove routes without a gateway restart or redeploy.</li>
               <li>Emit consistent logs, metrics, and traces for every request, regardless of which backend served it.</li>
             </ul>
@@ -7454,8 +7462,10 @@ The CP failure is not recoverable by the caller at all.</div>
             <ul class="item-list">
               <li>Added latency must be small relative to the backend call it wraps — single-digit milliseconds.</li>
               <li>One slow or failing backend must not degrade requests routed to any other backend.</li>
-              <li>Rejecting an unauthenticated or over-quota request must cost far less than serving a legitimate one.</li>
+              <li>Rejecting an unauthenticated, unauthorized, or over-quota request must cost far less than serving a legitimate one.</li>
               <li>A route configuration change must propagate to every gateway instance within seconds, without dropping in-flight requests.</li>
+              <li>A single oversized, malformed, or deliberately slow request must not be able to consume a gateway instance.</li>
+              <li>No caller may ever receive a response that was generated for a different caller.</li>
             </ul>
           </div>
           <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: does the gateway aggregate responses from several backends into one, or strictly forward one request to one service? We'll assume strict forwarding — aggregation is a backend-for-frontend concern, and folding it in here would put business logic in a component whose whole value is being generic.</p>
@@ -7463,9 +7473,9 @@ The CP failure is not recoverable by the caller at all.</div>
         <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
           <div class="mini-title">Core Entities</div>
           <ul class="entity-list">
-            <li><strong>Route</strong> <span class="fields">(id, match_rules, target_service, filters[], timeout_ms)</span> — one routing rule; filters is the ordered chain applied to matching requests.</li>
+            <li><strong>Route</strong> <span class="fields">(id, match_rules, target_service, filters[], timeout_ms, max_body_bytes, cache_policy)</span> — one routing rule; filters is the ordered chain applied to matching requests. <span style="font-family:var(--mono)">max_body_bytes</span> and <span style="font-family:var(--mono)">cache_policy</span> are per route on purpose — an upload endpoint and a JSON endpoint deserve different ceilings, and cacheability is a property of one API, never the gateway as a whole.</li>
             <li><strong>Filter</strong> <span class="fields">(type, config, order)</span> — a single unit of work in the chain: auth, rate limit, header rewrite, logging.</li>
-            <li><strong>Consumer</strong> <span class="fields">(id, type, quota, allowed_routes[])</span> — who is calling; the identity rate limits and authorization are evaluated against.</li>
+            <li><strong>Consumer</strong> <span class="fields">(id, type, quota, allowed_routes[])</span> — who is calling; the identity rate limits and authorization are evaluated against. <span style="font-family:var(--mono)">type</span> is <span style="font-family:var(--mono)">oauth_client</span> or <span style="font-family:var(--mono)">api_key</span>, and it selects which verification gate 2 runs — the platform supports both schemes by design.</li>
             <li><strong>BackendPool</strong> <span class="fields">(service_name, instances[], circuit_state, concurrency_limit)</span> — resolved from the registry; circuit_state and concurrency_limit are what keep one bad backend contained.</li>
           </ul>
         </div></div>
@@ -7492,103 +7502,108 @@ The CP failure is not recoverable by the caller at all.</div>
         </div></div>
         <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
           <div class="mini-title">Deep Dives</div>
-          <p>Three below: <strong>(a)</strong> why filter order is a security and cost decision, <strong>(b)</strong> stopping one slow backend from starving every other route, and <strong>(c)</strong> changing routes without restarting.</p>
+          <p>Five below: <strong>(a)</strong> why filter order is a security and cost decision — five gates, and the one ordering that's a genuine trade-off, <strong>(b)</strong> stopping one slow backend from starving every other route, <strong>(c)</strong> changing routes without restarting, <strong>(d)</strong> the limits that aren't rate limits, and <strong>(e)</strong> what the gateway may cache without leaking.</p>
         </div></div>
       </div>
 
       <div class="hld-diagram-wrap">
-        <svg viewBox="0 0 1030 450" style="width:100%; min-width:820px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+        <svg viewBox="0 0 1040 600" style="width:100%; min-width:860px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <marker id="gw-arrow-ink" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="gw-arrow-ink" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9FC1E0"/></marker>
             <marker id="gw-arrow-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
             <marker id="gw-arrow-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
             <marker id="gw-arrow-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
             <marker id="gw-arrow-red" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker>
+            <marker id="gw-arrow-violet" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#C08CE0"/></marker>
           </defs>
-
-          <!-- Client -->
-          <rect x="20" y="160" width="130" height="70" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
-          <text x="85" y="190" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Client</text>
-          <text x="85" y="207" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">partner or internal</text>
-
-          <!-- Gateway data plane -->
-          <rect x="190" y="120" width="290" height="150" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.6"/>
-          <text x="335" y="148" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Gateway (data plane)</text>
-          <text x="335" y="167" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">stateless — scale horizontally</text>
-
-          <rect x="208" y="180" width="118" height="34" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.1"/>
-          <text x="267" y="201" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">1 IP rate limit</text>
-
-          <rect x="340" y="180" width="122" height="34" rx="5" fill="#0A2540" stroke="#6FE0F0" stroke-width="1.1"/>
-          <text x="401" y="201" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">2 authenticate</text>
-
-          <rect x="208" y="224" width="118" height="34" rx="5" fill="#0A2540" stroke="#6FE0F0" stroke-width="1.1"/>
-          <text x="267" y="245" text-anchor="middle" font-family="Inter" font-size="9" fill="#6FE0F0">3 quota by consumer</text>
-
-          <rect x="340" y="224" width="122" height="34" rx="5" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.1"/>
-          <text x="401" y="245" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">4 route + forward</text>
-
-          <!-- Control plane -->
-          <rect x="190" y="330" width="290" height="85" rx="10" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.4"/>
-          <text x="335" y="358" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Control Plane</text>
-          <text x="335" y="376" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">route config, pushed to instances</text>
-          <text x="335" y="392" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">never on the request path</text>
-
-          <!-- Cached deps -->
-          <rect x="540" y="30" width="180" height="80" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
-          <text x="630" y="58" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">JWKS + revocations</text>
-          <text x="630" y="75" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">cached locally</text>
-          <text x="630" y="89" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">(see example Q)</text>
-
-          <rect x="540" y="330" width="180" height="80" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
-          <text x="630" y="358" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Registry cache</text>
-          <text x="630" y="375" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">instance lists</text>
-          <text x="630" y="389" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">(see example R)</text>
-
-          <!-- Backends with bulkheads -->
-          <rect x="800" y="95" width="200" height="80" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
-          <text x="900" y="123" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Service A</text>
-          <text x="900" y="140" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">healthy · own concurrency</text>
-          <text x="900" y="154" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">budget, circuit closed</text>
-
-          <rect x="800" y="205" width="200" height="80" rx="10" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/>
-          <text x="900" y="233" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Service B</text>
-          <text x="900" y="250" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">slow · budget exhausted,</text>
-          <text x="900" y="264" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">circuit open — shed fast</text>
-
-          <!-- flows -->
-          <line x1="150" y1="195" x2="187" y2="195" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#gw-arrow-ink)"/>
-
-          <line x1="480" y1="165" x2="537" y2="90" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#gw-arrow-ink)"/>
-          <line x1="480" y1="250" x2="537" y2="350" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#gw-arrow-ink)"/>
-
-          <line x1="335" y1="330" x2="335" y2="274" stroke="#94B8D4" stroke-width="1.4" marker-end="url(#gw-arrow-ink)"/>
-          <text x="398" y="300" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">hot config push</text>
-
-          <path d="M 480,200 C 600,175 700,140 797,135" fill="none" stroke="#7CE0A8" stroke-width="1.6" marker-end="url(#gw-arrow-green)"/>
-          <text x="660" y="163" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">forwarded, per-route timeout</text>
-
-          <path d="M 480,232 C 600,260 700,245 797,245" fill="none" stroke="#FF6B5E" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#gw-arrow-red)"/>
-          <text x="648" y="285" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">isolated — A unaffected</text>
-
-          <!-- legend -->
-          <line x1="30" y1="432" x2="60" y2="432" stroke="#7CE0A8" stroke-width="2"/>
-          <text x="68" y="436" font-family="Inter" font-size="11" fill="#9FC1E0">Request path</text>
-          <line x1="190" y1="432" x2="220" y2="432" stroke="#94B8D4" stroke-width="2" stroke-dasharray="4 3"/>
-          <text x="228" y="436" font-family="Inter" font-size="11" fill="#9FC1E0">Off-path config &amp; cache refresh</text>
-          <line x1="500" y1="432" x2="530" y2="432" stroke="#FF6B5E" stroke-width="2"/>
-          <text x="538" y="436" font-family="Inter" font-size="11" fill="#9FC1E0">Contained failure</text>
+          <text x="200" y="18" font-family="JetBrains Mono" font-size="9.5" fill="#94B8D4">PUSHED AHEAD OF THE REQUEST — none of these is called per request</text>
+          <rect x="200" y="26" width="190" height="78" rx="9" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.3"/>
+          <text x="295" y="52" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">JWKS + key cache</text>
+          <text x="295" y="70" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">JWT keys · API-key hashes</text>
+          <text x="295" y="85" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">(examples Q and AD)</text>
+          <rect x="420" y="26" width="220" height="78" rx="9" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.3"/>
+          <text x="530" y="52" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Control Plane</text>
+          <text x="530" y="70" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">routes, grants, and per-route</text>
+          <text x="530" y="85" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">limits + cache policy</text>
+          <rect x="670" y="26" width="190" height="78" rx="9" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.3"/>
+          <text x="765" y="52" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Registry cache</text>
+          <text x="765" y="70" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">instance lists</text>
+          <text x="765" y="85" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">(see example R)</text>
+          <line x1="295" y1="104" x2="295" y2="136" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#gw-arrow-ink)"/>
+          <line x1="470" y1="104" x2="470" y2="136" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#gw-arrow-ink)"/>
+          <line x1="700" y1="104" x2="508" y2="138" stroke="#94B8D4" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#gw-arrow-ink)"/>
+          <text x="305" y="125" font-family="Inter" font-size="8.5" fill="#94B8D4">keys</text>
+          <text x="478" y="125" font-family="Inter" font-size="8.5" fill="#94B8D4">grants feed gate 3</text>
+          <rect x="20" y="220" width="120" height="90" rx="10" fill="#0E2F52" stroke="#EAF4FF" stroke-opacity="0.5" stroke-width="1.3"/>
+          <text x="80" y="252" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Client</text>
+          <text x="80" y="270" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">partner app or</text>
+          <text x="80" y="284" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">integration</text>
+          <line x1="140" y1="250" x2="171" y2="250" stroke="#FFD166" stroke-width="1.8" marker-end="url(#gw-arrow-amber)"/>
+          <line x1="172" y1="290" x2="144" y2="290" stroke="#FF6B5E" stroke-width="1.6" marker-end="url(#gw-arrow-red)"/>
+          <text x="80" y="332" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FF6B5E">any gate can reject —</text>
+          <text x="80" y="346" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FF6B5E">the code comes back</text>
+          <text x="80" y="360" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FF6B5E">immediately</text>
+          <rect x="175" y="140" width="345" height="282" rx="10" fill="#0E2F52" stroke="#FFD166" stroke-width="1.7"/>
+          <text x="347" y="163" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Gateway (data plane)</text>
+          <text x="347" y="180" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">stateless · five gates, in cost order</text>
+          <rect x="190" y="188" width="316" height="22" rx="5" fill="#0A2540" stroke="#94B8D4" stroke-width="1" stroke-dasharray="3 3"/>
+          <text x="348" y="203" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#94B8D4">0 · size, header &amp; idle limits — before any gate</text>
+          <rect x="190" y="216" width="242" height="28" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.1"/>
+          <text x="311" y="234" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FF6B5E">1 · IP limit — no identity needed</text>
+          <rect x="442" y="216" width="64" height="28" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.1"/>
+          <text x="474" y="235" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" font-weight="700" fill="#FF6B5E">✗ 429</text>
+          <rect x="190" y="250" width="242" height="28" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1.1"/>
+          <text x="311" y="268" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FFD166">2 · authenticate — JWT or API key</text>
+          <rect x="442" y="250" width="64" height="28" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.1"/>
+          <text x="474" y="269" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" font-weight="700" fill="#FF6B5E">✗ 401</text>
+          <rect x="190" y="284" width="242" height="28" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1.1"/>
+          <text x="311" y="302" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FFD166">3 · authorize — may they call this API?</text>
+          <rect x="442" y="284" width="64" height="28" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.1"/>
+          <text x="474" y="303" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" font-weight="700" fill="#FF6B5E">✗ 403</text>
+          <rect x="190" y="318" width="242" height="28" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1.1"/>
+          <text x="311" y="336" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FFD166">4 · quota — within their allowance?</text>
+          <rect x="442" y="318" width="64" height="28" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1.1"/>
+          <text x="474" y="337" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" font-weight="700" fill="#FF6B5E">✗ 429</text>
+          <rect x="190" y="352" width="242" height="28" rx="5" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.1"/>
+          <text x="311" y="370" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#7CE0A8">5 · forward — strip token, add claims</text>
+          <text x="347" y="396" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#94B8D4">resource-level authorization stays IN the service</text>
+          <text x="347" y="410" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#94B8D4">— the gateway only asks "this API at all?"</text>
+          <rect x="790" y="160" width="220" height="80" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="900" y="188" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Service A</text>
+          <text x="900" y="206" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">healthy · own concurrency</text>
+          <text x="900" y="221" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">budget, circuit closed</text>
+          <rect x="790" y="290" width="220" height="80" rx="10" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="900" y="318" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">Service B</text>
+          <text x="900" y="336" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">slow · budget exhausted,</text>
+          <text x="900" y="351" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">circuit open — shed fast</text>
+          <path d="M 520,362 C 640,350 700,210 786,200" fill="none" stroke="#7CE0A8" stroke-width="1.7" marker-end="url(#gw-arrow-green)"/>
+          <text x="655" y="226" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">forwarded with the remaining deadline</text>
+          <path d="M 520,374 C 640,380 700,334 786,330" fill="none" stroke="#FF6B5E" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#gw-arrow-red)"/>
+          <text x="655" y="398" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">isolated — A unaffected</text>
+          <rect x="175" y="466" width="835" height="60" rx="9" fill="#0E2F52" stroke="#C08CE0" stroke-width="1.4"/>
+          <text x="592" y="490" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#C08CE0">Telemetry — every gate emits, INCLUDING the rejections</text>
+          <text x="592" y="510" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">counted per consumer and per code: a 401 spike is an attack or a broken client; a 429 spike is a quota set too low</text>
+          <line x1="347" y1="422" x2="347" y2="462" stroke="#C08CE0" stroke-width="1.3" stroke-dasharray="2 3" marker-end="url(#gw-arrow-violet)"/>
+          <line x1="900" y1="370" x2="900" y2="462" stroke="#C08CE0" stroke-width="1.3" stroke-dasharray="2 3" marker-end="url(#gw-arrow-violet)"/>
+          <line x1="20" y1="566" x2="48" y2="566" stroke="#7CE0A8" stroke-width="2.2"/>
+          <text x="54" y="570" font-family="Inter" font-size="10" fill="#9FC1E0">Request path</text>
+          <line x1="160" y1="566" x2="188" y2="566" stroke="#FF6B5E" stroke-width="2.2"/>
+          <text x="194" y="570" font-family="Inter" font-size="10" fill="#9FC1E0">Rejected / contained</text>
+          <line x1="350" y1="566" x2="378" y2="566" stroke="#94B8D4" stroke-width="2.2" stroke-dasharray="4 3"/>
+          <text x="384" y="570" font-family="Inter" font-size="10" fill="#9FC1E0">Pushed ahead, off the request path</text>
+          <line x1="640" y1="566" x2="668" y2="566" stroke="#C08CE0" stroke-width="2.2" stroke-dasharray="2 3"/>
+          <text x="674" y="570" font-family="Inter" font-size="10" fill="#9FC1E0">Telemetry — never blocks</text>
         </svg>
       </div>
-      <div class="diagram-caption">The filter chain runs cheapest-rejection-first, so junk traffic dies before it costs a signature verification. Both external dependencies — key material and instance lists — are locally cached, so neither the auth service nor the registry is on the request path. The control plane pushes route changes and is never on it either.</div>
+      <div class="diagram-caption">Five gates, cheapest rejection first, each returning its own code — so junk dies before it costs a signature verification, and a client can tell "refresh your token" from "stop" from "wait". Everything the gates consult — keys, consumer grants, instance lists — is pushed ahead of time, so nothing on the top row is ever on the request path. Telemetry leaves the gateway rather than the forward step, because rejections are the requests you most need to see.</div>
 
       <div class="flow-narrative">
         <div class="flow-col read">
           <div class="flow-title">A legitimate request</div>
           <ol>
-            <li>Matched against the in-memory route table — a prefix-tree lookup, not a scan of every rule.</li>
-            <li>Passes the cheap anonymous IP limit, then signature verification against the cached public key.</li>
-            <li>Now that the consumer is known, their per-consumer quota is checked and decremented.</li>
+            <li>Passes the cheap anonymous IP limit, then is matched against the in-memory route table — a prefix-tree lookup, not a scan of every rule.</li>
+            <li>Signature verification against the cached public key establishes who is calling.</li>
+            <li>The consumer's pushed grants confirm they may call this API at all; then their per-consumer quota is checked and decremented.</li>
             <li>An instance is picked from the cached registry list, the backend's concurrency budget is taken, and the request is forwarded under a per-route timeout.</li>
           </ol>
         </div>
@@ -7611,33 +7626,69 @@ The CP failure is not recoverable by the caller at all.</div>
           <li>Start with the obvious ordering: authenticate first, since nothing should happen for an unidentified caller. Trace the cost under attack — every junk request now forces a signature verification before it can be rejected, so an attacker sets the gateway's CPU bill.</li>
           <li>Invert it: rate limit first, because a counter increment is orders of magnitude cheaper than verifying a signature. But rate limit by <em>what</em>? Per-consumer quotas need an identity, which only exists after authentication.</li>
           <li>Notice the apparent deadlock isn't one — there are two different limits being conflated. An anonymous, coarse limit keyed on IP needs no identity at all and can run first; the precise per-consumer quota runs after auth, when identity exists.</li>
-          <li>Generalize the rule that falls out: order filters by cost ascending and rejection likelihood descending. Anything that can reject a request cheaply belongs before anything expensive.</li>
+          <li>Now notice a question nothing above answers: a caller can be perfectly authenticated and still have no business calling <em>this</em> API. That's a separate gate — coarse authorization — and the <span style="font-family:var(--mono)">allowed_routes</span> field on Consumer already holds its data. It was modelled, and never enforced.</li>
+          <li>Place it, and notice it forces a subtle correction: you can't ask "may they call <em>this</em> API?" without knowing which API. So route <em>matching</em> — an in-memory lookup — has to happen before authorization. What genuinely comes last is <em>forwarding</em>, the step that commits a backend's resources.</li>
+          <li>Generalise the rule that falls out: order filters by cost ascending and rejection likelihood descending, subject to each gate having the information it needs by the time it runs.</li>
         </ol>
-        <p>Filter order looks like a configuration detail and is actually a security property — it decides how much work an attacker can force the gateway to do per junk request.</p>
-        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the same four filters, two orderings</span>WRONG — authenticate first:
+        <p>Filter order looks like a configuration detail and is actually a security property — it decides how much work an attacker can force the gateway to do per junk request, and what each rejection reveals.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — five gates, what each needs, and what it returns</span>WRONG — authenticate first:
   1. verify JWT signature      ← ~50-100µs of CPU, on EVERY junk request
-  2. per-consumer quota
-  3. IP rate limit
-  4. route + forward
+  2. ...everything else
   → an attacker sending garbage tokens sets your CPU bill. 100k junk
     req/s = 100k signature verifications you chose to perform.
 
-RIGHT — cheapest rejection first:
-  1. IP rate limit             ← one counter increment, ~1µs, no identity needed
-  2. verify JWT signature      ← only for traffic that survived step 1
-  3. per-consumer quota        ← needs identity, so it must come after auth
-  4. route + forward
-  → the same attacker is rejected at step 1. The expensive filter never
-    runs for them.
+RIGHT — cheapest rejection first, each gate fed what it needs:
 
-The two rate limits are NOT redundant: step 1 is coarse and anonymous
-(protecting the gateway itself), step 3 is precise and per-consumer
-(enforcing what a customer actually paid for).</div>
+  gate               needs              rejects with   costs
+  1 IP limit         nothing            429            one counter, ~1µs
+  2 authenticate     the credential     401            JWT: a signature
+                                                       check, no I/O
+                                                       key: an indexed
+                                                       lookup + SHA-256
+  3 authorize        identity + API     403            a set-membership
+                     ← route already       lookup in pushed
+                       MATCHED by now      grants
+  4 quota            identity           429            a counter, maybe
+                                                       distributed
+  5 forward          all of the above   —              commits a backend
+
+  (route MATCHING happens before gate 3 — it is an in-memory lookup,
+   and gate 3 cannot ask "this API?" without it)
+
+The two limits are NOT redundant: gate 1 is coarse and anonymous,
+protecting the gateway itself; gate 4 is precise and per-consumer,
+enforcing what a customer actually agreed to.</div>
+
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--marker); margin:16px 0 8px;">The one ordering that's a genuine trade-off</div>
+        <p style="margin:0 0 10px;">Gates 1 and 2 are settled by cost. Gates 3 and 4 are not — both need identity and both are cheap, so the order between them is a <strong>decision with a cost either way</strong>, and worth stating as one rather than presenting as obvious.</p>
+        <div class="example-panel" style="margin:0 0 12px;"><span class="label">Authorize before quota — the chosen order, and what it gives up</span>AUTHORIZE → QUOTA   (chosen)
+  ✓ a call the consumer was never allowed to make does not burn their
+    quota. A partner with a misconfigured integration hitting an
+    ungranted API gets a clean 403 and keeps their allowance.
+  ✓ set-membership on pushed grants is cheaper than a quota counter
+    that may be a distributed write
+  ✗ a valid key can PROBE APIs it isn't granted without quota ever
+    slowing it down — each probe is a cheap 403
+
+  → mitigated separately: alert on 403 RATE per consumer. A consumer
+    whose 403s climb is either misconfigured or enumerating, and both
+    are worth a human looking.
+
+QUOTA → AUTHORIZE   (the alternative)
+  ✓ probing is throttled for free by the same quota
+  ✗ legitimate consumers are charged for requests you then refuse,
+    which reads as a billing bug to the customer who notices
+
+The 403-rate alert is what makes the chosen order safe. Without it,
+you have traded a visible billing complaint for an invisible probe.</div>
         <ul class="item-list">
-          <li><strong>Routing comes last for a reason</strong> — it's the step that commits a backend's resources. Everything that might reject the request should have already run.</li>
+          <li><strong>Forwarding comes last for a reason</strong> — it's the step that commits a backend's resources. Everything that might reject the request should have already run.</li>
+          <li><strong>Gate 2 has two paths, with different failure modes</strong> — the platform accepts OAuth tokens and API keys by design. A JWT is verified against cached public keys: CPU only, no I/O, so it can't be slowed by a database. A key is an indexed lookup plus a fast hash, which is only cheap while the verification is cached — a cache miss reaches the key store. So key verification must be cached and revocations pushed, exactly as the <a href="#usecase-apikeys" style="color:var(--accent);">API Key Management</a> example describes, or gate 2 quietly becomes the slowest gate on the key path.</li>
+          <li><strong>Gate 3 is coarse on purpose</strong> — "may this consumer call this API at all" is the platform's question. "May this user see invoice 123" is not; it needs business data the gateway doesn't have and shouldn't. That stays in the service.</li>
+          <li><strong>Every rejection is telemetry</strong> — the diagram draws the telemetry line from the gateway, not from the forward step, because the requests you most need to see are the ones that never reached a backend.</li>
           <li><strong>Response-side filters run in reverse</strong> — logging and header rewriting wrap the call, so the chain unwinds outward on the way back, capturing the real outcome including timeouts.</li>
         </ul>
-        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">This is the same instinct as the rate limiter's fail-fast enforcement layer, applied to a chain rather than a single check: reject as early and as cheaply as the information available allows.</p>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">The codes each gate returns are the ones the <a href="#statuscodes" style="color:var(--accent);">HTTP Status Codes toolkit</a> argues for — and the distinction matters to clients: a 401 means refresh your token, a 403 means stop, and a 429 means wait for <span style="font-family:var(--mono)">Retry-After</span>.</p>
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
@@ -7715,15 +7766,138 @@ acceptable when both answers are individually valid.</div>
         </ul>
       </div>
 
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — the limits that aren't rate limits</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>One bad request can't consume the gateway</span><span class="explains-tag nfr"><b>NFR</b>Small added latency</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice what every limit so far counts: <em>requests</em>. Rate limits, quotas, concurrency budgets — all of them assume the unit of harm is a request, and that more requests means more harm.</li>
+          <li>Break that assumption with one request. A single 2 GB upload passes the IP limit, passes the quota, and occupies one concurrency slot — and it can exhaust memory on whichever instance receives it.</li>
+          <li>Find the others in the same family. A request with ten thousand headers. A client that sends one byte per second and holds a connection open for an hour. None of these are about <em>count</em>, so none of the counting limits sees them.</li>
+          <li>Place the cap where it's cheapest: at the edge, before the body is buffered, so the connection is closed while the cost is still a few kilobytes rather than after it became gigabytes.</li>
+          <li>Then turn to time, and notice the per-route timeout has the same shape of flaw — it's per hop, so it doesn't compose. Five hops each allowed five seconds is twenty-five seconds for a client that gave up at ten.</li>
+          <li>Fix it by passing the <em>remaining</em> budget rather than a fresh timeout at each hop, so every service downstream knows how long the caller is actually still waiting.</li>
+        </ol>
+        <p>Rate limiting protects you from many requests. Nothing above protects you from <em>one</em> — and one is enough, which is why these belong at the gateway rather than in each service's middleware.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — four limits that count nothing</span>MAX BODY SIZE                                    → 413 Payload Too Large
+  reject on the Content-Length header BEFORE buffering, and enforce
+  again while streaming (a lying header is not a rarity)
+  per route, not global: a document-upload API and a JSON CRUD API
+  do not deserve the same ceiling
+
+MAX HEADER SIZE / COUNT                          → 431
+  cheap to send, expensive to parse; some servers allocate per header
+
+SLOW CLIENT / IDLE TIMEOUT                       → close the connection
+  one byte per second holds a slot for an hour and never trips a
+  rate limit. Cap header-read time, body-read time, and idle time.
+
+MAX CONCURRENT CONNECTIONS PER CLIENT
+  distinct from requests-per-second: 10 req/s is fine, 10,000 open
+  connections from one client is a resource-exhaustion attack
+
+
+DEADLINES DO NOT COMPOSE — the subtler one
+
+  static per-hop timeouts, 5s each:
+    gateway →  A  →  B  →  C  →  db
+       5s      5s    5s    5s    5s      worst case 25s
+    but the CLIENT gave up at 10s.
+    → everything after second 10 is work nobody will ever read,
+      holding slots, connections and database locks for a response
+      that is already discarded
+
+  deadline propagation — pass the REMAINING budget:
+    gateway sets  deadline = now + 10s   (the client's real budget)
+    forwards      remaining = 9.8s
+    A forwards    remaining = 9.1s
+    B forwards    remaining = 4.2s
+    C sees 4.2s, knows its query needs ~6s → FAILS FAST instead of
+      starting work that cannot finish in time
+
+  → in gRPC this is built in. Over HTTP it is a header you have to
+    propagate deliberately, and it is worth the effort: it converts
+    wasted work into an immediate, honest failure.</div>
+        <ul class="item-list">
+          <li><strong>Reject before you buffer</strong> — the whole value is closing the connection while the cost is kilobytes. A size check that runs after the body is in memory has already paid the price it was meant to avoid.</li>
+          <li><strong>Per-route ceilings, not one global number</strong> — a single global body limit is either too small for the upload endpoint or too large for everything else, and the second is the dangerous direction.</li>
+          <li><strong>A deadline is a promise about the caller, not the callee</strong> — it says how long the original client is still waiting. That's why it must be passed down rather than re-invented at each hop, and why the gateway is the right place to set it.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — what the gateway may cache, and the bug that makes it dangerous</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Small added latency</span><span class="explains-tag nfr"><b>NFR</b>Never serve one caller another's data</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Start from the obvious win: the gateway sees every response, so caching there spares every backend at once. One configuration change, fleet-wide benefit.</li>
+          <li>Ask what makes a response cacheable, and the honest answer narrows fast: it must be the same for everyone who asks. Public reference data, currency lists, a product catalogue — not much else on a typical business API.</li>
+          <li>Now consider caching an authenticated response anyway, because that's where the traffic actually is, and trace what the cache key contains. If it's the URL, then two customers requesting <span style="font-family:var(--mono)">/v1/profile</span> share an entry.</li>
+          <li>Follow that to the end: the first caller's profile is stored and returned to the second. Not a leak through a clever attack — through a default. The gateway did exactly what it was told.</li>
+          <li>Notice why this is worse at the edge than in a service: a service cache usually sits behind code that already knows whose data it is. A gateway cache is keyed on the request, and the request looks identical.</li>
+          <li>Conclude with the rule that's safe to hold: cache nothing that depends on <em>who</em> asked, unless identity is in the key — and default to not caching authenticated responses at all, because the failure is silent and severe.</li>
+        </ol>
+        <p>Edge caching is the cheapest performance win available and the easiest place to leak customer data. Both facts come from the same property: the gateway doesn't know what the response <em>means</em>.</p>
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the one-line misconfiguration</span>THE BUG
+
+  cache key = method + host + path
+  GET /v1/profile          Authorization: Bearer <customer A>
+    → MISS → backend → A's profile → STORED under "/v1/profile"
+
+  GET /v1/profile          Authorization: Bearer <customer B>
+    → HIT  → A's profile returned to B
+
+  No attack. No exploit. A default cache key and one cacheable
+  response header. On a financial API this is the most severe
+  outcome on this page, and it is silent — every dashboard shows
+  a healthy, fast, high-hit-rate cache.
+
+WHAT IS ACTUALLY SAFE TO CACHE AT THE EDGE
+
+  ✓ genuinely public, identical for everyone
+      currency and country lists, product catalogue, OpenAPI specs,
+      the developer portal's own pages
+  ✓ JWKS and other key material   ← already cached; see gate 2
+  ~ per-consumer data, ONLY if the consumer id is in the cache key
+      and even then: short TTLs, and never for anything a customer
+      would consider private
+  ✗ anything authenticated, by default
+      the win is small, the failure mode is a data breach
+
+THE DEFENCES, IN ORDER OF HOW MUCH YOU SHOULD TRUST THEM
+
+  1. do not cache authenticated responses at the gateway at all
+     ← the only one that cannot be misconfigured
+  2. if you must, put the consumer/tenant id IN the cache key
+  3. honour Cache-Control: private / no-store from the backend
+     ← useful, but it relies on every service setting it correctly,
+       which is a discipline requirement, and those fail silently
+  4. Vary headers — necessary, insufficient, and easy to get subtly
+     wrong at a CDN
+
+Note the ordering: the reliable defence is structural (don't do it),
+not configurational (do it carefully).</div>
+        <ul class="item-list">
+          <li><strong>The backend can't fully protect you</strong> — a service that forgets <span style="font-family:var(--mono)">Cache-Control: private</span> on one endpoint is one deploy away from the bug above. Defaulting to no caching of authenticated traffic means a single team's mistake can't become a platform-wide leak.</li>
+          <li><strong>Caching errors is a different decision</strong> — briefly caching a 404 or a 5xx protects a struggling backend from a thundering herd, but caching a 401 or 403 is a fast way to lock out a consumer whose grant was just fixed.</li>
+          <li><strong>Conditional requests are the safe middle ground</strong> — passing <span style="font-family:var(--mono)">ETag</span> and <span style="font-family:var(--mono)">If-None-Match</span> through lets the backend answer <span style="font-family:var(--mono)">304 Not Modified</span> cheaply. The authorization check still runs every time, so nothing is served to the wrong caller, and the payload is still saved.</li>
+        </ul>
+        <p style="color:var(--ink); margin-top:10px; margin-bottom:0;">Same instinct as the header-forgery gap in the platform example: a control that depends on every team configuring something correctly, forever, is weaker than one that makes the dangerous thing structurally unavailable.</p>
+      </div>
+
       <div class="result-card nfr-card">
         <h3 class="subhead">Does it hold up?</h3>
         <div class="table-wrap">
 <table class="ref-table">
         <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>Requests reach the right product</td><td>Route matching against an in-memory prefix tree pushed from the control plane — done early, because authorization needs to know which API is being called.</td></tr>
         <tr><td>Small added latency</td><td>In-memory route matching, locally cached keys and instance lists — no network call to any dependency on the request path.</td></tr>
-        <tr><td>Rejection costs less than service</td><td>Filters ordered cheapest-rejection-first, so an anonymous IP limit drops junk before any signature verification runs.</td></tr>
+        <tr><td>Rejection costs less than service</td><td>Five gates ordered cheapest-rejection-first, so an anonymous IP limit drops junk before any signature verification runs — and each rejection returns a distinct code the client can act on.</td></tr>
+        <tr><td>Callers reach only the APIs they're granted</td><td>A coarse authorization gate checks pushed consumer grants before quota is spent; resource-level decisions stay in the service.</td></tr>
         <tr><td>One bad backend doesn't degrade others</td><td>Per-backend concurrency budgets plus circuit breakers, with per-route timeouts guaranteeing slots are released.</td></tr>
         <tr><td>Routes change without a restart</td><td>Control plane pushes config; instances build and validate a new table off to the side, then swap a pointer atomically.</td></tr>
+        <tr><td>One bad request can't consume the gateway</td><td>Body and header caps rejected before buffering, idle and read timeouts for slow clients, and a deadline that shrinks per hop rather than restarting.</td></tr>
+        <tr><td>Never serve one caller another's data</td><td>Authenticated responses are not cached at the edge by default — a structural choice rather than one depending on every backend setting the right header.</td></tr>
         <tr><td>Consistent observability</td><td>Logging and tracing filters wrap every route uniformly, so telemetry doesn't depend on each backend implementing it.</td></tr>
       </table>
 </div>
@@ -7737,6 +7911,8 @@ acceptable when both answers are individually valid.</div>
         <tr><td>A gateway at all vs. clients calling services directly</td><td>Centralizes auth, throttling, and observability so every service doesn't reimplement them — at the cost of introducing a shared chokepoint whose failure modes (this example's second deep dive) you now own.</td></tr>
         <tr><td>Per-backend bulkheads vs. one shared pool</td><td>Contains a slow backend to its own compartment, at the cost of lower peak utilization — budgets reserved for a quiet service sit unused while a busy one is throttled.</td></tr>
         <tr><td>Cached config and keys vs. reading them live</td><td>Keeps every dependency off the request path, at the cost of a propagation window where instances briefly disagree — acceptable here for the same reason it was in the registry example.</td></tr>
+        <tr><td>Refusing to cache authenticated responses vs. caching them carefully</td><td>Removes an entire class of cross-customer data leak, at the cost of giving up the cache hit rate where most of the traffic actually is — conditional requests with ETags recover part of it without the risk.</td></tr>
+        <tr><td>Deadline propagation vs. simple per-route timeouts</td><td>Downstream services stop doing work nobody will read, at the cost of a budget header every service must honour — and one that ignores it silently reintroduces the problem.</td></tr>
         <tr><td>Strict forwarding vs. response aggregation</td><td>Keeps the gateway generic and free of business logic, at the cost of clients making several calls where one aggregated response would have done — which is what a backend-for-frontend layer exists to solve instead.</td></tr>
       </table>
 </div>
@@ -7766,7 +7942,7 @@ acceptable when both answers are individually valid.</div>
         <div class="eyebrow">Worked Example T — When the Bottleneck Is Organizational</div>
         <div class="usecase-head">
         <h2 class="section-title">Design an API Developer Portal</h2>
-        <span class="uc-tag">spec as source of truth · governance without review queues · breaking-change gates</span>
+        <span class="uc-tag">spec as source of truth · governance without review queues · breaking-change gates · grants and going public</span>
       </div>
           <div class="uc-hint">Click to expand</div>
         </summary>
@@ -7784,6 +7960,7 @@ acceptable when both answers are individually valid.</div>
               <li>Consumers can browse a catalog, find an API, see who owns it, and get credentials to call it.</li>
               <li>Changes that would break existing consumers are caught and blocked before publication.</li>
               <li>Every published API is discoverable with consistent metadata — ownership, lifecycle stage, support contact.</li>
+              <li>A consumer can call only the APIs it has been granted; access is requested, then approved by the owning team.</li>
             </ul>
           </div>
           <div class="req-block">
@@ -7793,6 +7970,7 @@ acceptable when both answers are individually valid.</div>
               <li>Standards must be enforced consistently — the same rule cannot be applied strictly to one team and waived for another.</li>
               <li>Documentation must never drift from the API's actual behaviour.</li>
               <li>A team must be able to tell, before merging, whether a change is breaking — not discover it from a consumer's incident report.</li>
+              <li>Exposing an API to external consumers is always an explicit, approved decision — never a side effect of publishing or of a configuration change.</li>
             </ul>
           </div>
           <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">Worth asking: is the spec written by hand, or generated from the implementation? It decides whether drift is a discipline problem or a structural impossibility. We'll treat the spec as the committed artifact that both code and docs derive from, and say why below.</p>
@@ -7800,10 +7978,10 @@ acceptable when both answers are individually valid.</div>
         <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
           <div class="mini-title">Core Entities</div>
           <ul class="entity-list">
-            <li><strong>ApiProduct</strong> <span class="fields">(id, name, owning_team, support_contact, lifecycle_stage)</span> — the logical API a consumer subscribes to, stable across versions.</li>
+            <li><strong>ApiProduct</strong> <span class="fields">(id, name, owning_team, support_contact, lifecycle_stage, exposure)</span> — the logical API a consumer subscribes to, stable across versions. <span style="font-family:var(--mono)">exposure</span> is internal or public, and deliberately separate from lifecycle_stage — maturity and publicness are different decisions.</li>
             <li><strong>ApiVersion</strong> <span class="fields">(product_id, semver, spec_document, status, published_at)</span> — one immutable published spec; status is Draft, Published, Deprecated, or Retired.</li>
             <li><strong>PolicyRule</strong> <span class="fields">(id, severity, applies_to, check)</span> — one machine-checkable standard; severity decides whether a violation warns or blocks.</li>
-            <li><strong>Subscription</strong> <span class="fields">(consumer_id, product_id, version_range, credentials_id)</span> — who is calling what, which is also the list of who a breaking change would hurt.</li>
+            <li><strong>Subscription</strong> <span class="fields">(consumer_id, product_id, version_range, credentials_id, environment, status)</span> — who is calling what, which is also the list of who a breaking change would hurt. Deny-by-default: <em>no row means no access</em>, and this is the grant the gateway's authorization gate reads. <span style="font-family:var(--mono)">status</span> runs requested → active → revoked; <span style="font-family:var(--mono)">environment</span> is sandbox or production, and the two are granted separately.</li>
           </ul>
         </div></div>
         <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
@@ -7829,7 +8007,7 @@ acceptable when both answers are individually valid.</div>
         </div></div>
         <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
           <div class="mini-title">Deep Dives</div>
-          <p>Three below: <strong>(a)</strong> the spec as single source of truth, <strong>(b)</strong> governance without a review queue, and <strong>(c)</strong> detecting breaking changes programmatically.</p>
+          <p>Four below: <strong>(a)</strong> the spec as single source of truth, <strong>(b)</strong> governance without a review queue, <strong>(c)</strong> detecting breaking changes programmatically, and <strong>(d)</strong> one API's life — grants, going public, and retirement.</p>
         </div></div>
       </div>
 
@@ -8039,6 +8217,138 @@ CI output on violation:
         </ul>
       </div>
 
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — one API's life: grants, going public, and retirement</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Consumers reach only what they're granted</span><span class="explains-tag nfr"><b>NFR</b>Public exposure is never accidental</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Notice what the three dives above cover: how an API gets <em>published</em>. They're silent on everything after — who may call it, whether outsiders can, and how it ends. That's a different clock: a request lasts milliseconds, an API lasts years.</li>
+          <li>Start with access, and test the permissive default. If any authenticated consumer may call any API, an internal endpoint built for one team quietly becomes a dependency of ten you've never heard of — and you discover them the day you try to change it.</li>
+          <li>Flip it to <strong>deny-by-default</strong>: absence of a Subscription row means no. Now every dependency is a deliberate, recorded fact. And notice this is exactly the data the <a href="#usecase-apigateway" style="color:var(--accent);">gateway's third gate</a> reads — the grant in the catalog <em>is</em> the runtime authorization, pushed ahead of the request.</li>
+          <li>Separate exposure from maturity. An API can be stable, well-documented and heavily used while remaining internal. So "public" can't be a lifecycle stage an API drifts into — it has to be its own field, changed only by an explicit decision.</li>
+          <li>Decide who makes that decision, and notice it can't be the owning team alone. They're the one party motivated to say yes. Going public is irreversible in practice — once a partner integrates, you're maintaining it — so it needs an approver whose job is to weigh the exposure, not the roadmap.</li>
+          <li>Then ask what actually changes when an API goes public, and the answer is the rule worth remembering: <strong>going public adds restrictions, it never removes them.</strong> Same code, same backend, same five gates — with tighter quotas, hardened authentication, and a sunset policy attached from the first day.</li>
+          <li>Close the loop at the end of life, and notice the Subscription table is what makes retirement possible at all — it's the list of whom to warn.</li>
+        </ol>
+        <p>One table — Subscription — threads through the whole life of an API: the gateway reads it to authorize, promotion widens who may create one, and retirement uses it to know who will break.</p>
+
+        <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 1000 360" style="width:100%; min-width:820px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="pl-ink" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9FC1E0"/></marker>
+            <marker id="pl-amber" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+            <marker id="pl-green" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+            <marker id="pl-red" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker>
+            <marker id="pl-cyan" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+          </defs>
+          <text x="20" y="22" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">LIFECYCLE — moves in weeks</text>
+          <rect x="20" y="34" width="170" height="76" rx="9" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="105" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Internal API</text>
+          <text x="105" y="78" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">registered, granted to</text>
+          <text x="105" y="93" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">named internal consumers</text>
+          <rect x="250" y="34" width="180" height="76" rx="9" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/>
+          <text x="340" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Security Review</text>
+          <text x="340" y="78" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">explicit approval —</text>
+          <text x="340" y="93" text-anchor="middle" font-family="Inter" font-size="9" fill="#FF6B5E">never automatic</text>
+          <rect x="490" y="34" width="200" height="76" rx="9" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="590" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Public Access</text>
+          <text x="590" y="78" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">same API, stricter config,</text>
+          <text x="590" y="93" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">sunset date from day one</text>
+          <rect x="750" y="34" width="210" height="76" rx="9" fill="#0E2F52" stroke="#9FC1E0" stroke-width="1.5"/>
+          <text x="855" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Partner Developers</text>
+          <text x="855" y="78" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">sandbox: no approval</text>
+          <text x="855" y="93" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">production: needs a grant</text>
+          <line x1="190" y1="72" x2="246" y2="72" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#pl-ink)"/>
+          <text x="218" y="64" text-anchor="middle" font-family="Inter" font-size="8" fill="#9FC1E0">owner asks</text>
+          <line x1="430" y1="72" x2="486" y2="72" stroke="#FF6B5E" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#pl-red)"/>
+          <text x="458" y="64" text-anchor="middle" font-family="Inter" font-size="8" fill="#FF6B5E">approved</text>
+          <line x1="690" y1="72" x2="746" y2="72" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#pl-ink)"/>
+          <text x="718" y="64" text-anchor="middle" font-family="Inter" font-size="8" fill="#9FC1E0">published</text>
+          <text x="340" y="128" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FF6B5E">✗ not approved → stays internal</text>
+          <line x1="560" y1="110" x2="560" y2="185" stroke="#FFD166" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#pl-amber)"/>
+          <text x="570" y="146" font-family="Inter" font-size="8.5" fill="#FFD166">tighter quota,</text>
+          <text x="570" y="159" font-family="Inter" font-size="8.5" fill="#FFD166">hardened auth</text>
+          <path d="M 820,110 C 820,160 680,150 652,185" fill="none" stroke="#6FE0F0" stroke-width="1.6" marker-end="url(#pl-cyan)"/>
+          <text x="850" y="150" font-family="Inter" font-size="8.5" fill="#6FE0F0">re-enter the SAME</text>
+          <text x="850" y="163" font-family="Inter" font-size="8.5" fill="#6FE0F0">gates — no bypass</text>
+          <text x="20" y="182" font-family="JetBrains Mono" font-size="9.5" fill="#6FE0F0">RUNTIME — every request, whichever lane it came from</text>
+          <rect x="20" y="205" width="170" height="66" rx="9" fill="#0E2F52" stroke="#9FC1E0" stroke-width="1.3"/>
+          <text x="105" y="232" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#EAF4FF">Internal consumers</text>
+          <text x="105" y="250" text-anchor="middle" font-family="Inter" font-size="9" fill="#9FC1E0">web · mobile · tools</text>
+          <rect x="250" y="190" width="440" height="100" rx="10" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.7"/>
+          <text x="470" y="212" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Gateway — the SAME five gates</text>
+          <rect x="262" y="224" width="78" height="28" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1.1"/>
+          <text x="301" y="242" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">IP</text>
+          <rect x="346" y="224" width="78" height="28" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1.1"/>
+          <text x="385" y="242" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">authN</text>
+          <rect x="430" y="224" width="78" height="28" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1.1"/>
+          <text x="469" y="242" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">authZ</text>
+          <rect x="514" y="224" width="78" height="28" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1.1"/>
+          <text x="553" y="242" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#FFD166">quota</text>
+          <rect x="598" y="224" width="78" height="28" rx="5" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.1"/>
+          <text x="637" y="242" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#7CE0A8">forward</text>
+          <text x="470" y="274" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#9FC1E0">public APIs get stricter VALUES here — never a different path</text>
+          <rect x="750" y="205" width="210" height="66" rx="9" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/>
+          <text x="855" y="232" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#EAF4FF">Backend service</text>
+          <text x="855" y="250" text-anchor="middle" font-family="Inter" font-size="9" fill="#7CE0A8">unchanged — same code</text>
+          <line x1="190" y1="238" x2="246" y2="238" stroke="#9FC1E0" stroke-width="1.5" marker-end="url(#pl-ink)"/>
+          <line x1="690" y1="238" x2="746" y2="238" stroke="#7CE0A8" stroke-width="1.6" marker-end="url(#pl-green)"/>
+          <line x1="20" y1="330" x2="48" y2="330" stroke="#FF6B5E" stroke-width="2.2" stroke-dasharray="5 4"/>
+          <text x="54" y="334" font-family="Inter" font-size="10" fill="#9FC1E0">Approval gate</text>
+          <line x1="170" y1="330" x2="198" y2="330" stroke="#FFD166" stroke-width="2.2" stroke-dasharray="4 3"/>
+          <text x="204" y="334" font-family="Inter" font-size="10" fill="#9FC1E0">Config applied, not a new path</text>
+          <line x1="420" y1="330" x2="448" y2="330" stroke="#6FE0F0" stroke-width="2.2"/>
+          <text x="454" y="334" font-family="Inter" font-size="10" fill="#9FC1E0">Partner traffic, through the same gates</text>
+        </svg>
+      </div>
+        <div class="diagram-caption">Two lanes on two clocks. The top lane moves over weeks and is entirely configuration and approval; the bottom lane runs per request. The only connections between them are the approved config flowing down into the gateway and partner traffic entering the <em>same</em> gates as everyone else — which is the whole point: promotion changes values, never paths.</div>
+
+        <div class="example-panel" style="margin:12px 0 10px;"><span class="label">Illustration — the life of one API, and the table that threads through it</span>REGISTERED        service team registers the spec, owner, required scopes
+                  exposure = internal       ← the default, always
+                  subscriptions = none      ← so NOBODY can call it yet
+
+GRANTED           billing-ui requests access → owner approves
+                  → Subscription(billing-ui, invoices-api) created
+                  → pushed to the gateway as a grant; gate 3 now says yes
+                  for billing-ui, and 403 for everyone else
+
+PROMOTED          owner requests public exposure, with justification
+                  → security reviews: data sensitivity, abuse potential,
+                    whether the auth scheme is fit for strangers
+                  → approved: exposure = public
+                  → stricter defaults applied automatically:
+                      quota          lower, per partner
+                      auth           OAuth for third-party apps — they
+                                     need per-user consent and revocation,
+                                     which a key cannot give. Keys stay
+                                     for a customer's OWN server-to-server
+                                     integrations (see example AD)
+                      sunset policy  declared NOW, not at deprecation
+
+DEPRECATED        owner decides to retire it
+                  → every Subscription holder notified by name
+                  → sunset date proposed and APPROVED
+                  → Deprecation + Sunset headers on every response
+
+RETIRED           only after the approved date
+                  → route removed, credentials revoked, subscriptions
+                    archived — mechanics in example W
+
+WHY ZERO TRAFFIC IS NOT A TRIGGER
+  Zero traffic across a full business cycle is NECESSARY before
+  retiring — a quarterly job is invisible in a two-week window.
+  It is not SUFFICIENT. It proves nobody called it recently; it does
+  not prove nobody depends on it. The owner decides, subscribers are
+  told, and the date is approved. Zero traffic starts that review.</div>
+        <ul class="item-list">
+          <li><strong>A sunset policy on day one is cheaper than on the last day</strong> — a partner who integrated knowing "public APIs are supported for at least 24 months after deprecation notice" plans for it. One who is told only at deprecation experiences it as a breach of trust.</li>
+          <li><strong>Promotion should be reversible in principle and rare in practice</strong> — you can demote a public API, but every subscriber becomes a migration. That asymmetry is exactly why the approval sits before promotion rather than after.</li>
+          <li><strong>The approver's question is exposure, not quality</strong> — "is this API good?" is the owning team's concern and the CI gates' job. Security is asking whether this data, reachable by strangers, under this auth scheme, is acceptable.</li>
+          <li><strong>A sandbox is not the same thing as the generated mock</strong> — the mock replays the spec, so it proves your client compiles and parses. A sandbox is the real service against seeded test data with its own credentials, so it proves your <em>integration</em> works: real validation, real error codes, real rate limits. Partners should be able to get sandbox access without an approval, and it is worth keeping the grant for it separate from production — otherwise "can I try it" and "can I have your customers' data" are the same request.</li>
+          <li><strong>Deny-by-default costs something real</strong> — every new internal consumer must request access before they can build. That friction is the point for public and sensitive APIs; for low-risk internal ones, owners can set auto-approval as policy, so the default stays safe without every request needing a human.</li>
+        </ul>
+      </div>
+
       <div class="result-card nfr-card">
         <h3 class="subhead">Does it hold up?</h3>
         <div class="table-wrap">
@@ -8048,6 +8358,8 @@ CI output on violation:
         <tr><td>Standards applied consistently</td><td>Rules are executable and run identically for every team, so enforcement can't vary by relationship, seniority, or deadline pressure.</td></tr>
         <tr><td>Docs never drift</td><td>Every downstream artifact is generated from the spec, so there's no second place for the truth to live and disagree.</td></tr>
         <tr><td>Breaking changes caught before merge</td><td>The spec diff is classified against a precise definition and checked against the version bump, with affected subscribers named in the failure.</td></tr>
+        <tr><td>Consumers reach only what they're granted</td><td>Deny-by-default Subscriptions, pushed to the gateway as grants — every dependency is a recorded, deliberate fact.</td></tr>
+        <tr><td>Public exposure is never accidental</td><td>Exposure is a separate field changed only through security approval, and going public applies stricter defaults rather than removing any.</td></tr>
         <tr><td>APIs are discoverable with real ownership</td><td>Ownership metadata is an error-severity policy rule, so an API without a named owner cannot be published at all.</td></tr>
       </table>
 </div>
@@ -8749,7 +9061,7 @@ doesn't strand budget in instances that aren't receiving requests.</div>
         <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
         <tr><td>Rate counters</td><td>in-process for the local slice, <span class="tool-tag">Redis</span> for lease issuance and cross-instance state</td></tr>
         <tr><td>Quota ledger</td><td><span class="tool-tag">PostgreSQL</span> fed by a durable stream (<span class="tool-tag">Kafka</span>) so no billable event is lost if the writer is briefly down</td></tr>
-        <tr><td>Enforcement point</td><td>the gateway's filter chain from the API Gateway example — after authentication, since tenant identity is required</td></tr>
+        <tr><td>Enforcement point</td><td>the gateway's filter chain from the API Gateway example — gate 4, after authentication and coarse authorization, since tenant identity is required and a call the tenant was never granted shouldn't spend their quota</td></tr>
         <tr><td>Contention signal</td><td>backend utilisation or latency from <span class="tool-tag">Prometheus</span> / <span class="tool-tag">Datadog</span>, not request counts from the limiter itself</td></tr>
         <tr><td>Fair queueing</td><td>weighted fair queueing or deficit round robin, where each tenant's weight is its guaranteed share</td></tr>
       </table>
@@ -8790,7 +9102,7 @@ doesn't strand budget in instances that aren't receiving requests.</div>
             <ul class="item-list">
               <li>Supporting an additional version must not mean an additional copy of the business logic.</li>
               <li>Version dispatch must add negligible latency, since every request is dispatched.</li>
-              <li>A version may only be retired against evidence of zero usage, never against a date alone.</li>
+              <li>A version may only be retired against evidence of zero usage, never against a date alone — and zero usage alone is a reason to review, not a decision to retire.</li>
               <li>The number of live versions must be bounded — unbounded accumulation is the failure mode this design exists to prevent.</li>
             </ul>
           </div>
@@ -9036,6 +9348,11 @@ ADAPTER AT THE EDGE
 4. VERIFY — wait for zero usage across a FULL BUSINESS CYCLE.
    legacy-reconciler at 3 calls in 40 days is probably a quarterly
    job. Two weeks of silence proves nothing about it.
+
+   Zero usage is NECESSARY, not SUFFICIENT. It proves nobody called
+   recently — not that nobody depends on it. It starts the owner's
+   decision; it never makes it. Retirement still needs the owner's
+   sign-off, every subscriber told, and an approved sunset date.
 
 5. BRICK — v1 returns 410 Gone for a grace period before deletion.
    A loud, greppable, unambiguous failure beats a 404 that looks
@@ -10196,15 +10513,44 @@ flag on for the rest of the request.</div>
         <div style="font-family:var(--mono); font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:9px;">What's in this example</div>
         <p style="margin:0 0 8px; font-size:13px;"><strong style="color:var(--marker);">Orientation</strong> — the components and the two axes, then the diagram, then how to read it.</p>
         <p style="margin:0 0 8px; font-size:13px;"><strong style="color:var(--optional);">One real request</strong> — <span style="font-family:var(--mono)">GET /profile</span> traced end to end, including what the control plane did <em>before</em> it.</p>
-        <p style="margin:0; font-size:13px;"><strong style="color:var(--accent);">Ten deep dives</strong> — the edge chain · load balancing · auth and limits appearing twice · three identities · egress · async boundaries · retry cascades · deploys and certificates · what survives a failure · telemetry and logs.</p>
+        <p style="margin:0; font-size:13px;"><strong style="color:var(--accent);">Ten deep dives</strong> — the edge chain · load balancing · authorization at three altitudes · three identities · egress · async boundaries · retry cascades · deploys and certificates · what survives a failure · telemetry and logs.</p>
+      </div>
+
+
+      <div class="subsection-box" style="margin:14px 0 0; padding:14px 18px; border-left:2px solid var(--marker);">
+        <div style="font-family:var(--mono); font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--marker); margin-bottom:9px;">Scope — this example draws more than one team usually owns</div>
+        <p style="margin:0 0 10px; font-size:13px;">This example assembles the <em>whole</em> platform so the pieces can be seen together. In a real organisation, a team named "API Platform" typically owns only part of it — north-south traffic and the API lifecycle — while the mesh belongs to an infrastructure or SRE team. Know the whole picture; be precise about which part you'd own.</p>
+        <div class="contrast-grid" style="margin:14px 0 12px;">
+          <div class="contrast-card own">
+            <div class="contrast-title"><span class="contrast-dot"></span>Owns — and is paged for</div>
+            <ul>
+              <li><strong>The gateway</strong> and its five gates</li>
+              <li><strong>Coarse authorization</strong> — may this consumer call this API at all?</li>
+              <li><strong>Consumer credentials and grants</strong>, deny-by-default</li>
+              <li><strong>Registration, catalog, and the API lifecycle</strong></li>
+              <li><strong>The approval-gated path</strong> from internal to public</li>
+            </ul>
+          </div>
+          <div class="contrast-card never">
+            <div class="contrast-title"><span class="contrast-dot"></span>Never does — and who does instead</div>
+            <ul>
+              <li><strong>Business logic and aggregation</strong> <span class="owner">→ the service team</span></li>
+              <li><strong>Resource-level authorization</strong> <span class="owner">→ the service — it needs business data the gateway doesn't have</span></li>
+              <li><strong>East-west traffic</strong> between services <span class="owner">→ usually a mesh or infrastructure team</span></li>
+              <li><strong>Service egress</strong> to third-party APIs <span class="owner">→ often nobody, until it becomes an incident</span></li>
+              <li><strong>Deciding what an API does</strong> <span class="owner">→ the service team's product call</span></li>
+            </ul>
+          </div>
+        </div>
+        <p style="margin:0; font-size:13px; color:var(--ink-dim);">In an interview for an API platform role, this matters: discuss the mesh fluently, but don't claim to own it. And the lifecycle half — how one API is registered, granted, promoted to public and eventually retired — is covered in <a href="#usecase-devportal" style="color:var(--accent);">T · API Developer Portal</a>, since that's a different clock from the one request this example follows.</p>
       </div>
 
       <div class="mini-steps">
         <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
-          <div class="mini-title">The seven components, one line each</div>
+          <div class="mini-title">Every component, one line each</div>
           <ul class="entity-list">
             <li><strong>Internet edge</strong> <span class="fields">before the gateway</span> — DNS, CDN, WAF and an L4 load balancer. Four hops that absorb volumetric attacks and cache static responses so the gateway only ever sees traffic worth authenticating.</li>
-            <li><strong>API Gateway</strong> <span class="fields">edge · data plane · ingress</span> — the first component that is yours, and the ingress point itself rather than something sitting behind one. Terminates TLS, routes, authenticates the caller, applies per-consumer limits, starts the trace.</li>
+            <li><strong>API Gateway</strong> <span class="fields">edge · data plane · ingress</span> — the first component that is yours, and the ingress point itself rather than something sitting behind one. Terminates TLS, routes, authenticates the caller, checks they're granted this API at all, applies per-consumer limits, starts the trace.</li>
             <li><strong>Sidecar proxy</strong> <span class="fields">every pod · data plane</span> — intercepts all traffic in <em>and out</em> of one service. Service-to-service encryption, authorization, retries, per-dependency protection — and egress control for calls leaving the cluster entirely.</li>
             <li><strong>Service Registry</strong> <span class="fields">control plane</span> — the source of truth for which instances of which service are alive right now.</li>
             <li><strong>Mesh Control Plane</strong> <span class="fields">control plane</span> — computes endpoints, traffic and authZ policy, then pushes them to every sidecar. It is also <strong>the mesh's certificate authority</strong> — the thing that signs every service's identity certificate. That matters because mTLS only proves anything if a trusted party vouched for the certificate: Service B's sidecar believes "this caller is service-a" precisely because the control plane signed that claim, and it reissues those certificates continuously as they expire. Together with those sidecars it <em>is</em> the service mesh — the one component spanning two planes.</li>
@@ -10212,7 +10558,9 @@ flag on for the rest of the request.</div>
             <li><strong>Rate Limiter</strong> <span class="fields">both planes</span> — not one component. A per-consumer quota at the edge, and a per-dependency concurrency guard in each sidecar.</li>
             <li><strong>Telemetry Collector</strong> <span class="fields">every host · telemetry plane</span> — receives metrics, logs, and traces locally, enforces cost limits, ships onward.</li>
             <li><strong>Observability Backends</strong> <span class="fields">telemetry plane</span> — store and query the signals; evaluate SLOs and decide what pages a human.</li>
-            <li><strong>Platform Team / CI</strong> <span class="fields">where configuration comes from</span> — the only humans in the diagram. Every policy the control plane distributes was authored here and applied as config, which is why the box is drawn dashed: it isn't a running service, it's the origin of everything the control plane pushes.</li>
+            <li><strong>Message Broker</strong> <span class="fields">data plane · async</span> — carries work across a connection boundary. The sidecar can't follow a request through it, so trace context and the acting identity must travel inside the message itself.</li>
+            <li><strong>Datastore</strong> <span class="fields">owned by one service</span> — not a platform component: each service owns its own. Reached over a pooled connection, usually <em>not</em> through the sidecar, because it isn't HTTP.</li>
+            <li><strong>People · three roles</strong> <span class="fields">where configuration comes from</span> — drawn dashed because none of them is a running service. They're worth separating because they hold different authority: <strong>service teams</strong> register their own APIs and grant access to them, the <strong>platform team</strong> sets the policy every registration must pass, and <strong>security</strong> approves anything going public. Collapsing them into one "platform team" box quietly contradicts the self-service argument — it implies the platform team authors every route.</li>
           </ul>
         </div></div>
         <div class="mini-step"><div class="badge-hatch sm amber">2</div><div class="mini-body">
@@ -10262,7 +10610,7 @@ flag on for the rest of the request.</div>
         </div></div>
         <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
           <div class="mini-title">Deep Dives</div>
-          <p>Ten below: <strong>(a)</strong> what sits in front of the gateway, <strong>(b)</strong> where load balancing actually happens, <strong>(c)</strong> why auth and rate limiting each appear twice, <strong>(d)</strong> three identities and how each propagates, <strong>(e)</strong> egress — the sidecar's other half, <strong>(f)</strong> how a trace survives a queue, <strong>(g)</strong> why retries compose into cascades, <strong>(h)</strong> deploys, draining and certificate rotation, <strong>(i)</strong> what survives when each component fails, and <strong>(j)</strong> telemetry and logs.</p>
+          <p>Ten below: <strong>(a)</strong> what sits in front of the gateway, <strong>(b)</strong> where load balancing actually happens, <strong>(c)</strong> authorization at three altitudes and rate limiting at two, <strong>(d)</strong> three identities and how each propagates, <strong>(e)</strong> egress — the sidecar's other half, <strong>(f)</strong> how a trace survives a queue, <strong>(g)</strong> why retries compose into cascades, <strong>(h)</strong> deploys, draining and certificate rotation, <strong>(i)</strong> what survives when each component fails, and <strong>(j)</strong> telemetry and logs.</p>
         </div></div>
       </div>
 
@@ -10333,10 +10681,10 @@ WHY THIS CAN'T BE TYPED INTO POSTMAN
           <text x="18" y="486" font-family="JetBrains Mono" font-size="11" fill="#94B8D4">TELEMETRY PLANE — fed asynchronously</text>
 
           <rect x="30" y="42" width="250" height="98" rx="10" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.4" stroke-dasharray="6 4"/>
-          <text x="155" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="12.5" font-weight="700" fill="#EAF4FF">Platform Team / CI</text>
-          <text x="155" y="88" text-anchor="middle" font-family="Inter" font-size="10" fill="#94B8D4">the only humans in this</text>
-          <text x="155" y="104" text-anchor="middle" font-family="Inter" font-size="10" fill="#94B8D4">diagram — they author policy,</text>
-          <text x="155" y="120" text-anchor="middle" font-family="Inter" font-size="10" fill="#94B8D4">routes, scopes, canary weights</text>
+          <text x="155" y="64" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#EAF4FF">People · three roles</text>
+          <text x="155" y="84" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">service teams → API, route, grants</text>
+          <text x="155" y="101" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">platform team → policy, defaults</text>
+          <text x="155" y="118" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">security → approves going public</text>
 
           <rect x="310" y="42" width="210" height="98" rx="10" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.4"/>
           <text x="415" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">Auth Server</text>
@@ -10374,12 +10722,12 @@ WHY THIS CAN'T BE TYPED INTO POSTMAN
           <text x="432" y="242" text-anchor="middle" font-family="JetBrains Mono" font-size="13" font-weight="700" fill="#EAF4FF">API Gateway</text>
           <text x="432" y="260" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">NORTH-SOUTH edge · an L7 proxy</text>
           <rect x="337" y="270" width="191" height="28" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1"/>
-          <text x="432" y="288" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">IP limit → authN → quota</text>
-          <rect x="337" y="303" width="191" height="28" rx="5" fill="#0A2540" stroke="#6FE0F0" stroke-width="1"/>
-          <text x="432" y="321" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#6FE0F0">route · start trace</text>
+          <text x="432" y="288" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">IP → authN → authZ → quota</text>
+          <rect x="337" y="303" width="191" height="28" rx="5" fill="#0A2540" stroke="#FF6B5E" stroke-width="1"/>
+          <text x="432" y="321" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#FF6B5E">✗ 429 · 401 · 403 · 429</text>
           <rect x="337" y="336" width="191" height="28" rx="5" fill="#0A2540" stroke="#FFD166" stroke-width="1"/>
-          <text x="432" y="354" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">L7 balance across A's pods</text>
-          <text x="432" y="382" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">strip token · add claims</text>
+          <text x="432" y="354" text-anchor="middle" font-family="Inter" font-size="9" fill="#FFD166">forward · L7 across A's pods</text>
+          <text x="432" y="382" text-anchor="middle" font-family="Inter" font-size="9" fill="#94B8D4">strip token · add claims · trace id</text>
 
           <rect x="577" y="203" width="191" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-opacity="0.32" stroke-width="1.2"/>
           <rect x="571" y="209" width="203" height="180" rx="11" fill="#0E2F52" stroke="#FFD166" stroke-opacity="0.55" stroke-width="1.3"/>
@@ -10470,6 +10818,12 @@ WHY THIS CAN'T BE TYPED INTO POSTMAN
           <line x1="780" y1="540" x2="800" y2="540" stroke="#94B8D4" stroke-width="1.5" marker-end="url(#pf-ink)"/>
           <text x="330" y="470" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">one trace id on every signal</text>
 
+          <rect x="1075" y="500" width="170" height="66" rx="9" fill="#0E2F52" stroke="#FFD166" stroke-width="1.4" stroke-dasharray="5 3"/>
+          <text x="1160" y="523" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#EAF4FF">Message Broker</text>
+          <text x="1160" y="540" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FFD166">trace + tenant ride IN</text>
+          <text x="1160" y="554" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#FFD166">the message — no sidecar</text>
+          <path d="M 975,395 C 985,468 1040,488 1071,512" fill="none" stroke="#FFD166" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#pf-amber)"/>
+          <text x="990" y="472" text-anchor="end" font-family="Inter" font-size="8.5" fill="#FFD166">6 · async</text>
           <line x1="18" y1="612" x2="48" y2="612" stroke="#FFD166" stroke-width="2.4"/>
           <text x="54" y="616" font-family="Inter" font-size="11" fill="#9FC1E0">Request path</text>
           <line x1="175" y1="612" x2="205" y2="612" stroke="#FF6B5E" stroke-width="2.4"/>
@@ -10576,10 +10930,15 @@ neither is during a request:
 
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--optional); margin:0 0 8px;">Part 0 · Before the request — where the control plane did its work</div>
         <p style="margin:0 0 10px; font-size:13.5px;">This is the part the walkthrough below makes invisible, and the reason the control plane looks absent: <strong>every one of those components acted before the user tapped anything.</strong></p>
-        <div class="example-panel" style="margin:0 0 16px;"><span class="label">A timeline, counting backwards from the tap</span>T-14 days   PLATFORM TEAM / CI
-            Authored the route for /v1/profile, the policy saying
-            "gateway may call service-a, service-a may call service-b",
-            the scopes, and the canary weights. Applied as config.
+        <div class="example-panel" style="margin:0 0 16px;"><span class="label">A timeline, counting backwards from the tap</span>T-14 days   SERVICE TEAM (owners of service-a)
+            Registered /v1/profile — the route, a named owner, the
+            scopes it requires — and granted the mobile app's
+            client_id access to it. Applied as config; the platform
+            team never touched it.
+
+            PLATFORM TEAM had already set the rules it had to pass:
+            the gate order, default quotas, and the mesh policy
+            "gateway may call service-a, service-a may call service-b".
 
 T-3 hours   AUTH SERVER
             The user logged in. It issued their token, signed with its
@@ -10632,19 +10991,27 @@ T-0         The user taps "My Profile".
    The first component that reads the HTTP, and the first one
    you operate.
 
-   a. anonymous IP limit  cheap, runs first. Under the limit.
-   b. verify the token    checks the signature against the keys
+   Five gates, cheapest first. Any of them can reject.
+
+   a. mint the trace id   4bf92f... — FIRST, so that even a request
+                          rejected at the next gate is traceable
+   b. IP limit            cheap, needs no identity. Under it.  ✗ 429
+   c. match the route     /v1/profile → service-a. An in-memory
+                          lookup, done early because gate e has to
+                          know WHICH API is being called.
+                          ← USES the route the service team
+                            registered at T-14 days.
+   d. verify the token    checks the signature against the keys
                           cached at T-2 hours.
                           ← USES the auth server's work.
                             Does NOT call the auth server.
-                          Valid. The user is u_8831.
-   c. per-consumer quota  now that it knows WHO, checks their
-                          quota. Fine.
-   d. route               /v1/profile → service-a
-                          ← USES the route authored at T-14 days.
-   e. pick a pod          L7 choice across service-a's 6 pods.
-   f. start the trace     mints trace id 4bf92f...
-   g. rewrite the request:
+                          Valid. The user is u_8831.          ✗ 401
+   e. authorize (coarse)  is the mobile app's client_id granted
+                          /v1/profile? Yes.                   ✗ 403
+                          ← USES the grant made at T-14 days.
+   f. per-consumer quota  within the app's allowance? Fine.   ✗ 429
+   g. forward             L7 choice across service-a's 6 pods.
+   h. rewrite the request:
         ✗ Authorization: Bearer ...   REMOVED. Goes no further.
         ✓ x-user-id: u_8831
         ✓ x-user-scopes: profile:read
@@ -10696,7 +11063,8 @@ the database — step ⑨ simply shows up as the span that dominates.</div>
         <tr><td>Auth Server</td><td>The user's token, and the public keys to verify it</td><td>T-3 hours / T-2 hours</td><td><strong style="color:var(--redline);">No.</strong> The gateway verified the signature locally.</td></tr>
         <tr><td>Service Registry</td><td>Which of service-b's pods are alive</td><td>Continuously; last change T-30 sec</td><td><strong style="color:var(--redline);">No.</strong> The sidecar never queries it — it's read by the mesh control plane.</td></tr>
         <tr><td>Mesh Control Plane</td><td>Endpoint lists, authZ policy, and the identity certificates</td><td>T-45 min and T-25 sec</td><td><strong style="color:var(--redline);">No.</strong> Every sidecar already held everything it needed.</td></tr>
-        <tr><td>Platform Team / CI</td><td>The route, the policy, the scopes</td><td>T-14 days</td><td><strong style="color:var(--redline);">No.</strong> Not a running service at all.</td></tr>
+        <tr><td>Service team</td><td>The route, the owner, the scopes, and the consumer grant</td><td>T-14 days</td><td><strong style="color:var(--redline);">No.</strong> People, not a running service.</td></tr>
+        <tr><td>Platform team</td><td>The gate order, default quotas, and mesh policy</td><td>Before that</td><td><strong style="color:var(--redline);">No.</strong> People, not a running service.</td></tr>
         <tr><td>Collector / backends</td><td>Nothing — they receive</td><td>After each hop</td><td><strong style="color:var(--marker);">Written to,</strong> asynchronously. The request never waits.</td></tr>
       </table>
 </div>
@@ -10706,7 +11074,7 @@ the database — step ⑨ simply shows up as the span that dominates.</div>
         <ul class="item-list" style="margin-bottom:14px;">
           <li><strong>The user's token existed for exactly one hop.</strong> Verified at the gateway and deleted. Services A and B know who the user is — they just never hold anything they could replay as that user.</li>
           <li><strong>Neither app wrote a line of networking code.</strong> Service A called <span style="font-family:var(--mono)">http://service-b/billing</span> in plain HTTP. Discovery, load balancing, mTLS, retries and timeouts all happened in the sidecar beside it. Changing the load-balancing algorithm is a config push, not a code change in either service.</li>
-          <li><strong>Every decision used information that arrived earlier.</strong> Keys from two hours ago, certificates from 45 minutes ago, endpoints from 25 seconds ago, policy from two weeks ago. Nothing in the top band of the diagram was contacted.</li>
+          <li><strong>Every decision used information that arrived earlier.</strong> Keys from two hours ago, certificates from 45 minutes ago, endpoints from 25 seconds ago, the route and grant from two weeks ago, and platform policy from before that. Nothing in the top band of the diagram was contacted.</li>
         </ul>
 
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--redline); margin:0 0 8px;">The same journey when something goes wrong</div>
@@ -10845,39 +11213,65 @@ THE FAILURE MODE THAT MAKES THIS MATTER — gRPC and HTTP/2
       </div>
 
       <div class="callout keydive" style="margin-top:14px;">
-        <span class="label">Key deep dive — why auth and rate limiting each appear twice</span>
+        <span class="label">Key deep dive — authorization at three altitudes, rate limiting at two</span>
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
         <ol class="process" style="margin-bottom:14px;">
-          <li>Notice the apparent duplication: the gateway authenticates and the sidecar authorizes; the gateway rate limits and the sidecar rate limits. It looks like one job done twice.</li>
-          <li>Ask what each is protecting against, and the answers turn out to be different threats entirely — not one threat handled redundantly.</li>
-          <li>At the edge the caller is unknown and untrusted, so the question is "who are you, and are you within what you were sold." That needs a user token and a per-consumer quota.</li>
-          <li>Between services the caller was already authenticated at the edge, so the question changes to "may this <em>service</em> call that one, and is that dependency healthy enough to take more load." That needs a workload identity and a concurrency budget.</li>
-          <li>Test whether either could be dropped. Remove the sidecar layer and a compromised internal service can call anything it likes — the edge check proved a user's identity, never what a service is permitted to do.</li>
+          <li>Notice the apparent duplication: the gateway authenticates and authorizes, the sidecar authorizes again, and the service checks permissions a third time. It looks like one job done repeatedly.</li>
+          <li>Ask what each check is protecting against, and the answers turn out to be different questions entirely — not one question asked three times for safety.</li>
+          <li>Find the tempting shortcut first: "the sidecar already does authorization, so the gateway doesn't need to." Test it by asking what identity the sidecar actually sees.</li>
+          <li>It sees the <strong>mTLS peer</strong> — and for every external request, that peer is the gateway. By the time a request reaches a sidecar, every external consumer has been collapsed into one identity. "May <em>this partner</em> call this API?" is unanswerable there, not because the check was skipped, but because the information was erased one hop earlier.</li>
+          <li>So each check has to live where its caller's identity is still visible: consumer at the gateway, workload at the sidecar, end user inside the service. That's not redundancy — it's the only place each question <em>can</em> be asked.</li>
+          <li>Rate limiting splits the same way but only twice: a commercial quota at the edge, and a stability budget between services. Different purposes that happen to share a name.</li>
         </ol>
-        <p>They aren't redundant layers of one control; they're different questions that happen to share a vocabulary.</p>
-        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the same two words, four different jobs</span>                 AT THE EDGE (gateway)          BETWEEN SERVICES (sidecar)
+        <p>Every layer uses the only identity available to it at that point in the request, and none can substitute for another. The design error is assuming that because a request passed <em>an</em> authorization check, it passed the right one.</p>
 
-AUTH       authN: "who is this user?"       authZ: "may service-a call
-           verify JWT signature and                service-b at all?"
-           expiry against cached JWKS       verify the mTLS workload
-                                            certificate, then check policy
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — why the sidecar cannot do the gateway's job</span>Partner X — granted access to /v1/invoices
+Partner Y — NOT granted access to /v1/invoices
 
-           identity = a person or           identity = a service, proven
-           partner application              cryptographically, per hop
+Both send:  GET /v1/invoices
 
-RATE       per-consumer QUOTA               per-dependency CONCURRENCY
-LIMIT      "this customer bought            "no more than 40 in-flight
-            1,000 req/s"                     calls to service-b from here"
-           a commercial construct           a stability construct —
-           → 429 Too Many Requests          the bulkhead from example S
-                                            → shed fast, protect the caller
+AT THE GATEWAY — the consumer identity still exists
+  Partner X   client_id = px_881   → grant found    ✓ forward
+  Partner Y   client_id = py_204   → no grant       ✗ 403
 
-Drop the edge layer    → anyone calls anything, no commercial control
-Drop the sidecar layer → one compromised service reaches every other,
-                         and one slow dependency stalls all its callers</div>
+IF THE GATEWAY SKIPPED THAT CHECK — what Service A's sidecar sees
+  Partner X   mTLS peer = gateway-identity   policy: gateway → service-a ✓
+  Partner Y   mTLS peer = gateway-identity   policy: gateway → service-a ✓
+              ↑ IDENTICAL. Both pass. The sidecar cannot tell them apart.
+
+"Couldn't the sidecar read a consumer header instead?"
+  Technically, yes — mesh policy can match on headers. It is still wrong:
+  · it's a CLAIM the gateway wrote, not a proof — the header-forgery gap
+  · every product's sidecar needs its own copy of "which partners may
+    call me", so onboarding ONE partner touches N teams' config
+  · it rejects late — after routing, possibly after quota was spent
+  · "which partners are onboarded" is a platform decision; scattering it
+    into sidecars hands it back to every service team</div>
+
+        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — three altitudes of authorization, two of rate limiting</span>AUTHORIZATION           caller checked         question                     where
+  coarse                external CONSUMER      may this partner call this   gateway
+                        (client_id / key)      API at all?        → 403
+  service               calling WORKLOAD       may service-a call           sidecar
+                        (mTLS peer)            service-b?
+  resource              END USER               may this user see            inside the
+                        (x-user-id claim)      invoice 123?                 service
+
+RATE LIMITING           purpose                construct
+  edge                  commercial             per-consumer QUOTA
+                        "this customer bought   → 429 Too Many Requests
+                         1,000 req/s"
+  between services      stability              per-dependency CONCURRENCY
+                        "no more than 40        the bulkhead from example S
+                         in flight to B"        → shed fast, protect caller
+
+Drop the gateway check   → any authenticated partner reaches any API
+Drop the sidecar check   → one compromised service reaches every other
+Drop the service check   → a valid user reads another user's invoices,
+                           because only the service knows who owns 123</div>
         <ul class="item-list">
+          <li><strong>The resource check is the one people forget to name</strong> — it's where the <span style="font-family:var(--mono)">x-user-id</span> claim is actually <em>used</em>, and it's the only layer holding the business data needed to answer. It's also why the header-forgery gap matters: forge that claim and this check is making its decision on a lie.</li>
           <li><strong>The sidecar layer is what makes "zero trust" concrete</strong> — being inside the network grants nothing, because every hop is independently authenticated and authorized regardless of where it originated.</li>
-          <li><strong>Neither layer calls a remote service to decide</strong> — the gateway uses cached keys, the sidecar uses pushed policy. Both checks are local, which is what keeps them off the latency budget.</li>
+          <li><strong>None of the three calls a remote service to decide</strong> — the gateway uses pushed grants, the sidecar uses pushed policy, the service uses its own data. All local, which is what keeps them off the latency budget.</li>
         </ul>
       </div>
 
@@ -10921,6 +11315,7 @@ from the gateway — which is why the mesh layer is load-bearing rather
 than decorative.</div>
         <ul class="item-list">
           <li><strong>Claims must be un-spoofable, which the sidecar provides</strong> — a header is trivially forged by anything that can reach the service, so the guarantee comes from mTLS proving the sender is the gateway, not from the header itself.</li>
+          <li><strong>With an API key, there is no end user at all</strong> — this walkthrough follows a user-present request carrying an OAuth token, but server-to-server integrations authenticate with an <a href="#usecase-apikeys" style="color:var(--accent);">API key</a> instead. Then the gateway has no <span style="font-family:var(--mono)">x-user-id</span> to propagate: it forwards the <em>tenant</em> as the acting principal, and the resource check inside the service must authorize a tenant rather than a person. A service that assumes <span style="font-family:var(--mono)">x-user-id</span> is always present will either crash or, worse, fall back to a default.</li>
           <li><strong>The trace id is the only thing that never changes</strong> — span ids differ per hop and identities differ per hop, but one trace id spans the whole request, and that is what lets a metric spike lead to a log line.</li>
         </ul>
 
@@ -11341,14 +11736,17 @@ Three rules that matter more at fleet scale than in one service:
 <table class="ref-table">
         <tr class="rt-head"><th style="width:24%">Component</th><th style="width:20%">Plane · position</th><th>Owns</th></tr>
         <tr><td>CDN · WAF · L4 LB</td><td>Data · internet edge</td><td>Caching, volumetric and L7 attack absorption, and spreading <em>connections</em> across gateway instances — everything rejectable before identity is known. Usually managed services, not yours to debug</td></tr>
-        <tr><td>API Gateway</td><td>Data · edge (north-south)</td><td>An L7 proxy: TLS termination, routing, <em>per-request</em> balancing across a service's pods, user authN, per-consumer quota, trace origination, token stripping and claim injection</td></tr>
+        <tr><td>API Gateway</td><td>Data · edge (north-south)</td><td>An L7 proxy: TLS termination, routing, <em>per-request</em> balancing across a service's pods, authN, coarse per-API authZ, per-consumer quota, trace origination, token stripping and claim injection</td></tr>
         <tr><td>Sidecar proxy</td><td>Data · every pod (east-west)</td><td>Also an L7 proxy: mTLS both directions, service-to-service authZ, <em>per-request</em> balancing across the callee's pods, retries, per-dependency budgets, egress allow-listing, free telemetry — and, done correctly, the only component that should be trusted to set identity headers at all</td></tr>
         <tr><td>Service Registry</td><td>Control</td><td>Which instances are alive; consumed by the mesh control plane, never called during a request. Readiness is what removes a draining pod from this set</td></tr>
         <tr><td>Auth Server</td><td>Control</td><td>Token issuance and revocation, JWKS publication; cached by the gateway so it stays off the request path</td></tr>
         <tr><td>Rate limiting</td><td>Both</td><td>Commercial quota at the edge; stability-oriented concurrency budgets in the sidecars — different constructs sharing a name</td></tr>
         <tr><td>Mesh Control Plane</td><td>Control</td><td>Endpoints, traffic and authZ policy — plus it signs and rotates the identity certificate every service presents on an mTLS hop, which is what makes those identities trustworthy. Pushes all of it out of band; never answers a request</td></tr>
-        <tr><td>Platform Team / CI</td><td>Outside the request path entirely</td><td>Authors the policy the control plane distributes. Not a running component — the origin of configuration, which is why a control-plane outage degrades <em>change</em> rather than traffic</td></tr>
+        <tr><td>Service teams</td><td>Outside the request path entirely</td><td>Register their own APIs — route, named owner, required scopes — and grant consumers access to them. Self-service: the platform team is not in this path</td></tr>
+        <tr><td>Platform team</td><td>Outside the request path entirely</td><td>Operates the gateway and mesh, and sets the policy every registration must pass — gate order, default quotas, which services may call which</td></tr>
+        <tr><td>Security</td><td>Outside the request path entirely</td><td>Explicitly approves an API being exposed publicly. Never automatic — see the promotion lane in <a href="#usecase-devportal" style="color:var(--accent);">T</a></td></tr>
         <tr><td>Message broker</td><td>Data · async</td><td>Carries work across a connection boundary — which means trace context and acting user must travel in the message, because the sidecar cannot follow them there</td></tr>
+        <tr><td>Datastore</td><td>Service-owned</td><td>One per owning service, never shared. Pooled connections from the app, usually not proxied by the sidecar — so it is the one hop where the mesh provides no free telemetry or mTLS</td></tr>
         <tr><td>Collector</td><td>Telemetry · every host</td><td>Local buffering, cardinality caps, sampling decisions — the cost control point</td></tr>
         <tr><td>Obs backends</td><td>Telemetry</td><td>Storage and query for metrics, traces and logs; SLO evaluation and paging decisions</td></tr>
       </table>
@@ -12927,6 +13325,41 @@ THE UNGLAMOROUS PART THAT PREVENTS MORE LEAKS THAN ANY OF THIS
       <h2 class="section-title">Answer Spines</h2>
       <p style="margin-top:10px; max-width:680px;">The examples on this page run to a few thousand words each. An interview answer runs fifteen to twenty minutes. So the skill this section covers is not recall — it is <strong>selection</strong>: three or four moves from one primary example, plus one borrowed move from another that quietly demonstrates breadth. Reciting a whole example reads worse than a focused answer, not better.</p>
       <p style="max-width:680px; font-size:13px; color:var(--ink-dim);">Each spine below names a primary example, what to borrow, and the order to move through. The numbered steps are roughly a minute or two each.</p>
+      <div class="subsection-box" style="margin-top:18px; border-left:2px solid var(--marker);">
+        <h3 class="subhead" style="margin-top:0;">Two habits that apply to every spine below</h3>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--marker); margin:4px 0 8px;">1 · Open with the pain, not the architecture</div>
+        <p style="margin:0 0 10px;">Before any boxes, spend twenty seconds on what's broken today and who it hurts. It gives every component you draw afterwards a reason to exist, and it tells the interviewer you design from problems rather than from a catalogue of parts.</p>
+        <div class="example-panel" style="margin:0 0 14px;"><span class="label">Out loud — for an API platform question</span>"Today, as I'd imagine it: every team solves who-may-call-me, rate
+ limiting and logging on its own. So posture varies team by team,
+ nothing is discoverable, and exposing an API to partners is a one-off
+ exception rather than a process.
+
+ So what I'm designing is one governed layer in front of those APIs —
+ secure, route, observe, expose — without becoming a bottleneck for
+ the teams that own them."
+
+Twenty seconds, and the rest of the answer now reads as a response to
+a problem rather than a recital.</div>
+
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--marker); margin:0 0 8px;">2 · Name your open decisions out loud</div>
+        <p style="margin:0 0 10px;">A senior answer doesn't pretend everything is settled. Listing what you'd deliberately leave open — and what it depends on — reads as judgement, and it stops the interviewer spending ten minutes probing a choice you'd already flagged.</p>
+        <div class="example-panel" style="margin:0;"><span class="label">What that sounds like</span>"A few things I'm deliberately leaving open, because they depend on
+ facts I don't have yet:
+
+   · which auth schemes to support for partners — OAuth only, or
+     long-lived keys too — depends on how sophisticated they are
+   · the deprecation window for public APIs — 12 months or 24 —
+     is a commercial commitment, not an engineering one
+   · whether registration is a portal or a config repo — depends on
+     what product teams already live in
+
+ I'd want those settled early, because the promotion process depends
+ on the first two."
+
+The move is naming what each decision DEPENDS ON. "It depends" is
+evasive; "it depends on X, and I'd find out by Y" is judgement.</div>
+      </div>
+
 
       <div class="subsection-box" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">Q1 · "Design the public API gateway for our product suite"</h3>
@@ -12939,7 +13372,7 @@ THE UNGLAMOROUS PART THAT PREVENTS MORE LEAKS THAN ANY OF THIS
           <li><strong>The reframe, before any boxes.</strong> "Who deploys a route change? If the answer is my team, I've already failed the requirement." Thirty seconds, and it converts the question from proxy design into platform design.</li>
           <li><strong>Requirements — pick the two NFRs that matter.</strong> The platform team stays off the critical path, and one product's failure does not degrade the others. Everything else is table stakes.</li>
           <li><strong>Draw a federation, not one backend behind a proxy.</strong> Many independently-deployed products, each with its own team and release cadence. That shape is the whole difference between a generic answer and this one.</li>
-          <li><strong>Filter chain ordering</strong> — rate limit before auth so junk dies cheaply, but per-consumer quota <em>after</em>, because it needs an identity that doesn't exist yet. Order is a cost and security decision, not configuration.</li>
+          <li><strong>Filter chain ordering — five gates.</strong> IP limit before auth so junk dies cheaply; then authenticate; then coarse authorization — <em>may this consumer call this API at all?</em>; then per-consumer quota; then forward. Name the one genuine trade-off: authorizing before quota means rejected calls don't spend a consumer's quota, but a valid key can probe ungranted APIs cheaply — so alert on 403 rate. Order is a cost and security decision, not configuration.</li>
           <li><strong>Bulkheads.</strong> The highest-value move here: you front N products you don't control, so "one slow product must not starve the rest" is the daily reality rather than a hypothetical.</li>
           <li><strong>Hot config</strong> — build, validate, swap a pointer. Then hand off: route registration is self-service, which is the Developer Portal answer.</li>
           <li><strong>Close honestly.</strong> Gateway down means every product's API is down simultaneously. That is mitigated by redundancy, not by caching — say so rather than hoping nobody asks.</li>
@@ -12974,7 +13407,7 @@ THE UNGLAMOROUS PART THAT PREVENTS MORE LEAKS THAN ANY OF THIS
           <li><strong>Answer the partner-app question head-on.</strong> One app serving a thousand client companies — one quota or a thousand? Layered: per-app for commercial quota, per-entity for fairness, global ceiling for infrastructure.</li>
           <li><strong>Oversubscription</strong> — the sharpest content available. Three tenants at 390 each against 1,000 capacity: everyone inside their own limit, backend saturated, nothing breached. Per-tenant limits structurally cannot detect this.</li>
           <li><strong>Leasing</strong>, if they push on implementation. Hierarchy makes the least granular counter the hottest key in the system; instances lease slices and spend them locally.</li>
-          <li><strong>Placement</strong> — it lives in the gateway's filter chain, after authentication, because a per-consumer quota needs an identity to key on.</li>
+          <li><strong>Placement</strong> — gate 4 of the gateway's five, after authentication <em>and</em> coarse authorization: the quota needs an identity to key on, and a call the consumer was never granted shouldn't spend their allowance.</li>
         </ol>
         <p style="margin:0; padding:11px 14px; background:rgba(255,209,102,0.06); border-left:2px solid var(--marker); border-radius:0 6px 6px 0; font-size:13px; color:var(--ink);"><strong>The line that lands:</strong> "everyone is inside their limit and the backend is saturated anyway." It reframes fairness as a property of how tenants interact, not of any single tenant's ceiling.</p>
       </div>
