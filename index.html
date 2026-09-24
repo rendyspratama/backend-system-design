@@ -215,6 +215,114 @@
     font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase;
     color:var(--ink-faint); margin-bottom:8px; display:block;
   }
+  /* ---------- Illustration panels v3 — content-shaped components ----------
+     Each kind of content gets the element built for it: tables for tables,
+     definition grids for term→meaning, paired cards for comparisons, steps
+     for sequences. Monospace survives only for literal code. Nothing reflows
+     back to column 0, and narrow panels STACK rather than shrink the type.  */
+  .ill{ container-type:inline-size; margin:14px 0; background:var(--bg-deep);
+    border:1px solid var(--hairline); border-left:3px solid var(--accent); border-radius:8px;
+    overflow:hidden; font-family:var(--sans); font-size:14px; line-height:1.6; color:var(--ink-dim); }
+  .ill-title{ display:flex; align-items:center; gap:9px; padding:10px 16px;
+    background:var(--accent-soft); border-bottom:1px solid var(--hairline);
+    font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--accent); line-height:1.45; }
+  .ill-title::before{ content:""; flex:none; width:7px; height:7px; border-radius:2px;
+    background:var(--accent); box-shadow:0 0 8px rgba(111,224,240,.6); }
+  .ill-body{ padding:14px 16px 16px; }
+  .ill .ill-body > * + *{ margin-top:14px; }
+  .ill p{ margin:0; }                /* low specificity: the spacing rules below still win */
+  .ill .ill-lead{ font-size:14px; color:var(--ink); }
+  .ill .ill-aside{ font-size:13px; color:var(--ink-faint); }
+  .ill-h{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 9px; margin:0 0 8px;
+    font-family:var(--mono); font-size:11.5px; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--ink); }
+  .ill-h .ill-sub{ font-family:var(--sans); font-size:13px; font-weight:400; letter-spacing:0;
+    text-transform:none; color:var(--ink-faint); }
+  .pill{ display:inline-block; padding:1px 8px; border-radius:999px; border:1px solid;
+    font-family:var(--mono); font-size:10.5px; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; line-height:1.6; }
+  .pill.bad { color:var(--redline);  border-color:rgba(255,107,94,.45);  background:rgba(255,107,94,.09); }
+  .pill.good{ color:var(--optional); border-color:rgba(124,224,168,.45); background:rgba(124,224,168,.09); }
+  .pill.warn{ color:var(--marker);   border-color:rgba(255,209,102,.45); background:rgba(255,209,102,.09); }
+  .pill.info{ color:var(--accent);   border-color:rgba(111,224,240,.45); background:rgba(111,224,240,.09); }
+  .pill.mute{ color:var(--ink-faint); border-color:var(--hairline); background:transparent; }
+  .ill code{ font-family:var(--mono); font-size:.88em; color:var(--ink);
+    background:rgba(111,224,240,.07); border:1px solid var(--hairline); border-radius:4px; padding:0 4px; }
+  .ill .st{ font-family:var(--mono); font-weight:700; color:var(--redline); }
+  .ill strong{ color:var(--ink); }
+  /* tables */
+  .ill-table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  .ill-table th{ text-align:left; padding:0 12px 7px 0; border-bottom:1px solid var(--hairline);
+    font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--ink-faint); }
+  .ill-table td{ padding:9px 12px 9px 0; vertical-align:top; border-bottom:1px solid var(--hairline-soft); }
+  .ill-table tr:last-child td{ border-bottom:0; }
+  .ill-table td.rh{ color:var(--ink); font-weight:600; white-space:nowrap; }
+  .ill-table .sub{ display:block; margin-top:2px; font-size:12.5px; color:var(--ink-faint); }
+  /* definition grid */
+  .ill-dl{ display:grid; grid-template-columns:minmax(7rem,max-content) 1fr; gap:9px 18px; margin:0; }
+  .ill-dl dt{ font-family:var(--mono); font-size:12.5px; color:var(--ink); padding-top:2px; }
+  .ill-dl dd{ margin:0; }
+  /* comparison / verdict cards */
+  .ill-cols{ display:grid; grid-template-columns:repeat(auto-fit,minmax(16rem,1fr)); gap:12px; }
+  .ill-card{ padding:10px 12px 12px; border:1px solid var(--hairline); border-top:3px solid var(--ink-faint);
+    border-radius:6px; background:rgba(255,255,255,.018); }
+  .ill-card.bad { border-top-color:var(--redline); }
+  .ill-card.good{ border-top-color:var(--optional); }
+  .ill-card.warn{ border-top-color:var(--marker); }
+  .ill-card.info{ border-top-color:var(--accent); }
+  .ill .ill-card > * + *{ margin-top:10px; }
+  .ill-card > .ill-h{ margin-bottom:0; }
+  .ill .ill-quote{ font-size:14px; font-style:italic; color:var(--ink); }
+  /* lists */
+  .ill-list{ list-style:none; margin:0; padding:0; }
+  .ill-list li{ position:relative; padding-left:1.45em; margin:0 0 6px; }
+  .ill-list li:last-child{ margin-bottom:0; }
+  .ill-list li::before{ content:"•"; position:absolute; left:.4em; color:var(--ink-faint); }
+  .ill-list li.pro::before { content:"✓"; left:.1em; font-weight:700; color:var(--optional); }
+  .ill-list li.con::before { content:"✗"; left:.1em; font-weight:700; color:var(--redline); }
+  .ill-list li.plus::before{ content:"+"; left:.2em; font-weight:700; color:var(--optional); }
+  .ill-list li.dim{ color:var(--ink-faint); font-style:italic; }
+  .ill-list li.dim::before{ content:"–"; }
+  .ill-steps{ list-style:none; margin:0; padding:0; counter-reset:ill; }
+  .ill-steps li{ counter-increment:ill; position:relative; padding-left:2.1em; margin:0 0 8px; }
+  .ill-steps li:last-child{ margin-bottom:0; }
+  .ill-steps li::before{ content:counter(ill); position:absolute; left:0; top:.12em; width:1.45em; height:1.45em;
+    display:grid; place-items:center; border-radius:50%; font-family:var(--mono); font-size:11px;
+    font-weight:700; color:var(--bg-deep); background:var(--ink-faint); }
+  .ill-card.bad .ill-steps li::before{ background:var(--redline); }
+  .ill .ill-then{ padding:8px 12px; border-radius:6px; font-size:14px; color:var(--ink);
+    background:rgba(255,209,102,.06); border:1px solid rgba(255,209,102,.24); }
+  .ill .ill-then::before{ content:"→ "; font-weight:700; color:var(--marker); }
+  .ill-link{ display:flex; align-items:center; gap:8px; padding-left:18px; font-size:13px; color:var(--ink-faint); }
+  .ill-link::before{ content:"↓"; font-size:16px; line-height:1; color:var(--accent); }
+  .ill-flow{ display:inline-flex; flex-wrap:wrap; align-items:center; gap:4px 0; }
+  .ill-flow > span{ padding:0 7px; border:1px solid var(--hairline); border-radius:4px;
+    font-family:var(--mono); font-size:12px; color:var(--ink); background:rgba(111,224,240,.05); }
+  .ill-flow > span{ position:relative; }
+  .ill-flow > span + span{ margin-left:24px; }
+  .ill-flow > span + span::before{ content:"→"; position:absolute; left:-18px; top:50%; transform:translateY(-52%);
+    font-family:var(--sans); color:var(--marker); }
+  .ill pre.ill-code{ margin:0; padding:10px 12px; border:1px solid var(--hairline); border-radius:6px;
+    background:rgba(0,0,0,.2); font-family:var(--mono); font-size:12.5px; line-height:1.65;
+    color:var(--ink-dim); white-space:pre; overflow-x:auto; }
+  .ill .ill-note{ max-width:72ch; padding:2px 0 2px 12px; border-left:2px solid var(--marker); font-size:14px; color:var(--ink); }
+  /* narrow panels: stack the structure, never shrink the type */
+  @container (max-width:460px){
+    .ill-body{ padding:12px 12px 14px; }
+    .ill-dl{ grid-template-columns:1fr; gap:1px; }
+    .ill-dl dd{ margin-bottom:9px; }
+    .ill-table thead{ display:none; }
+    .ill-table, .ill-table tbody, .ill-table tr, .ill-table td{ display:block; width:100%; }
+    .ill-table tr{ padding:8px 0; border-bottom:1px solid var(--hairline-soft); }
+    .ill-table tr:last-child{ border-bottom:0; }
+    .ill-table td{ padding:2px 0; border:0; white-space:normal; }
+    .ill-table td[data-label]{ position:relative; padding-left:8.5em; }
+    .ill-table td[data-label]::before{ content:attr(data-label); position:absolute; left:0; top:4px; width:8em;
+      font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); }
+  }
+
 
   ol.process{ margin:8px 0 0; padding-left:0; list-style:none; counter-reset:step; }
   ol.process li{
@@ -7631,56 +7739,61 @@ The CP failure is not recoverable by the caller at all.</div>
           <li>Generalise the rule that falls out: order filters by cost ascending and rejection likelihood descending, subject to each gate having the information it needs by the time it runs.</li>
         </ol>
         <p>Filter order looks like a configuration detail and is actually a security property — it decides how much work an attacker can force the gateway to do per junk request, and what each rejection reveals.</p>
-        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — five gates, what each needs, and what it returns</span>WRONG — authenticate first:
-  1. verify JWT signature      ← ~50-100µs of CPU, on EVERY junk request
-  2. ...everything else
-  → an attacker sending garbage tokens sets your CPU bill. 100k junk
-    req/s = 100k signature verifications you chose to perform.
-
-RIGHT — cheapest rejection first, each gate fed what it needs:
-
-  gate               needs              rejects with   costs
-  1 IP limit         nothing            429            one counter, ~1µs
-  2 authenticate     the credential     401            JWT: a signature
-                                                       check, no I/O
-                                                       key: an indexed
-                                                       lookup + SHA-256
-  3 authorize        identity + API     403            a set-membership
-                     ← route already       lookup in pushed
-                       MATCHED by now      grants
-  4 quota            identity           429            a counter, maybe
-                                                       distributed
-  5 forward          all of the above   —              commits a backend
-
-  (route MATCHING happens before gate 3 — it is an in-memory lookup,
-   and gate 3 cannot ask "this API?" without it)
-
-The two limits are NOT redundant: gate 1 is coarse and anonymous,
-protecting the gateway itself; gate 4 is precise and per-consumer,
-enforcing what a customer actually agreed to.</div>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — five gates, what each needs, and what it returns</div>
+<div class="ill-body">
+  <div class="ill-card bad">
+    <div class="ill-h"><span class="pill bad">Wrong</span> authenticate first</div>
+    <ol class="ill-steps">
+      <li>verify JWT signature — ~50-100µs of CPU, on EVERY junk request</li>
+      <li>...everything else</li>
+    </ol>
+    <p class="ill-then">an attacker sending garbage tokens sets your CPU bill. 100k junk req/s = 100k signature verifications you chose to perform.</p>
+  </div>
+  <div>
+    <div class="ill-h"><span class="pill good">Right</span> <span class="ill-sub">cheapest rejection first, each gate fed what it needs</span></div>
+    <table class="ill-table">
+      <thead><tr><th>Gate</th><th>Needs</th><th>Rejects with</th><th>Costs</th></tr></thead>
+      <tbody>
+        <tr><td class="rh">1 IP limit</td><td data-label="Needs">nothing</td><td data-label="Rejects with"><span class="st">429</span></td><td data-label="Costs">one counter, ~1µs</td></tr>
+        <tr><td class="rh">2 authenticate</td><td data-label="Needs">the credential</td><td data-label="Rejects with"><span class="st">401</span></td><td data-label="Costs">JWT: a signature check, no I/O<span class="sub">key: an indexed lookup + SHA-256</span></td></tr>
+        <tr><td class="rh">3 authorize</td><td data-label="Needs">identity + API<span class="sub">← route already MATCHED by now</span></td><td data-label="Rejects with"><span class="st">403</span></td><td data-label="Costs">a set-membership lookup in pushed grants</td></tr>
+        <tr><td class="rh">4 quota</td><td data-label="Needs">identity</td><td data-label="Rejects with"><span class="st">429</span></td><td data-label="Costs">a counter, maybe distributed</td></tr>
+        <tr><td class="rh">5 forward</td><td data-label="Needs">all of the above</td><td data-label="Rejects with">—</td><td data-label="Costs">commits a backend</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="ill-aside">(route MATCHING happens before gate 3 — it is an in-memory lookup, and gate 3 cannot ask "this API?" without it)</p>
+  <p class="ill-note">The two limits are NOT redundant: gate 1 is coarse and anonymous, protecting the gateway itself; gate 4 is precise and per-consumer, enforcing what a customer actually agreed to.</p>
+</div>
+</div>
 
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--marker); margin:16px 0 8px;">The one ordering that's a genuine trade-off</div>
         <p style="margin:0 0 10px;">Gates 1 and 2 are settled by cost. Gates 3 and 4 are not — both need identity and both are cheap, so the order between them is a <strong>decision with a cost either way</strong>, and worth stating as one rather than presenting as obvious.</p>
-        <div class="example-panel" style="margin:0 0 12px;"><span class="label">Authorize before quota — the chosen order, and what it gives up</span>AUTHORIZE → QUOTA   (chosen)
-  ✓ a call the consumer was never allowed to make does not burn their
-    quota. A partner with a misconfigured integration hitting an
-    ungranted API gets a clean 403 and keeps their allowance.
-  ✓ set-membership on pushed grants is cheaper than a quota counter
-    that may be a distributed write
-  ✗ a valid key can PROBE APIs it isn't granted without quota ever
-    slowing it down — each probe is a cheap 403
-
-  → mitigated separately: alert on 403 RATE per consumer. A consumer
-    whose 403s climb is either misconfigured or enumerating, and both
-    are worth a human looking.
-
-QUOTA → AUTHORIZE   (the alternative)
-  ✓ probing is throttled for free by the same quota
-  ✗ legitimate consumers are charged for requests you then refuse,
-    which reads as a billing bug to the customer who notices
-
-The 403-rate alert is what makes the chosen order safe. Without it,
-you have traded a visible billing complaint for an invisible probe.</div>
+        <div class="ill" style="margin:0 0 12px;">
+<div class="ill-title">Authorize before quota — the chosen order, and what it gives up</div>
+<div class="ill-body">
+  <div class="ill-cols">
+    <div class="ill-card good">
+      <div class="ill-h">Authorize → quota <span class="pill good">chosen</span></div>
+      <ul class="ill-list">
+        <li class="pro">a call the consumer was never allowed to make does not burn their quota. A partner with a misconfigured integration hitting an ungranted API gets a clean 403 and keeps their allowance.</li>
+        <li class="pro">set-membership on pushed grants is cheaper than a quota counter that may be a distributed write</li>
+        <li class="con">a valid key can PROBE APIs it isn't granted without quota ever slowing it down — each probe is a cheap 403</li>
+      </ul>
+      <p class="ill-then">mitigated separately: alert on 403 RATE per consumer. A consumer whose 403s climb is either misconfigured or enumerating, and both are worth a human looking.</p>
+    </div>
+    <div class="ill-card">
+      <div class="ill-h">Quota → authorize <span class="pill mute">the alternative</span></div>
+      <ul class="ill-list">
+        <li class="pro">probing is throttled for free by the same quota</li>
+        <li class="con">legitimate consumers are charged for requests you then refuse, which reads as a billing bug to the customer who notices</li>
+      </ul>
+    </div>
+  </div>
+  <p class="ill-note">The 403-rate alert is what makes the chosen order safe. Without it, you have traded a visible billing complaint for an invisible probe.</p>
+</div>
+</div>
         <ul class="item-list">
           <li><strong>Forwarding comes last for a reason</strong> — it's the step that commits a backend's resources. Everything that might reject the request should have already run.</li>
           <li><strong>Gate 2 has two paths, with different failure modes</strong> — the platform accepts OAuth tokens and API keys by design. A JWT is verified against cached public keys: CPU only, no I/O, so it can't be slowed by a database. A key is an indexed lookup plus a fast hash, which is only cheap while the verification is cached — a cache miss reaches the key store. So key verification must be cached and revocations pushed, exactly as the <a href="#usecase-apikeys" style="color:var(--accent);">API Key Management</a> example describes, or gate 2 quietly becomes the slowest gate on the key path.</li>
@@ -7841,10 +7954,10 @@ DEADLINES DO NOT COMPOSE — the subtler one
         <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the one-line misconfiguration</span>THE BUG
 
   cache key = method + host + path
-  GET /v1/profile          Authorization: Bearer <customer A>
+  GET /v1/profile          Authorization: Bearer &lt;customer A&gt;
     → MISS → backend → A's profile → STORED under "/v1/profile"
 
-  GET /v1/profile          Authorization: Bearer <customer B>
+  GET /v1/profile          Authorization: Bearer &lt;customer B&gt;
     → HIT  → A's profile returned to B
 
   No attack. No exploit. A default cache key and one cacheable
@@ -8120,19 +8233,21 @@ not configurational (do it carefully).</div>
           <li>Extend the same logic outward: gateway routes, client SDKs, and mock servers are all restatements of the same contract. Each one hand-maintained is another surface that can disagree, so generate them all.</li>
         </ol>
         <p>The value isn't that generation saves typing — it's that a derived artifact cannot contradict its source. Drift stops being something to police.</p>
-        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — what one spec change produces</span>Team adds an optional "currency" field to the invoice response.
-One commit to invoices.openapi.yaml, and on merge:
-
-  → docs          regenerated, field appears with its description
-  → SDK (Go)      regenerated, struct gains a Currency field
-  → SDK (TS)      regenerated, type gains currency?: string
-  → mock server   now returns the field, so consumers can test against it
-  → gateway route response schema updated (feeds example S's route config)
-  → catalog       version bumped, subscribers notified
-
-None of these could disagree with each other, because none of them is
-maintained. The alternative — six places a human must remember to update —
-is six chances for the docs to start lying.</div>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — what one spec change produces</div>
+<div class="ill-body">
+  <p class="ill-lead">Team adds an optional "currency" field to the invoice response. One commit to <code>invoices.openapi.yaml</code>, and on merge:</p>
+  <dl class="ill-dl">
+    <dt>docs</dt><dd>regenerated, field appears with its description</dd>
+    <dt>SDK (Go)</dt><dd>regenerated, struct gains a <code>Currency</code> field</dd>
+    <dt>SDK (TS)</dt><dd>regenerated, type gains <code>currency?: string</code></dd>
+    <dt>mock server</dt><dd>now returns the field, so consumers can test against it</dd>
+    <dt>gateway route</dt><dd>response schema updated (feeds example S's route config)</dd>
+    <dt>catalog</dt><dd>version bumped, subscribers notified</dd>
+  </dl>
+  <p class="ill-note">None of these could disagree with each other, because none of them is maintained. The alternative — six places a human must remember to update — is six chances for the docs to start lying.</p>
+</div>
+</div>
         <ul class="item-list">
           <li><strong>Spec-first or code-first are both defensible; maintaining both separately is not.</strong> Generating the spec from annotated code is equally valid — what matters is that exactly one of them is authored and the other derived.</li>
           <li><strong>The mock server is the underrated output</strong> — it lets a consuming team build and test against an API before the producing team has deployed anything, which removes a sequencing dependency between teams that would otherwise be real calendar time.</li>
@@ -8151,22 +8266,31 @@ is six chances for the docs to start lying.</div>
           <li>Move enforcement into CI as executable rules, and keep humans for the genuinely ambiguous minority: is this the right resource model, does this belong in this API at all. Those are design conversations, not gates.</li>
         </ol>
         <p>Automated enforcement is more consistent than human review, not just faster — a linter cannot be worn down at the end of a quarter, and it applies the same rule to the most senior team and the newest one.</p>
-        <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — standards as executable rules</span>ERROR   (blocks the build)
-  - every 4xx/5xx response uses the shared error envelope schema
-  - every list endpoint declares cursor pagination, not page/offset
-  - every operation declares required scopes (feeds example Q)
-  - x-owning-team and x-support-contact present on the spec
-
-WARNING (visible, doesn't block)
-  - operationId does not follow the house naming convention
-  - description missing on a public field
-
-A rule's severity IS the governance decision. Promoting a rule from
-warning to error is how a standard becomes mandatory — a config change
-the platform team makes once, not a position they argue in each review.
-
-New rules ship as warnings first, so existing APIs aren't retroactively
-broken; they graduate to errors once the estate has caught up.</div>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — standards as executable rules</div>
+<div class="ill-body">
+  <div class="ill-cols">
+    <div class="ill-card bad">
+      <div class="ill-h"><span class="pill bad">Error</span> <span class="ill-sub">blocks the build</span></div>
+      <ul class="ill-list">
+        <li>every 4xx/5xx response uses the shared error envelope schema</li>
+        <li>every list endpoint declares cursor pagination, not page/offset</li>
+        <li>every operation declares required scopes (feeds example Q)</li>
+        <li><code>x-owning-team</code> and <code>x-support-contact</code> present on the spec</li>
+      </ul>
+    </div>
+    <div class="ill-card warn">
+      <div class="ill-h"><span class="pill warn">Warning</span> <span class="ill-sub">visible, doesn't block</span></div>
+      <ul class="ill-list">
+        <li><code>operationId</code> does not follow the house naming convention</li>
+        <li>description missing on a public field</li>
+      </ul>
+    </div>
+  </div>
+  <p class="ill-note">A rule's severity IS the governance decision. Promoting a rule from warning to error is how a standard becomes mandatory — a config change the platform team makes once, not a position they argue in each review.</p>
+  <p class="ill-note">New rules ship as warnings first, so existing APIs aren't retroactively broken; they graduate to errors once the estate has caught up.</p>
+</div>
+</div>
         <ul class="item-list">
           <li><strong>The paved road matters more than the rules</strong> — a template repository that already passes every check, with scaffolding and CI wired in, means the compliant path is also the fastest path. Standards enforced only by rejection produce resentment; standards that arrive pre-satisfied produce adoption.</li>
           <li><strong>Exceptions need a mechanism, not a culture of asking</strong> — a documented, expiring waiver recorded in the spec is far healthier than a rule everyone knows is negotiable over chat.</li>
@@ -9333,7 +9457,7 @@ ADAPTER AT THE EDGE
         <div class="example-panel" style="margin:10px 0;"><span class="label">Illustration — the retirement sequence</span>1. DEPRECATE — status changes, and every v1 response now carries:
      Deprecation: Sat, 01 Nov 2025 00:00:00 GMT
      Sunset: Sat, 01 May 2026 00:00:00 GMT
-     Link: <https://portal/apis/invoices/v2>; rel="successor-version"
+     Link: &lt;https://portal/apis/invoices/v2&gt;; rel="successor-version"
    → reaches whoever operates the integration TODAY, not whoever
      originally set it up and has since changed teams
 
@@ -10842,55 +10966,74 @@ WHY THIS CAN'T BE TYPED INTO POSTMAN
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">1 · Where is ingress?</div>
         <p style="margin:0 0 10px;"><strong>Ingress isn't a component — it's a direction.</strong> Traffic coming in is ingress; traffic going out is egress. The API Gateway <em>is</em> the ingress point, and the sidecar is the egress point, which is why neither appears as a separately labelled box.</p>
         <p style="margin:0 0 10px;">The confusion is legitimate, because Kubernetes overloaded the word. There, "Ingress" is also a specific API object, implemented by an <strong>Ingress Controller</strong> — itself an L7 proxy, usually NGINX or Envoy. That overlaps heavily with what a gateway does:</p>
-        <div class="example-panel" style="margin:0 0 14px;"><span class="label">Illustration — ingress controller vs. API gateway</span>INGRESS CONTROLLER              API GATEWAY
-  TLS termination                 TLS termination
-  host / path routing             host / path routing
-  ── and that is mostly it ──     + authN, per-consumer quota
-                                  + request/response transformation
-                                  + trace origination
-                                  + token stripping, claim injection
-
-  a CLUSTER concern:              a PRODUCT concern:
-  "get traffic to the right       "is this caller allowed, and within
-   service"                        what they were sold?"
-
-Three arrangements you will actually meet:
-
-  gateway only          the gateway IS the ingress — one L7 hop
-                        (what this diagram shows)
-
-  controller only       fine until you need auth or quotas, at which
-                        point every service reimplements them
-
-  both, stacked         ingress controller → gateway → service
-                        two L7 proxies, overlapping jobs — sometimes
-                        justified (managed TLS, platform-team
-                        ownership boundary), often the redundant
-                        L7 hop from the load-balancing deep dive
-
-The Kubernetes Gateway API exists largely because this split confused
-people, and deliberately merges the two concepts.</div>
+        <div class="ill" style="margin:0 0 14px;">
+<div class="ill-title">Illustration — ingress controller vs. API gateway</div>
+<div class="ill-body">
+  <div class="ill-cols">
+    <div class="ill-card">
+      <div class="ill-h">Ingress controller <span class="ill-sub">a CLUSTER concern</span></div>
+      <ul class="ill-list">
+        <li>TLS termination</li>
+        <li>host / path routing</li>
+        <li class="dim">and that is mostly it</li>
+      </ul>
+      <p class="ill-quote">"get traffic to the right service"</p>
+    </div>
+    <div class="ill-card info">
+      <div class="ill-h">API gateway <span class="ill-sub">a PRODUCT concern</span></div>
+      <ul class="ill-list">
+        <li>TLS termination</li>
+        <li>host / path routing</li>
+        <li class="plus">authN, per-consumer quota</li>
+        <li class="plus">request/response transformation</li>
+        <li class="plus">trace origination</li>
+        <li class="plus">token stripping, claim injection</li>
+      </ul>
+      <p class="ill-quote">"is this caller allowed, and within what they were sold?"</p>
+    </div>
+  </div>
+  <div>
+    <div class="ill-h">Three arrangements you will actually meet</div>
+    <dl class="ill-dl">
+      <dt>gateway only</dt>
+      <dd>the gateway IS the ingress — one L7 hop <span class="pill info">what this diagram shows</span></dd>
+      <dt>controller only</dt>
+      <dd>fine until you need auth or quotas, at which point every service reimplements them</dd>
+      <dt>both, stacked</dt>
+      <dd><span class="ill-flow"><span>ingress controller</span><span>gateway</span><span>service</span></span><br>two L7 proxies, overlapping jobs — sometimes justified (managed TLS, platform-team ownership boundary), often the redundant L7 hop from the load-balancing deep dive</dd>
+    </dl>
+  </div>
+  <p class="ill-note">The Kubernetes Gateway API exists largely because this split confused people, and deliberately merges the two concepts.</p>
+</div>
+</div>
 
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">2 · Where is the service mesh?</div>
         <p style="margin:0 0 10px;"><strong>The mesh isn't one box — it's the only component here that lives in two planes at once.</strong> The Mesh Control Plane computes and distributes configuration; every sidecar enforces it. "Where is the mesh" therefore means "that top-right box <em>plus</em> every sidecar in every pod," which is exactly why it looks absent from whichever plane you're currently looking at.</p>
-        <div class="example-panel" style="margin:0 0 14px;"><span class="label">Illustration — what the control plane pushes, and what the sidecar does with it</span>MESH CONTROL PLANE  (control plane — computes, never serves a request)
-  endpoints        ← sourced from the Service Registry
-  traffic policy   ← timeouts, retries, canary weights
-  authZ policy     ← which service may call which
-  workload certs   ← issued and rotated continuously
-
-        │  pushed out of band, continuously
-        ▼
-
-SIDECAR  (data plane — enforces, on every single request)
-  picks a pod from the endpoints it already holds
-  opens mTLS using the cert it was already issued
-  allows or denies by the policy it already has
-  applies the timeout and retry budget it was already given
-
-Every verb in the sidecar's list is in the past tense on purpose:
-it acts on configuration it received BEFORE the request arrived.
-That is what makes the control plane skippable at request time.</div>
+        <div class="ill" style="margin:0 0 14px;">
+<div class="ill-title">Illustration — what the control plane pushes, and what the sidecar does with it</div>
+<div class="ill-body">
+  <div class="ill-card info">
+    <div class="ill-h">Mesh control plane <span class="ill-sub">control plane — computes, never serves a request</span></div>
+    <dl class="ill-dl">
+      <dt>endpoints</dt><dd>sourced from the Service Registry</dd>
+      <dt>traffic policy</dt><dd>timeouts, retries, canary weights</dd>
+      <dt>authZ policy</dt><dd>which service may call which</dd>
+      <dt>workload certs</dt><dd>issued and rotated continuously</dd>
+    </dl>
+  </div>
+  <div class="ill-link">pushed out of band, continuously</div>
+  <div class="ill-card good">
+    <div class="ill-h">Sidecar <span class="ill-sub">data plane — enforces, on every single request</span></div>
+    <ul class="ill-list">
+      <li>picks a pod from the endpoints it <strong>already</strong> holds</li>
+      <li>opens mTLS using the cert it was <strong>already</strong> issued</li>
+      <li>allows or denies by the policy it <strong>already</strong> has</li>
+      <li>applies the timeout and retry budget it was <strong>already</strong> given</li>
+    </ul>
+  </div>
+  <p class="ill-note">Every verb in the sidecar's list is in the past tense on purpose: it acts on configuration it received BEFORE the request arrived. That is what makes the control plane skippable at request time.</p>
+</div>
+</div>
 
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 8px;">3 · Why is the control plane never called during a request?</div>
         <p style="margin:0 0 10px;">Three separate reasons, worth keeping distinct because they'd each justify the design on their own:</p>
@@ -12670,7 +12813,7 @@ THE RULE THAT PREVENTS LOCKOUT
 
   1. Attacker signs up at a provider with WEAK email verification,
      entering budi@gmail.com. They never prove they own it.
-  2. Attacker clicks "Login with <that provider>" on your site.
+  2. Attacker clicks "Login with &lt;that provider&gt;" on your site.
   3. Provider asserts: { sub: "atk_99", email: "budi@gmail.com" }
   4. Your service: no (provider, sub) match... but that email exists!
      → attaches the attacker's identity to Budi's user
@@ -12696,7 +12839,7 @@ DESIGN A — AUTO-LINK, BUT ONLY ON A VERIFIED EMAIL
 DESIGN B — ALWAYS PROVE OWNERSHIP FIRST
 
   → "That email already has an account. Sign in the way you
-     normally do, and we'll connect <provider> to it."
+     normally do, and we'll connect &lt;provider&gt; to it."
   → user authenticates with their EXISTING method
   → only then is the pending identity attached
 
