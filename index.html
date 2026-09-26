@@ -521,6 +521,140 @@
   .calc-advanced-body{ padding:4px 16px 18px; }
   .calc-grid-adv{ display:flex; gap:14px; flex-wrap:wrap; }
 
+
+  /* ================= Math Toolkit — colour-coded, illustrated =================
+     One colour per calculator step, carried through inputs, results and the variable
+     table; one colour per scale zone, carried through the meter, verdict and scale table. */
+  #mathtoolkit{
+    --z-lt1k:#7CE0A8; --z-1k:#6FE0F0; --z-10k:#FFD166; --z-100k:#FF6B5E;
+  }
+  #mathtoolkit .mt-s1{ --c:#6FE0F0; --ct:rgba(111,224,240,.09); --cb:rgba(111,224,240,.35); }
+  #mathtoolkit .mt-s2{ --c:#FFD166; --ct:rgba(255,209,102,.09); --cb:rgba(255,209,102,.35); }
+  #mathtoolkit .mt-s3{ --c:#7CE0A8; --ct:rgba(124,224,168,.09); --cb:rgba(124,224,168,.35); }
+  #mathtoolkit .mt-s4{ --c:#C08CE0; --ct:rgba(192,140,224,.10); --cb:rgba(192,140,224,.38); }
+  #mathtoolkit .mt-s5, #mathtoolkit .mt-s6{ --c:#8FB4FF; --ct:rgba(143,180,255,.09); --cb:rgba(143,180,255,.35); }
+
+  #mathtoolkit .mt-calc{
+    background:
+      radial-gradient(1200px 260px at 0% 0%, rgba(111,224,240,.07), transparent 60%),
+      radial-gradient(900px 240px at 100% 0%, rgba(192,140,224,.06), transparent 60%),
+      var(--panel);
+  }
+  #mathtoolkit .calc-step{
+    border-top:3px solid var(--c); border-radius:8px; gap:10px;
+    background:linear-gradient(180deg, var(--ct), transparent 55%), var(--bg-deep);
+  }
+  #mathtoolkit .calc-step-label{ display:flex; align-items:center; gap:8px; color:var(--c); font-size:11px; font-weight:700; }
+  #mathtoolkit .mt-num{ display:inline-grid; place-items:center; width:20px; height:20px; border-radius:50%;
+    background:var(--c); color:var(--bg-deep); font-size:11px; font-weight:800; letter-spacing:0; }
+  #mathtoolkit .calc-step input[type="number"]:focus{ border-color:var(--c); box-shadow:0 0 0 2px var(--ct); }
+  #mathtoolkit .calc-readout{ padding:6px 9px; border-radius:6px; background:rgba(255,255,255,.03); border:1px solid var(--hairline); }
+  #mathtoolkit .calc-readout span{ color:var(--c); font-weight:700; }
+  #mathtoolkit .calc-output{
+    border:1px solid var(--cb); border-top:1px solid var(--cb); background:var(--ct); border-radius:7px;
+    padding:9px 11px; color:var(--c); font-size:13px; font-weight:600;
+  }
+  #mathtoolkit .calc-arrow{ font-size:18px; padding:0 8px; }
+  /* the 4-step flow decides its layout explicitly instead of wrapping by accident */
+  #mathtoolkit .mt-calc{ container-type:inline-size; }
+  #mathtoolkit .mt-flow{ display:grid; align-items:stretch; gap:0;
+    grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr); }
+  #mathtoolkit .mt-flow .calc-step{ min-width:0; }
+  @container (max-width: 860px){
+    #mathtoolkit .mt-flow{ grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px; }
+    #mathtoolkit .mt-flow .calc-arrow{ display:none; }
+  }
+  @container (max-width: 460px){
+    #mathtoolkit .mt-flow{ grid-template-columns:minmax(0,1fr); }
+  }
+
+  #mathtoolkit .calc-arrow.mt-a2{ color:#FFD166; } #mathtoolkit .calc-arrow.mt-a3{ color:#7CE0A8; } #mathtoolkit .calc-arrow.mt-a4{ color:#C08CE0; }
+
+  /* live meter */
+  #mathtoolkit .mt-meter{ margin-top:18px; padding:14px 16px 12px; border:1px solid var(--hairline); border-radius:10px; background:var(--bg-deep); }
+  #mathtoolkit .mt-meter-head{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  #mathtoolkit .mt-meter-title{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); }
+  #mathtoolkit .mt-meter-val{ font-family:var(--mono); font-size:15px; font-weight:700; color:var(--ink); }
+  #mathtoolkit .mt-meter-val[data-bucket="lt1k"]{ color:var(--z-lt1k); }   #mathtoolkit .mt-meter-val[data-bucket="1k-10k"]{ color:var(--z-1k); }
+  #mathtoolkit .mt-meter-val[data-bucket="10k-100k"]{ color:var(--z-10k); } #mathtoolkit .mt-meter-val[data-bucket="100k-plus"]{ color:var(--z-100k); }
+  #mathtoolkit .mt-meter-track{ position:relative; display:flex; height:14px; margin:18px 0 6px; }
+  #mathtoolkit .mt-meter-track .z{ height:100%; opacity:.42; }
+  #mathtoolkit .z-lt1k{ flex:0 0 50%; } #mathtoolkit .z-1k, #mathtoolkit .z-10k, #mathtoolkit .z-100k{ flex:0 0 16.6667%; }
+  #mathtoolkit .mt-meter-track .z-lt1k{ background:var(--z-lt1k); border-radius:7px 0 0 7px; }
+  #mathtoolkit .mt-meter-track .z-1k{ background:var(--z-1k); }
+  #mathtoolkit .mt-meter-track .z-10k{ background:var(--z-10k); }
+  #mathtoolkit .mt-meter-track .z-100k{ background:var(--z-100k); border-radius:0 7px 7px 0; }
+  #mathtoolkit .mt-meter-pin{ position:absolute; top:-9px; bottom:-9px; width:4px; margin-left:-2px; border-radius:2px;
+    background:var(--ink); box-shadow:0 0 0 3px var(--bg-deep), 0 0 14px rgba(234,244,255,.55); transition:left .35s ease; }
+  #mathtoolkit .mt-meter-pin::before{ content:""; position:absolute; top:-7px; left:50%; transform:translateX(-50%);
+    border:6px solid transparent; border-top-color:var(--ink); }
+  #mathtoolkit .mt-meter-zones{ display:flex; font-family:var(--mono); font-size:11px; font-weight:700; }
+  #mathtoolkit .mt-meter-zones > span{ text-align:center; }
+  #mathtoolkit .mt-meter-zones .z-lt1k{ color:var(--z-lt1k); } #mathtoolkit .mt-meter-zones .z-1k{ color:var(--z-1k); }
+  #mathtoolkit .mt-meter-zones .z-10k{ color:var(--z-10k); }   #mathtoolkit .mt-meter-zones .z-100k{ color:var(--z-100k); }
+  #mathtoolkit .mt-meter-axis{ display:flex; justify-content:space-between; margin-top:4px; font-family:var(--mono); font-size:10px; color:var(--ink-faint); }
+
+  /* verdict + scale table take the colour of the zone you are in */
+  #mathtoolkit .calc-verdict{ border-radius:8px; transition:background .25s, border-color .25s; }
+  #mathtoolkit .calc-verdict[data-bucket="lt1k"]{ border-left-color:var(--z-lt1k); background:rgba(124,224,168,.10); }
+  #mathtoolkit .calc-verdict[data-bucket="lt1k"] strong{ color:var(--z-lt1k); }
+  #mathtoolkit .calc-verdict[data-bucket="1k-10k"]{ border-left-color:var(--z-1k); background:rgba(111,224,240,.10); }
+  #mathtoolkit .calc-verdict[data-bucket="1k-10k"] strong{ color:var(--z-1k); }
+  #mathtoolkit .calc-verdict[data-bucket="10k-100k"]{ border-left-color:var(--z-10k); background:rgba(255,209,102,.10); }
+  #mathtoolkit .calc-verdict[data-bucket="10k-100k"] strong{ color:var(--z-10k); }
+  #mathtoolkit .calc-verdict[data-bucket="100k-plus"]{ border-left-color:var(--z-100k); background:rgba(255,107,94,.10); }
+  #mathtoolkit .calc-verdict[data-bucket="100k-plus"] strong{ color:var(--z-100k); }
+
+  #mathtoolkit #scale-table tr[data-bucket="lt1k"]{ --z:var(--z-lt1k); --zt:rgba(124,224,168,.12); }
+  #mathtoolkit #scale-table tr[data-bucket="1k-10k"]{ --z:var(--z-1k); --zt:rgba(111,224,240,.12); }
+  #mathtoolkit #scale-table tr[data-bucket="10k-100k"]{ --z:var(--z-10k); --zt:rgba(255,209,102,.12); }
+  #mathtoolkit #scale-table tr[data-bucket="100k-plus"]{ --z:var(--z-100k); --zt:rgba(255,107,94,.12); }
+  #mathtoolkit #scale-table tr[data-bucket] td:first-child{ box-shadow:inset 3px 0 0 var(--z); }
+  #mathtoolkit .mt-rung{ display:inline-block; padding:2px 10px; border-radius:999px; font-weight:700; white-space:nowrap;
+    color:var(--z); border:1px solid var(--z); background:var(--zt); }
+  #mathtoolkit #scale-table tr.row-active td{ background:var(--zt); color:var(--ink); }
+  #mathtoolkit #scale-table tr.row-active td:first-child{ box-shadow:inset 5px 0 0 var(--z); }
+  #mathtoolkit #scale-table tr.row-active .mt-rung{ background:var(--z); color:var(--bg-deep); }
+  #mathtoolkit #scale-table tr.row-active td:first-child::after{ content:"◀ you are here"; display:block; margin-top:6px;
+    font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.06em; color:var(--z); }
+
+  /* variable table: colour = which step each variable feeds */
+  #mathtoolkit .mt-v1{ --c:#6FE0F0; } #mathtoolkit .mt-v2{ --c:#FFD166; } #mathtoolkit .mt-v3{ --c:#7CE0A8; }
+  #mathtoolkit .mt-v4{ --c:#C08CE0; } #mathtoolkit .mt-v5{ --c:#8FB4FF; }
+  #mathtoolkit .var-def-table tr[class^="mt-v"] td:first-child{ box-shadow:inset 3px 0 0 var(--c); }
+  #mathtoolkit .var-def-table tr[class^="mt-v"] td:first-child::before{ content:""; display:inline-block; width:8px; height:8px;
+    margin-right:9px; border-radius:50%; background:var(--c); vertical-align:1px; }
+  #mathtoolkit .mt-legend{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; margin:-2px 0 6px; font-family:var(--mono); font-size:11px; }
+  #mathtoolkit .mt-legend > span{ color:var(--c); font-weight:700; }
+  #mathtoolkit .mt-legend > span::before{ content:""; display:inline-block; width:8px; height:8px; margin-right:6px; border-radius:50%; background:var(--c); }
+  #mathtoolkit .mt-legend em{ font-family:var(--sans); font-style:normal; font-size:12.5px; color:var(--ink-faint); }
+
+  /* reference cards: wrap instead of overflow, and chart the magnitudes */
+  #mathtoolkit .mt-refs{ grid-template-columns:repeat(auto-fit, minmax(min(17rem,100%),1fr)); }
+  #mathtoolkit .mt-refs .table-wrap table.ref-table{ min-width:0; }
+  #mathtoolkit .mt-ref{ border-top:3px solid var(--rc); }
+  #mathtoolkit .mt-ref-cheat{ --rc:#6FE0F0; } #mathtoolkit .mt-ref-lat{ --rc:#FFD166; } #mathtoolkit .mt-ref-avail{ --rc:#7CE0A8; }
+  #mathtoolkit .mt-ref-h{ display:flex; align-items:center; gap:9px; }
+  #mathtoolkit .mt-glyph{ display:inline-grid; place-items:center; width:24px; height:24px; border-radius:7px; font-size:13px;
+    color:var(--bg-deep); background:var(--rc); letter-spacing:0; }
+  #mathtoolkit .mt-ref-cheat td.mono{ color:var(--rc); }
+  #mathtoolkit .mt-facts{ display:flex; flex-direction:column; margin-top:6px; }
+  #mathtoolkit .mt-fact{ display:flex; flex-direction:column; gap:1px; padding:8px 0; border-bottom:1px solid var(--hairline-soft); }
+  #mathtoolkit .mt-fact:last-child{ border-bottom:0; }
+  #mathtoolkit .mt-fact .k{ font-size:12.5px; color:var(--ink-faint); }
+  #mathtoolkit .mt-fact .v{ font-family:var(--mono); font-size:13.5px; font-weight:600; color:var(--rc); }
+  #mathtoolkit .mt-bars{ display:flex; flex-direction:column; gap:12px; margin-top:10px; }
+  #mathtoolkit .mt-bar-row{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 10px; align-items:baseline; }
+  #mathtoolkit .mt-bar-row .n{ font-size:13px; color:var(--ink-dim); }
+  #mathtoolkit .mt-bar-row .n.mono{ font-family:var(--mono); font-size:12.5px; color:var(--ink); }
+  #mathtoolkit .mt-bar-row .v{ font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--c); white-space:nowrap; }
+  #mathtoolkit .mt-bar-row .b{ grid-column:1 / -1; height:7px; border-radius:4px; background:var(--hairline); overflow:hidden; }
+  #mathtoolkit .mt-bar-row .b > i{ display:block; height:100%; width:var(--w); border-radius:4px; background:var(--c); }
+  #mathtoolkit .mt-bars-head{ display:flex; justify-content:space-between; margin-top:10px; font-family:var(--mono); font-size:10.5px;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); }
+  #mathtoolkit .mt-ref-note{ margin:14px 0 0; font-size:12.5px; color:var(--ink-faint); }
+  #mathtoolkit .mt-scale{ border-top:3px solid var(--z-1k); }
+
   .var-def-table td:first-child{ font-family:var(--mono); color:var(--ink); white-space:nowrap; }
   .var-def-table td:last-child{ color:var(--ink-dim); font-size:13px; }
   .tools-table td:first-child{ font-family:var(--mono); color:var(--ink); white-space:nowrap; font-weight:700; }
@@ -1215,7 +1349,7 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
       <p style="margin-top:10px; max-width:680px;">The rule: compute a number only if the answer could change a decision. If you already know you need a cache regardless of the exact QPS, don't spend two minutes deriving it to three significant figures.</p>
 
       <h3 class="subhead">The 4-line formula — try it live</h3>
-      <div class="card calc-card">
+      <div class="card calc-card mt-calc">
         <p class="tight" style="font-size:13px; margin-bottom:16px;">Same four lines as before, doing the arithmetic for you. Change any input — everything downstream recalculates, including which row you land in on the scale table below.</p>
 
         <div class="calc-presets">
@@ -1225,9 +1359,9 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <button type="button" class="preset-btn" data-preset="hyperscale">Hyperscale</button>
         </div>
 
-        <div class="calc-grid">
-          <div class="calc-step">
-            <div class="calc-step-label">1 · Traffic</div>
+        <div class="calc-grid mt-flow">
+          <div class="calc-step mt-s1">
+            <div class="calc-step-label"><span class="mt-num">1</span>Traffic</div>
             <label>Daily Active Users
               <input type="number" id="calc-dau" value="1000000" min="0" step="10000">
             </label>
@@ -1236,9 +1370,9 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
             </label>
             <div class="calc-output" id="calc-out-daily">= 10,000,000 requests/day</div>
           </div>
-          <div class="calc-arrow">→</div>
-          <div class="calc-step">
-            <div class="calc-step-label">2 · QPS</div>
+          <div class="calc-arrow mt-a2">→</div>
+          <div class="calc-step mt-s2">
+            <div class="calc-step-label"><span class="mt-num">2</span>QPS</div>
             <div class="calc-readout">Avg QPS: <span id="calc-out-avgqps">116</span></div>
             <label>Peak multiplier
               <input type="number" id="calc-peakmult" value="3" min="0" max="10" step="0.5">
@@ -1248,9 +1382,9 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
             </label>
             <div class="calc-output" id="calc-out-peakqps">Peak ≈ 347 (R: 344 · W: 3)</div>
           </div>
-          <div class="calc-arrow">→</div>
-          <div class="calc-step">
-            <div class="calc-step-label">3 · Storage</div>
+          <div class="calc-arrow mt-a3">→</div>
+          <div class="calc-step mt-s3">
+            <div class="calc-step-label"><span class="mt-num">3</span>Storage</div>
             <label>Avg record size (bytes)
               <input type="number" id="calc-recsize" value="200" min="0" step="10">
             </label>
@@ -1262,9 +1396,9 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
             </label>
             <div class="calc-output" id="calc-out-storage">= 730 GB raw · 2.19 TB replicated</div>
           </div>
-          <div class="calc-arrow">→</div>
-          <div class="calc-step">
-            <div class="calc-step-label">4 · Bandwidth</div>
+          <div class="calc-arrow mt-a4">→</div>
+          <div class="calc-step mt-s4">
+            <div class="calc-step-label"><span class="mt-num">4</span>Bandwidth</div>
             <label>Avg payload size (bytes)
               <input type="number" id="calc-payload" value="500" min="0" step="10">
             </label>
@@ -1276,15 +1410,15 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <summary>Advanced — servers &amp; concurrency</summary>
           <div class="calc-advanced-body">
             <div class="calc-grid-adv">
-              <div class="calc-step">
-                <div class="calc-step-label">5 · Servers Needed</div>
+              <div class="calc-step mt-s5">
+                <div class="calc-step-label"><span class="mt-num">5</span>Servers Needed</div>
                 <label>Requests/sec per server
                   <input type="number" id="calc-capacity" value="1000" min="0" step="50">
                 </label>
                 <div class="calc-output" id="calc-out-servers">≈ 1 server(s) at peak</div>
               </div>
-              <div class="calc-step">
-                <div class="calc-step-label">6 · Concurrency (Little's Law)</div>
+              <div class="calc-step mt-s6">
+                <div class="calc-step-label"><span class="mt-num">6</span>Concurrency (Little's Law)</div>
                 <label>Avg request latency (ms)
                   <input type="number" id="calc-latency" value="50" min="0" step="5">
                 </label>
@@ -1294,82 +1428,89 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           </div>
         </details>
 
+        <div class="mt-meter">
+          <div class="mt-meter-head"><span class="mt-meter-title">Where your peak load lands</span><span class="mt-meter-val" id="mt-meter-val">347 peak QPS</span></div>
+          <div class="mt-meter-track">
+            <span class="z z-lt1k"></span><span class="z z-1k"></span><span class="z z-10k"></span><span class="z z-100k"></span>
+            <span class="mt-meter-pin" id="mt-meter-pin" style="left:42.3%"></span>
+          </div>
+          <div class="mt-meter-zones"><span class="z-lt1k">&lt; 1K</span><span class="z-1k">1K–10K</span><span class="z-10k">10K–100K</span><span class="z-100k">100K+</span></div>
+          <div class="mt-meter-axis"><span>1</span><span>10</span><span>100</span><span>1K</span><span>10K</span><span>100K</span><span>1M</span></div>
+        </div>
+
         <div class="calc-verdict" id="calc-verdict">At this peak load, you're in the <strong>1K–10K QPS</strong> bucket → add caching + read replicas.</div>
 
         <h3 class="subhead" style="margin-top:24px;">What each variable means</h3>
+        <div class="mt-legend"><span class="mt-v1">1 Traffic</span><span class="mt-v2">2 QPS</span><span class="mt-v3">3 Storage</span><span class="mt-v4">4 Bandwidth</span><span class="mt-v5">5–6 Advanced</span><em>colour = the calculator step each variable feeds</em></div>
         <div class="table-wrap">
 <table class="ref-table var-def-table">
           <tr class="rt-head"><th>Variable</th><th>How to estimate it</th></tr>
-          <tr><td>Daily Active Users</td><td>Distinct users active in a day — given in the prompt, or inferred from the company's rough scale.</td></tr>
-          <tr><td>Actions / user / day</td><td>Sum of every core-flow call one user triggers per day (a redirect, a post, a search) — count it flow by flow, not as one guess.</td></tr>
-          <tr><td>Peak multiplier</td><td>How far the busiest hour exceeds the daily average. 2–3× is a safe default; go higher for anything with a sharp event-driven spike.</td></tr>
-          <tr><td>Read : write ratio</td><td>Reads per 1 write, taken straight from your NFRs — a feed or redirect service is often 10:1 to 1000:1.</td></tr>
-          <tr><td>Avg record size</td><td>Bytes per write, summed across the entity's fields from Step 2. A few short strings is usually 100–500 bytes.</td></tr>
-          <tr><td>Retention</td><td>How long a record must be kept before it can be deleted or archived — state it as an assumption if the interviewer doesn't give one.</td></tr>
-          <tr><td>Replication factor</td><td>Copies of each byte kept for durability. 3 is the standard default — it survives one node loss while a quorum of 2 remains.</td></tr>
-          <tr><td>Avg payload size</td><td>Bytes on the wire per request/response — close to record size for simple CRUD, larger for anything returning media or batches.</td></tr>
-          <tr><td>Requests/sec per server</td><td>Load one stateless instance can handle. A reasonable HTTP service handles roughly 500–2,000 req/s — state it as an assumption, not a fact.</td></tr>
-          <tr><td>Avg request latency</td><td>End-to-end time to serve one request. Pull it from your latency NFR, or the latency reference table below.</td></tr>
+          <tr class="mt-v1"><td>Daily Active Users</td><td>Distinct users active in a day — given in the prompt, or inferred from the company's rough scale.</td></tr>
+          <tr class="mt-v1"><td>Actions / user / day</td><td>Sum of every core-flow call one user triggers per day (a redirect, a post, a search) — count it flow by flow, not as one guess.</td></tr>
+          <tr class="mt-v2"><td>Peak multiplier</td><td>How far the busiest hour exceeds the daily average. 2–3× is a safe default; go higher for anything with a sharp event-driven spike.</td></tr>
+          <tr class="mt-v2"><td>Read : write ratio</td><td>Reads per 1 write, taken straight from your NFRs — a feed or redirect service is often 10:1 to 1000:1.</td></tr>
+          <tr class="mt-v3"><td>Avg record size</td><td>Bytes per write, summed across the entity's fields from Step 2. A few short strings is usually 100–500 bytes.</td></tr>
+          <tr class="mt-v3"><td>Retention</td><td>How long a record must be kept before it can be deleted or archived — state it as an assumption if the interviewer doesn't give one.</td></tr>
+          <tr class="mt-v3"><td>Replication factor</td><td>Copies of each byte kept for durability. 3 is the standard default — it survives one node loss while a quorum of 2 remains.</td></tr>
+          <tr class="mt-v4"><td>Avg payload size</td><td>Bytes on the wire per request/response — close to record size for simple CRUD, larger for anything returning media or batches.</td></tr>
+          <tr class="mt-v5"><td>Requests/sec per server</td><td>Load one stateless instance can handle. A reasonable HTTP service handles roughly 500–2,000 req/s — state it as an assumption, not a fact.</td></tr>
+          <tr class="mt-v5"><td>Avg request latency</td><td>End-to-end time to serve one request. Pull it from your latency NFR, or the latency reference table below.</td></tr>
         </table>
 </div>
       </div>
 
-      <div class="grid-3" style="margin-top:26px;">
-        <div class="card">
-          <h3 class="subhead" style="margin-top:0;">Approximation cheatsheet</h3>
-          <div class="table-wrap">
-<table class="ref-table">
-            <tr><td>1 day</td><td class="mono">≈ 10⁵ seconds (86,400)</td></tr>
-            <tr><td>1 month</td><td class="mono">≈ 2.5 × 10⁶ seconds</td></tr>
-            <tr><td>Thousand / Million / Billion</td><td class="mono">10³ / 10⁶ / 10⁹</td></tr>
-            <tr><td>1 KB / MB / GB / TB</td><td class="mono">10³ / 10⁶ / 10⁹ / 10¹² bytes</td></tr>
-            <tr><td>Typical small object</td><td class="mono">~100–1000 bytes</td></tr>
-            <tr><td>UUID</td><td class="mono">~16 bytes</td></tr>
-          </table>
-</div>
+      <div class="grid-3 mt-refs" style="margin-top:26px;">
+        <div class="card mt-ref mt-ref-cheat">
+          <h3 class="subhead mt-ref-h" style="margin-top:0;"><span class="mt-glyph">≈</span>Approximation cheatsheet</h3>
+          <div class="mt-facts">
+            <div class="mt-fact"><span class="k">1 day</span><span class="v">≈ 10⁵ seconds (86,400)</span></div>
+            <div class="mt-fact"><span class="k">1 month</span><span class="v">≈ 2.5 × 10⁶ seconds</span></div>
+            <div class="mt-fact"><span class="k">Thousand / Million / Billion</span><span class="v">10³ / 10⁶ / 10⁹</span></div>
+            <div class="mt-fact"><span class="k">1 KB / MB / GB / TB</span><span class="v">10³ / 10⁶ / 10⁹ / 10¹² bytes</span></div>
+            <div class="mt-fact"><span class="k">Typical small object</span><span class="v">~100–1000 bytes</span></div>
+            <div class="mt-fact"><span class="k">UUID</span><span class="v">~16 bytes</span></div>
+          </div>
         </div>
-        <div class="card">
-          <h3 class="subhead" style="margin-top:0;">Latency reference (order of magnitude)</h3>
-          <div class="table-wrap">
-<table class="ref-table">
-            <tr><td>Memory read</td><td class="mono">~100 ns</td></tr>
-            <tr><td>SSD random read</td><td class="mono">~100–200 μs</td></tr>
-            <tr><td>Same-datacenter round trip</td><td class="mono">~0.5 ms</td></tr>
-            <tr><td>HDD disk seek</td><td class="mono">~10 ms</td></tr>
-            <tr><td>Cross-region round trip</td><td class="mono">~50–150 ms</td></tr>
-          </table>
-</div>
+        <div class="card mt-ref mt-ref-lat">
+          <h3 class="subhead mt-ref-h" style="margin-top:0;"><span class="mt-glyph">⏱</span>Latency reference (order of magnitude)</h3>
+          <div class="mt-bars">
+            <div class="mt-bar-row" style="--c:#7CE0A8"><span class="n">Memory read</span><span class="v">~100 ns</span><span class="b"><i style="--w:5%"></i></span></div>
+            <div class="mt-bar-row" style="--c:#6FE0F0"><span class="n">SSD random read</span><span class="v">~100–200 μs</span><span class="b"><i style="--w:53%"></i></span></div>
+            <div class="mt-bar-row" style="--c:#6FE0F0"><span class="n">Same-datacenter round trip</span><span class="v">~0.5 ms</span><span class="b"><i style="--w:62%"></i></span></div>
+            <div class="mt-bar-row" style="--c:#FFD166"><span class="n">HDD disk seek</span><span class="v">~10 ms</span><span class="b"><i style="--w:82%"></i></span></div>
+            <div class="mt-bar-row" style="--c:#FF6B5E"><span class="n">Cross-region round trip</span><span class="v">~50–150 ms</span><span class="b"><i style="--w:97%"></i></span></div>
+          </div>
+          <p class="mt-ref-note">Bars are logarithmic — each step right is ×10 slower. Memory to cross-region is about a million times.</p>
         </div>
-        <div class="card">
-          <h3 class="subhead" style="margin-top:0;">Availability — the nines</h3>
-          <div class="table-wrap">
-<table class="ref-table">
-            <tr class="rt-head"><th>Uptime</th><th>Downtime / yr</th></tr>
-            <tr><td class="mono">99% (two 9s)</td><td>~3.65 days</td></tr>
-            <tr><td class="mono">99.9% (three 9s)</td><td>~8.76 hours</td></tr>
-            <tr><td class="mono">99.99% (four 9s)</td><td>~52.6 min</td></tr>
-            <tr><td class="mono">99.999% (five 9s)</td><td>~5.3 min</td></tr>
-          </table>
-</div>
+        <div class="card mt-ref mt-ref-avail">
+          <h3 class="subhead mt-ref-h" style="margin-top:0;"><span class="mt-glyph">◔</span>Availability — the nines</h3>
+          <div class="mt-bars-head"><span>Uptime</span><span>Downtime / yr</span></div>
+          <div class="mt-bars">
+            <div class="mt-bar-row" style="--c:#FF6B5E"><span class="n mono">99% (two 9s)</span><span class="v">~3.65 days</span><span class="b"><i style="--w:100%"></i></span></div>
+            <div class="mt-bar-row" style="--c:#FFD166"><span class="n mono">99.9% (three 9s)</span><span class="v">~8.76 hours</span><span class="b"><i style="--w:76%"></i></span></div>
+            <div class="mt-bar-row" style="--c:#6FE0F0"><span class="n mono">99.99% (four 9s)</span><span class="v">~52.6 min</span><span class="b"><i style="--w:51%"></i></span></div>
+            <div class="mt-bar-row" style="--c:#7CE0A8"><span class="n mono">99.999% (five 9s)</span><span class="v">~5.3 min</span><span class="b"><i style="--w:27%"></i></span></div>
+          </div>
+          <p class="mt-ref-note">Each extra nine cuts the downtime budget by 10× — bars are logarithmic.</p>
         </div>
       </div>
 
-      <div class="card" style="margin-top:18px;">
+      <div class="card mt-scale" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">When math actually changes the design</h3>
         <p class="tight" style="font-size:12.5px; margin-bottom:10px;">The row below lights up to match the peak QPS from the calculator above. The middle column is the one worth reading — <strong>a number only changes your design by telling you which bounded resource saturates next.</strong></p>
         <div class="table-wrap">
 <table class="ref-table" id="scale-table">
           <tr class="rt-head"><th style="width:17%">Scale</th><th style="width:38%">What saturates first</th><th>What that forces, and what it costs</th></tr>
-          <tr data-bucket="lt1k"><td class="mono">&lt; 1K QPS</td>
+          <tr data-bucket="lt1k"><td class="mono"><span class="mt-rung">&lt; 1K QPS</span></td>
               <td>Nothing architectural. If it's slow here it's an N+1 query, a missing index, or a synchronous third-party call.</td>
               <td>One app tier, one primary database. <strong>Reaching for a cache or a queue at this rung creates problems you then have to solve.</strong></td></tr>
-          <tr data-bucket="1k-10k"><td class="mono">1K – 10K QPS</td>
+          <tr data-bucket="1k-10k"><td class="mono"><span class="mt-rung">1K – 10K QPS</span></td>
               <td>DB connections — <span class="mono">instances × pool size</span> exceeds <span class="mono">max_connections</span> long before CPU does. Then read IOPS start stealing from writes.</td>
               <td>Connection pooler, read replicas, cache-aside for hot keys. Costs you <strong>replication lag</strong> — read-after-write breaks visibly.</td></tr>
-          <tr data-bucket="10k-100k"><td class="mono">10K – 100K QPS</td>
+          <tr data-bucket="10k-100k"><td class="mono"><span class="mt-rung">10K – 100K QPS</span></td>
               <td>Synchronous write throughput on one primary. A single Redis node. Cache stampedes on viral keys.</td>
               <td>Async writes behind a queue, sharded cache, partitioned tables. Costs you <strong>durability at response time</strong> — you now owe the client a way to check the outcome.</td></tr>
-          <tr data-bucket="100k-plus"><td class="mono">100K+ QPS</td>
+          <tr data-bucket="100k-plus"><td class="mono"><span class="mt-rung">100K+ QPS</span></td>
               <td>Random write I/O on B-trees. Cross-region latency. Coordination between shards rather than any single node.</td>
               <td>LSM engines, regional sharding, in-process L1 cache. Costs you <strong>global strong consistency</strong> — this is where CAP stops being theoretical.</td></tr>
         </table>
@@ -14537,6 +14678,16 @@ evasive; "it depends on X, and I'd find out by Y" is judgement.</div>
     document.querySelectorAll('#scale-table tr[data-bucket]').forEach(row => {
       row.classList.toggle('row-active', row.dataset.bucket === bucket);
     });
+
+    // colour the verdict by zone, and slide the meter pin (log scale: 1 → 1,000,000 QPS)
+    document.getElementById('calc-verdict').dataset.bucket = bucket;
+    const pin = document.getElementById('mt-meter-pin');
+    if (pin){
+      const pct = Math.min(100, Math.max(0, Math.log10(Math.max(peakQps, 1)) / 6 * 100));
+      pin.style.left = pct + '%';
+      const mv = document.getElementById('mt-meter-val');
+      if (mv){ mv.textContent = fmtInt(peakQps) + ' peak QPS'; mv.dataset.bucket = bucket; }
+    }
   }
 
   function clearPresetActive(){
