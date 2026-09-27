@@ -420,6 +420,77 @@
   .ill-numline .mk.up{ top:2px; }  .ill-numline .mk.dn{ top:42px; }
   .ill-numline .mk.hit{ color:var(--optional); font-weight:700; }
   .ill-numline .edge{ position:absolute; top:76px; left:var(--x); transform:translateX(-50%); font-family:var(--mono); font-size:10.5px; color:var(--accent); white-space:nowrap; }
+  /* seen-count dots, proportional comparison bars, a hot key splitting into shards */
+  .cp-dots{ display:inline-flex; gap:3px; margin-right:6px; vertical-align:-1px; }
+  .cp-dots > i{ width:9px; height:9px; border-radius:50%; border:1px solid var(--ink-faint); }
+  .cp-dots > i.on{ background:var(--accent); border-color:var(--accent); }
+  .cp-dots.hot > i.on{ background:var(--marker); border-color:var(--marker); }
+  .cp-scale{ display:grid; grid-template-columns:max-content minmax(4rem,1fr) max-content; gap:6px 10px; align-items:center; }
+  .cp-scale-row{ display:contents; }
+  .cp-scale-row .k{ font-size:13px; color:var(--ink-dim); }
+  .cp-scale-row .v{ font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--ink); }
+  .cp-scale-row .bar{ height:10px; border-radius:5px; background:var(--hairline); overflow:hidden; }
+  .cp-scale-row .bar > i{ display:block; height:100%; width:var(--w); min-width:3px; border-radius:5px; }
+  .cp-scale-row .bar > i.bad{ background:var(--redline); } .cp-scale-row .bar > i.good{ background:var(--optional); }
+  .cp-scale-row .bar > i.warn{ background:var(--marker); }
+  .cp-hotbar{ display:grid; grid-template-columns:max-content 1fr max-content; gap:10px; align-items:center; font-size:12.5px; color:var(--ink-faint); }
+  .cp-hotbar > i{ height:14px; border-radius:4px; background:linear-gradient(90deg, var(--marker), var(--redline)); box-shadow:0 0 12px rgba(255,107,94,.35); }
+  .cp-hotbar > b{ font-family:var(--mono); color:var(--redline); }
+  .cp-shards{ display:grid; grid-template-columns:repeat(8, minmax(0,1fr)); gap:5px; }
+  .cp-shard{ display:flex; flex-direction:column; align-items:center; gap:3px; }
+  .cp-shard code{ font-size:10.5px; }
+  .cp-shard > i{ width:100%; height:14px; border-radius:3px; background:var(--optional); opacity:.85; }
+  .cp-shard small{ font-family:var(--mono); font-size:9.5px; color:var(--ink-faint); white-space:nowrap; }
+  @container (max-width:460px){
+    .cp-scale{ grid-template-columns:minmax(0,1fr); gap:3px; }
+    .cp-scale-row .v{ margin-bottom:6px; }
+    .cp-shards{ grid-template-columns:repeat(4, minmax(0,1fr)); }
+    .cp-hotbar{ grid-template-columns:1fr max-content; } .cp-hotbar > span{ grid-column:1 / -1; }
+  }
+  /* ranked list, capacity-vs-limit bar, move→cost trade cards */
+  .sl-rank{ display:flex; flex-direction:column; }
+  .sl-item{ display:grid; grid-template-columns:2.4rem minmax(0,1fr); gap:10px; padding:10px 0; border-bottom:1px solid var(--hairline-soft); }
+  .sl-item:last-child{ border-bottom:0; }
+  .sl-item .ill-h{ margin-bottom:3px; }
+  .sl-no{ display:grid; place-items:center; height:28px; border-radius:7px; font-family:var(--mono); font-size:12px; font-weight:800;
+    color:var(--ink-dim); background:rgba(159,193,224,.1); border:1px solid var(--hairline); }
+  .sl-item.top{ padding:12px 12px 14px; margin-bottom:4px; border:1px solid rgba(255,107,94,.35); border-radius:8px; background:rgba(255,107,94,.05); }
+  .sl-item.top .sl-no{ color:var(--bg-deep); background:var(--redline); border-color:var(--redline); }
+  .ill .sl-item.top > div > * + *{ margin-top:8px; }
+  .sl-cap{ display:flex; flex-direction:column; gap:4px; }
+  .sl-cap .k{ font-family:var(--mono); font-size:12px; color:var(--ink); }
+  .sl-cap .bar{ position:relative; height:14px; border-radius:4px; background:var(--hairline); }
+  .sl-cap .bar > i{ display:block; height:100%; width:var(--w); min-width:3px; border-radius:4px; }
+  .sl-cap .bar > i.over{ background:linear-gradient(90deg, var(--optional) 0 10%, var(--redline) 10% 100%); }
+  .sl-cap .bar > i.ok{ background:var(--optional); }
+  .sl-cap .lim{ position:absolute; top:-4px; bottom:-4px; left:var(--x); width:2px; background:var(--ink); }
+  .sl-cap .limlab{ padding-left:var(--x); font-family:var(--mono); font-size:10.5px; font-weight:600; color:var(--ink-dim); }
+  .ill .sl-formula{ font-family:var(--mono); font-size:15px; font-weight:700; color:var(--accent); }
+  .sl-trades{ display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+  @container (min-width:560px){ .sl-trades{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  @container (min-width:1000px){ .sl-trades{ grid-template-columns:repeat(4, minmax(0,1fr)); } }
+  .sl-trade{ padding:10px 12px; border:1px solid var(--hairline); border-top:3px solid var(--marker); border-radius:8px; background:rgba(255,255,255,.02); }
+  .sl-move{ display:inline-block; margin-bottom:6px; padding:1px 9px; border-radius:999px; font-family:var(--mono); font-size:11.5px; font-weight:700;
+    color:var(--bg-deep); background:var(--marker); }
+  .ill .sl-trade p{ font-size:13px; }
+  /* status-code chips coloured by what the client should DO (matches the flowchart legend) */
+  .sc-chip{ display:inline-block; padding:1px 8px; border-radius:6px; font-family:var(--mono); font-size:12px; font-weight:700; white-space:nowrap; border:1px solid; }
+  .sc-chip.c4  { color:var(--redline);  border-color:rgba(255,107,94,.5);  background:rgba(255,107,94,.1); }
+  .sc-chip.c429{ color:var(--marker);   border-color:rgba(255,209,102,.5); background:rgba(255,209,102,.1); }
+  .sc-chip.c5  { color:#C08CE0;         border-color:rgba(192,140,224,.5); background:rgba(192,140,224,.1); }
+  .sc-chip.c2  { color:var(--optional); border-color:rgba(124,224,168,.5); background:rgba(124,224,168,.1); }
+  .sc-steps{ display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+  @container (min-width:640px){ .sc-steps{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .sc-step{ padding:10px 12px; border:1px solid var(--hairline); border-radius:8px; background:rgba(255,255,255,.02); }
+  .sc-step .ill-h{ margin-bottom:6px; }
+  .sc-out{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; padding:4px 0; }
+  .sc-out .cond{ font-size:13px; color:var(--ink-dim); }
+  .sc-out .cond::after{ content:" →"; color:var(--ink-faint); }
+  .sc-out .note{ flex-basis:100%; font-size:12.5px; color:var(--ink-faint); }
+  .sc-list{ display:flex; flex-direction:column; gap:7px; }
+  .sc-list > div{ display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 9px; font-size:13px; color:var(--ink-dim); }
+  .ill-card.sc-retry{ border-top-color:#C08CE0; }
+  @container (max-width:460px){ .sc-chip{ white-space:normal; } }
   /* narrow panels: stack the structure, never shrink the type */
   @container (max-width:460px){
     .ill-body{ padding:12px 12px 14px; }
@@ -521,6 +592,170 @@
   .calc-advanced-body{ padding:4px 16px 18px; }
   .calc-grid-adv{ display:flex; gap:14px; flex-wrap:wrap; }
 
+
+
+  /* ================= Caching Playbook ================= */
+  #cachingplaybook .card{ container-type:inline-size; }
+  #cachingplaybook .strategy-grid.cp-g3, #cachingplaybook .strategy-grid.cp-g4,
+  #cachingplaybook .tier-grid{ grid-template-columns:minmax(0,1fr); }
+  @container (min-width:520px){
+    #cachingplaybook .strategy-grid.cp-g3, #cachingplaybook .strategy-grid.cp-g4,
+    #cachingplaybook .tier-grid{ grid-template-columns:repeat(2, minmax(0,1fr)); }
+  }
+  @container (min-width:880px){ #cachingplaybook .strategy-grid.cp-g3{ grid-template-columns:repeat(3, minmax(0,1fr)); } }
+  @container (min-width:1000px){
+    #cachingplaybook .strategy-grid.cp-g4, #cachingplaybook .tier-grid{ grid-template-columns:repeat(4, minmax(0,1fr)); }
+  }
+  #cachingplaybook .strategy-card{ --cpc:var(--accent); border-top:3px solid var(--cpc);
+    background:linear-gradient(180deg, rgba(255,255,255,.025), transparent 60%), var(--bg-deep); }
+  #cachingplaybook .strategy-card.cp-violet{ --cpc:#C08CE0; } #cachingplaybook .strategy-card.cp-violet .strategy-title{ color:#C08CE0; }
+  #cachingplaybook .strategy-card.amber{ --cpc:var(--marker); }
+  #cachingplaybook .strategy-card.warn{ --cpc:var(--redline); }
+  #cachingplaybook .strategy-title{ display:flex; align-items:flex-start; gap:9px; }
+  #cachingplaybook .cp-g, #cachingplaybook .cp-go .cp-g{ flex:none; display:inline-grid; place-items:center; min-width:26px; height:22px; padding:0 5px;
+    border-radius:6px; background:var(--cpc, var(--accent)); color:var(--bg-deep); font-family:var(--mono); font-size:11px; font-weight:800; }
+  #cachingplaybook .cp-detect{ border-color:var(--marker); background:rgba(255,209,102,.07); }
+  #cachingplaybook .cp-detect .label{ color:var(--marker); }
+  #cachingplaybook .cp-stampede{ display:grid; grid-template-columns:repeat(auto-fit, minmax(min(15rem,100%),1fr)); gap:12px; margin:10px 0 14px; }
+  #cachingplaybook .cp-st{ padding:12px 14px; border:1px solid var(--hairline); border-top:3px solid var(--redline); border-radius:8px; background:var(--bg-deep); }
+  #cachingplaybook .cp-st.good{ border-top-color:var(--optional); }
+  #cachingplaybook .cp-grid200{ display:grid; grid-template-columns:repeat(20, minmax(0,1fr)); gap:3px; margin:10px 0 8px; max-width:22rem; }
+  #cachingplaybook .cp-grid200 > i{ aspect-ratio:1; border-radius:50%; }
+  #cachingplaybook .cp-grid200 > i.r{ background:var(--redline); }
+  #cachingplaybook .cp-grid200 > i.g{ background:var(--optional); box-shadow:0 0 8px rgba(124,224,168,.8); }
+  #cachingplaybook .cp-grid200 > i.w{ border:1px solid rgba(148,184,212,.45); }
+  #cachingplaybook .cp-st-foot{ margin:0; font-size:13px; color:var(--ink-dim); }
+  #cachingplaybook .cp-st.bad .cp-st-foot b{ font-family:var(--mono); color:var(--redline); }
+  #cachingplaybook .cp-st.good .cp-st-foot b{ font-family:var(--mono); color:var(--optional); }
+  #cachingplaybook .cp-go{ display:flex; gap:10px; align-items:flex-start; margin:12px 0 0; padding:10px 12px; font-size:13.5px;
+    border:1px solid rgba(111,224,240,.3); border-radius:8px; background:rgba(111,224,240,.06); }
+  #cachingplaybook .cp-go > span:last-child{ min-width:0; overflow-wrap:anywhere; }
+  #cachingplaybook .tier-grid::before{ content:""; grid-column:1 / -1; height:4px; border-radius:2px;
+    background:linear-gradient(90deg, rgba(159,193,224,.55), var(--accent), var(--marker), var(--redline)); }
+  #cachingplaybook .tier-card:has(.t1){ border-top:3px solid rgba(159,193,224,.55); }
+  #cachingplaybook .tier-card:has(.t2){ border-top:3px solid var(--accent); }
+  #cachingplaybook .tier-card:has(.t3){ border-top:3px solid var(--marker); }
+  #cachingplaybook .tier-card:has(.t4){ border-top:3px solid var(--redline); }
+  #cachingplaybook .grid-2 > .tier-card:first-child{ border-top:3px solid var(--accent); }
+  #cachingplaybook .grid-2 > .tier-card:last-child{ border-top:3px solid var(--marker); }
+
+
+  /* ================= Scale Ladder ================= */
+  #scaleladder .subsection-box{ container-type:inline-size; }
+  #scaleladder .sl-ladder{ display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+  #scaleladder .sl-rung{ --rc:#7CE0A8; --rt:rgba(124,224,168,.10);
+    display:grid; grid-template-columns:9.5rem minmax(0,1fr); gap:14px; padding:12px 14px 12px 16px;
+    border:1px solid var(--hairline); border-left:4px solid var(--rc); border-radius:8px;
+    background:linear-gradient(90deg, var(--rt), transparent 45%), var(--bg-deep); }
+  #scaleladder .sl-rung.r2{ --rc:#6FE0F0; --rt:rgba(111,224,240,.10); }
+  #scaleladder .sl-rung.r3{ --rc:#FFD166; --rt:rgba(255,209,102,.10); }
+  #scaleladder .sl-rung.r4{ --rc:#FF6B5E; --rt:rgba(255,107,94,.10); }
+  #scaleladder .sl-rung.r5{ --rc:#C08CE0; --rt:rgba(192,140,224,.12); }
+  #scaleladder .sl-rps{ display:block; font-family:var(--mono); font-size:16px; font-weight:800; color:var(--rc); }
+  #scaleladder .sl-sub{ display:block; margin-top:2px; font-size:12px; color:var(--ink-faint); }
+  #scaleladder .sl-cols{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; }
+  #scaleladder .sl-cols b{ display:block; font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); }
+  #scaleladder .sl-cols p{ margin:4px 0 0; font-size:13px; line-height:1.55; color:var(--ink-dim); }
+  #scaleladder .sl-cols .cost{ padding:6px 9px; margin:-6px -4px; border-radius:6px; background:rgba(255,255,255,.03); }
+  #scaleladder .sl-cols .cost b{ color:var(--rc); }
+  @container (max-width:760px){
+    #scaleladder .sl-rung{ grid-template-columns:minmax(0,1fr); gap:8px; }
+    #scaleladder .sl-cols{ grid-template-columns:minmax(0,1fr); gap:10px; }
+    #scaleladder .sl-cols .cost{ margin:0; }
+  }
+  /* Scale Ladder — signals, climbing loop, cheapest-first order, read/write lanes, edge cases */
+  #scaleladder .sl-moves{ list-style:none; margin:4px 0 0; padding:0; }
+  #scaleladder .sl-moves li{ position:relative; padding-left:14px; margin:0 0 5px; font-size:13px; line-height:1.55; color:var(--ink-dim); }
+  #scaleladder .sl-moves li::before{ content:""; position:absolute; left:0; top:.6em; width:6px; height:6px; border-radius:50%; background:var(--rc); }
+  #scaleladder .sl-signal{ grid-column:1 / -1; display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px;
+    padding-top:9px; border-top:1px dashed var(--hairline); font-size:12.5px; color:var(--ink-dim); }
+  #scaleladder .sl-signal b{ font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--rc); }
+  #scaleladder .sl-climb{ margin:10px 0 14px; padding:14px 16px; border:1px solid var(--hairline); border-top:3px solid var(--accent); border-radius:10px; background:var(--bg-deep); }
+  #scaleladder .sl-climb-h, #scaleladder .sl-lanes-h{ font-family:var(--mono); font-size:11.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--ink); }
+  #scaleladder .sl-climb-h span{ font-family:var(--sans); font-weight:400; letter-spacing:0; text-transform:none; color:var(--ink-faint); font-size:13px; }
+  #scaleladder .sl-loop{ list-style:none; margin:12px 0 0; padding:0; counter-reset:loop; display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:18px; }
+  #scaleladder .sl-loop li{ counter-increment:loop; position:relative; padding:10px 10px 10px 12px; border:1px solid rgba(111,224,240,.3); border-radius:8px; background:rgba(111,224,240,.05); }
+  #scaleladder .sl-loop li::before{ content:counter(loop); display:inline-grid; place-items:center; width:20px; height:20px; margin-right:6px; border-radius:50%;
+    font-family:var(--mono); font-size:11px; font-weight:800; color:var(--bg-deep); background:var(--accent); vertical-align:1px; }
+  #scaleladder .sl-loop li:not(:last-child)::after{ content:"→"; position:absolute; right:-15px; top:50%; transform:translateY(-50%); color:var(--accent); font-size:14px; }
+  #scaleladder .sl-loop b{ font-size:13px; color:var(--ink); }
+  #scaleladder .sl-loop span{ display:block; margin-top:4px; font-size:12px; line-height:1.45; color:var(--ink-dim); }
+  #scaleladder .sl-loop-back{ margin:10px 0 0; font-size:12.5px; color:var(--accent); }
+  #scaleladder .sl-order-h{ margin-top:14px; font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); }
+  #scaleladder .sl-order{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 0; margin-top:8px; }
+  #scaleladder .sl-order > span{ position:relative; padding:2px 9px; border-radius:6px; font-family:var(--mono); font-size:11.5px; font-weight:700; color:var(--bg-deep); background:var(--oc); }
+  #scaleladder .sl-order > span + span{ margin-left:22px; }
+  #scaleladder .sl-order > span + span::before{ content:"→"; position:absolute; left:-17px; color:var(--ink-faint); font-weight:400; }
+  #scaleladder .sl-order > span:nth-child(1), #scaleladder .sl-order > span:nth-child(2){ --oc:#7CE0A8; }
+  #scaleladder .sl-order > span:nth-child(3), #scaleladder .sl-order > span:nth-child(4){ --oc:#6FE0F0; }
+  #scaleladder .sl-order > span:nth-child(5), #scaleladder .sl-order > span:nth-child(6){ --oc:#FFD166; }
+  #scaleladder .sl-order > span:nth-child(7), #scaleladder .sl-order > span:nth-child(8){ --oc:#FF6B5E; }
+  #scaleladder .sl-order > span:nth-child(9){ --oc:#C08CE0; }
+  #scaleladder .sl-order-foot{ margin:10px 0 0; font-size:12.5px; color:var(--ink-dim); }
+  #scaleladder .sl-lanes{ margin-top:14px; padding:14px 16px; border:1px solid var(--hairline); border-radius:10px; background:var(--bg-deep); }
+  #scaleladder .sl-lanes-sub{ margin:6px 0 12px; font-size:12.5px; color:var(--ink-dim); }
+  #scaleladder .sl-lane-grid{ display:grid; grid-template-columns:7.5rem minmax(0,1fr) minmax(0,1fr); gap:6px 10px; align-items:stretch; }
+  #scaleladder .sl-lane-head{ font-family:var(--mono); font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding-bottom:2px; }
+  #scaleladder .sl-lane-head.rd{ color:var(--accent); } #scaleladder .sl-lane-head.wr{ color:var(--marker); }
+  #scaleladder .sl-lane-rung{ display:flex; align-items:center; font-family:var(--mono); font-size:13px; font-weight:800; color:var(--rc); }
+  #scaleladder .sl-lane-rung.r1{ --rc:#7CE0A8; } #scaleladder .sl-lane-rung.r2{ --rc:#6FE0F0; } #scaleladder .sl-lane-rung.r3{ --rc:#FFD166; }
+  #scaleladder .sl-lane-rung.r4{ --rc:#FF6B5E; } #scaleladder .sl-lane-rung.r5{ --rc:#C08CE0; }
+  #scaleladder .sl-lane{ padding:7px 10px; border-radius:6px; font-size:12.5px; line-height:1.5; color:var(--ink-dim); }
+  #scaleladder .sl-lane.rd{ background:rgba(111,224,240,.07); border-left:2px solid var(--accent); }
+  #scaleladder .sl-lane.wr{ background:rgba(255,209,102,.07); border-left:2px solid var(--marker); }
+  #scaleladder .sl-edges-box{ container-type:inline-size; }
+  #scaleladder .sl-edges{ display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+  @container (min-width:640px){ #scaleladder .sl-edges{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  #scaleladder .sl-edge{ padding:12px 14px; border:1px solid var(--hairline); border-top:3px solid var(--marker); border-radius:8px; background:var(--bg-deep); }
+  #scaleladder .sl-edge-h{ display:flex; align-items:center; gap:9px; font-size:14px; font-weight:600; color:var(--ink); }
+  #scaleladder .sl-eg{ flex:none; display:inline-grid; place-items:center; min-width:28px; height:24px; padding:0 5px; border-radius:6px;
+    font-family:var(--mono); font-size:11.5px; font-weight:800; color:var(--bg-deep); background:var(--marker); }
+  #scaleladder .sl-edge p{ margin:8px 0 0; font-size:13px; line-height:1.55; color:var(--ink-dim); }
+  #scaleladder .sl-edge p b{ display:block; margin-bottom:2px; font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+  #scaleladder .sl-edge p.why b{ color:var(--redline); } #scaleladder .sl-edge p.do b{ color:var(--optional); }
+  #scaleladder .sl-edge a{ color:var(--accent); }
+  @container (max-width:760px){
+    #scaleladder .sl-loop{ grid-template-columns:minmax(0,1fr); gap:14px; }
+    #scaleladder .sl-loop li:not(:last-child)::after{ content:"↓"; right:auto; left:18px; top:auto; bottom:-15px; transform:none; }
+    #scaleladder .sl-lane-grid{ grid-template-columns:minmax(0,1fr); }
+    #scaleladder .sl-lane-head{ display:none; }
+    #scaleladder .sl-lane-rung{ margin-top:8px; }
+    #scaleladder .sl-lane.rd::before{ content:"Read path · "; color:var(--accent); font-weight:700; }
+    #scaleladder .sl-lane.wr::before{ content:"Write path · "; color:var(--marker); font-weight:700; }
+  }
+  #scaleladder .sl-use{ container-type:inline-size; margin-top:18px; padding:14px 16px; border:1px solid var(--hairline); border-top:3px solid var(--accent);
+    border-radius:10px; background:linear-gradient(180deg, rgba(111,224,240,.05), transparent 50%), var(--panel); }
+  #scaleladder .sl-use-h{ font-size:14px; color:var(--ink); }
+  #scaleladder .sl-use-tag{ display:inline-block; margin-right:6px; padding:1px 9px; border-radius:999px; font-family:var(--mono); font-size:11px; font-weight:700;
+    color:var(--bg-deep); background:var(--accent); }
+  #scaleladder .sl-use-grid{ display:grid; grid-template-columns:minmax(0,1fr); gap:10px; margin:12px 0; }
+  @container (min-width:640px){ #scaleladder .sl-use-grid{ grid-template-columns:repeat(3, minmax(0,1fr)); } }
+  #scaleladder .sl-use-grid > div{ --uc:var(--accent); display:grid; grid-template-columns:2rem minmax(0,1fr); gap:0 10px; align-items:center;
+    padding:10px 12px; border:1px solid var(--hairline); border-radius:8px; background:var(--bg-deep); }
+  #scaleladder .sl-use-grid > .s{ --uc:var(--marker); } #scaleladder .sl-use-grid > .e{ --uc:var(--redline); }
+  #scaleladder .sl-use-grid b{ grid-row:span 2; display:grid; place-items:center; height:2rem; border-radius:7px; font-family:var(--mono); font-size:16px; font-weight:800;
+    color:var(--bg-deep); background:var(--uc); }
+  #scaleladder .sl-use-grid .n{ font-family:var(--mono); font-size:12px; font-weight:700; color:var(--uc); }
+  #scaleladder .sl-use-grid p{ margin:0; font-size:12.5px; color:var(--ink-dim); }
+  #scaleladder .sl-use-foot{ margin:0; font-size:13px; color:var(--ink-dim); }
+
+
+  /* ================= HTTP Status Codes ================= */
+  #statuscodes .subsection-box{ container-type:inline-size; }
+  #statuscodes .sc-pair{ display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:12px; color:var(--ink-faint); }
+  #statuscodes .sc-uses{ display:grid; grid-template-columns:minmax(0,1fr); gap:10px; margin-top:10px; }
+  @container (min-width:560px){ #statuscodes .sc-uses{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  @container (min-width:900px){ #statuscodes .sc-uses{ grid-template-columns:repeat(3, minmax(0,1fr)); } }
+  #statuscodes .sc-use{ padding:12px 14px; border:1px solid var(--hairline); border-radius:8px; background:var(--bg-deep); }
+  #statuscodes .sc-use:has(.c2){ border-top:3px solid var(--optional); } #statuscodes .sc-use:has(.c4){ border-top:3px solid var(--redline); }
+  #statuscodes .sc-use-h{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:13px; font-weight:600; color:var(--ink); }
+  #statuscodes .sc-use-h .sc-chip{ font-size:13px; }
+  #statuscodes .sc-use p{ margin:8px 0 0; font-size:13px; line-height:1.55; color:var(--ink-dim); }
+  #statuscodes .sc-problem{ margin-top:14px; padding:12px 14px; border:1px solid var(--hairline); border-left:3px solid var(--accent); border-radius:8px; background:var(--bg-deep); }
+  #statuscodes .sc-problem-h{ display:flex; align-items:center; gap:8px; margin-bottom:8px; font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); }
+  #statuscodes .sc-problem pre.ill-code{ margin:0; padding:10px 12px; border:1px solid var(--hairline); border-radius:6px; font-family:var(--mono); font-size:12.5px; line-height:1.65; color:var(--ink-dim); white-space:pre; overflow-x:auto; background:rgba(0,0,0,.2); }
+  #statuscodes .sc-problem p{ margin:10px 0 0; font-size:13px; color:var(--ink-dim); }
+  #statuscodes .sc-problem strong{ font-family:var(--mono); color:var(--accent); }
 
   /* ================= Math Toolkit — colour-coded, illustrated =================
      One colour per calculator step, carried through inputs, results and the variable
@@ -1528,29 +1763,29 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
         <h3 class="subhead" style="margin-top:0;">Caching free-text search</h3>
         <p>A simple key-value cache — like the URL shortener's short_code → long_url — has a small, well-defined key space and one stable answer per key. Free-text search breaks both assumptions: the space of possible queries is effectively unbounded, and the correct answer can depend on more than the query string alone.</p>
 
-        <div class="strategy-grid">
-          <div class="strategy-card">
-            <div class="strategy-title">Cache the query, not (user, query)</div>
+        <div class="strategy-grid cp-g3">
+          <div class="strategy-card cp-cyan">
+            <div class="strategy-title"><span class="cp-g">1×</span>Cache the query, not (user, query)</div>
             <p>Match text once, shared. Filter for permissions after every fetch, hit or miss. Scale-dependent — see the table below.</p>
           </div>
-          <div class="strategy-card">
-            <div class="strategy-title">Normalize before keying</div>
+          <div class="strategy-card cp-cyan">
+            <div class="strategy-title"><span class="cp-g">Aa</span>Normalize before keying</div>
             <p>Lowercase, trim, collapse whitespace, so near-identical strings share one entry instead of fragmenting.</p>
           </div>
-          <div class="strategy-card">
-            <div class="strategy-title">Admit by frequency, not by guessing</div>
+          <div class="strategy-card cp-cyan">
+            <div class="strategy-title"><span class="cp-g">×2</span>Admit by frequency, not by guessing</div>
             <p>Only cache a query once it's been seen twice in a short window (Count-Min Sketch). Governs negative results too.</p>
           </div>
-          <div class="strategy-card">
-            <div class="strategy-title">Cache negatives, briefly</div>
+          <div class="strategy-card cp-cyan">
+            <div class="strategy-title"><span class="cp-g">∅</span>Cache negatives, briefly</div>
             <p>A genuine zero-match is a shared negative — short TTL, gated by the same admission policy as everything else.</p>
           </div>
-          <div class="strategy-card">
-            <div class="strategy-title">Debounce on the client</div>
+          <div class="strategy-card cp-cyan">
+            <div class="strategy-title"><span class="cp-g">ms</span>Debounce on the client</div>
             <p>Wait for a pause in typing before sending anything — cuts backend load before it starts.</p>
           </div>
-          <div class="strategy-card">
-            <div class="strategy-title">Two cache tiers</div>
+          <div class="strategy-card cp-cyan">
+            <div class="strategy-title"><span class="cp-g">L1</span>Two cache tiers</div>
             <p>A small local (in-process) cache for the hottest queries per instance, backed by shared Redis for everything else.</p>
           </div>
         </div>
@@ -1560,22 +1795,45 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <p>Redis's raw throughput usually isn't the bottleneck — a sharded cluster handles millions of ops/sec. The real risk is quieter: a polluted cache doesn't go down, it just stops helping — hit rate collapses and nearly the full query volume gets forwarded to the index anyway, which is what actually falls over while the cache still looks "up." Judge a cache by its hit rate at your actual traffic mix, not by whether it's technically running.</p>
         </div>
 
-        <div class="example-panel" style="margin:14px 0;"><span class="label">Illustration — admission by frequency, not by guessing</span>"12lasdla" searched once                        → seen-count: 1 → NOT cached yet
-"12lasdla" searched again 40 seconds later      → seen-count: 2 → NOW admitted to cache
-"inv-2024-0099" searched once, never again      → seen-count: 1 forever → never cached
-"inv-2024-0088" searched by 6 different people this hour → seen-count: 6 → cached, stays hot
+        <div class="ill" style="margin:14px 0;">
+<div class="ill-title">Illustration — admission by frequency, not by guessing</div>
+<div class="ill-body">
+  <table class="ill-table">
+    <thead><tr><th>Query</th><th>What happened</th><th>Seen-count</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td class="rh"><code>"12lasdla"</code></td><td data-label="Happened">searched once</td><td data-label="Seen"><span class="cp-dots"><i class="on"></i><i></i></span> seen-count: 1</td><td data-label="Result"><span class="pill mute">→ NOT cached yet</span></td></tr>
+      <tr><td class="rh"><code>"12lasdla"</code></td><td data-label="Happened">searched again 40 seconds later</td><td data-label="Seen"><span class="cp-dots"><i class="on"></i><i class="on"></i></span> seen-count: 2</td><td data-label="Result"><span class="pill good">→ NOW admitted to cache</span></td></tr>
+      <tr><td class="rh"><code>"inv-2024-0099"</code></td><td data-label="Happened">searched once, never again</td><td data-label="Seen"><span class="cp-dots"><i class="on"></i><i></i></span> seen-count: 1 forever</td><td data-label="Result"><span class="pill mute">→ never cached</span></td></tr>
+      <tr><td class="rh"><code>"inv-2024-0088"</code></td><td data-label="Happened">searched by 6 different people this hour</td><td data-label="Seen"><span class="cp-dots hot"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span> seen-count: 6</td><td data-label="Result"><span class="pill warn">→ cached, stays hot</span></td></tr>
+    </tbody>
+  </table>
+  <p class="ill-note">The counter itself (a Count-Min Sketch) uses fixed memory no matter how many distinct strings it's seen — so remembering "have I seen this" never becomes its own unbounded cache.</p>
+  <p class="ill-aside">This idea has a name worth knowing: <strong>TinyLFU</strong> — frequency-based admission backed by a Count-Min Sketch. It's the admission policy inside Caffeine (Java) and Ristretto (Go), so in a Go service you'd usually reach for Ristretto rather than build it.</p>
+</div>
+</div>
 
-The counter itself (a Count-Min Sketch) uses fixed memory no matter how many distinct
-strings it's seen — so remembering "have I seen this" never becomes its own unbounded cache.</div>
-
-        <div class="example-panel" style="margin:14px 0;"><span class="label">Illustration — why the key design decides whether this scales</span>Per-(user, query) keys:
-  5M active users × ~20 distinct searches/user/week ≈ 100M+ keys/week
-  most never requested a second time — memory spent, nothing gained
-
-Shared, query-only keys:
-  same week, maybe ~500K genuinely distinct query strings actually searched
-  (many users searching the same or similar invoice numbers, customer names)
-  → roughly 200x smaller key space, and each entry now serves many users, not one</div>
+        <div class="ill" style="margin:14px 0;">
+<div class="ill-title">Illustration — why the key design decides whether this scales</div>
+<div class="ill-body">
+  <div class="ill-cols">
+    <div class="ill-card bad">
+      <div class="ill-h">Per-(user, query) keys:</div>
+      <div class="ill-stats"><div><b class="bad">≈ 100M+ keys/week</b><span>5M active users × ~20 distinct searches/user/week</span></div></div>
+      <p class="ill-then">most never requested a second time — memory spent, nothing gained</p>
+    </div>
+    <div class="ill-card good">
+      <div class="ill-h">Shared, query-only keys:</div>
+      <div class="ill-stats"><div><b class="good">~500K</b><span>same week, maybe ~500K genuinely distinct query strings actually searched</span></div></div>
+      <p class="ill-aside">(many users searching the same or similar invoice numbers, customer names)</p>
+    </div>
+  </div>
+  <div class="cp-scale">
+    <div class="cp-scale-row"><span class="k">per-user</span><span class="bar"><i class="bad" style="--w:100%"></i></span><span class="v">100M+</span></div>
+    <div class="cp-scale-row"><span class="k">shared</span><span class="bar"><i class="good" style="--w:0.5%"></i></span><span class="v">~500K</span></div>
+  </div>
+  <p class="ill-note">→ roughly 200x smaller key space, and each entry now serves many users, not one</p>
+</div>
+</div>
 
         <div class="subsection-box">
           <h3 class="subhead">Keeping negative caching honest</h3>
@@ -1593,42 +1851,117 @@ Shared, query-only keys:
         <div class="subsection-box">
           <h3 class="subhead">Typos that almost match something real</h3>
           <p class="tight" style="font-size:12.5px; margin-bottom:0;">Prefix matching catches "inv-2024-00" typed partway through — it doesn't catch "vin-2024-0088," a genuine typo of a real invoice number with the wrong letters up front. That needs a different technique, and it comes with a real risk worth naming.</p>
-        <div class="strategy-grid">
-          <div class="strategy-card">
-            <div class="strategy-title">Fuzzy matching is the standard fix</div>
+        <div class="strategy-grid cp-g4">
+          <div class="strategy-card cp-violet">
+            <div class="strategy-title"><span class="cp-g">≈</span>Fuzzy matching is the standard fix</div>
             <p>Elasticsearch/OpenSearch's fuzzy query tolerates a small edit distance — insertions, deletions, transpositions — so "vin-2024-0088" can still find "inv-2024-0088."</p>
           </div>
           <div class="strategy-card warn">
-            <div class="strategy-title">⚠ IDs aren't names — precision beats recall</div>
+            <div class="strategy-title"><span class="cp-g">!</span>IDs aren't names — precision beats recall</div>
             <p>Two real invoice numbers are often one digit apart. Silently fuzzy-matching an ID risks returning the <em>wrong</em> document, which is worse than returning nothing.</p>
           </div>
-          <div class="strategy-card">
-            <div class="strategy-title">Fuzzy only as a labeled fallback</div>
+          <div class="strategy-card cp-violet">
+            <div class="strategy-title"><span class="cp-g">?</span>Fuzzy only as a labeled fallback</div>
             <p>Run exact/prefix first. Only on zero results, run a fuzzy lookup and show it as "Did you mean…" — never merged into the primary result list.</p>
           </div>
-          <div class="strategy-card">
-            <div class="strategy-title">Same caching architecture, one more layer</div>
+          <div class="strategy-card cp-violet">
+            <div class="strategy-title"><span class="cp-g">+1</span>Same caching architecture, one more layer</div>
             <p>The fuzzy fallback is itself a query — cached by query text, admission-gated by frequency, exactly like everything else above.</p>
           </div>
         </div>
-        <div class="example-panel" style="margin:14px 0;"><span class="label">Illustration — a typo handled as a labeled suggestion, not a silent match</span>search "vin-2024-0088"
-  → exact/prefix match: 0 results
-  → fallback: fuzzy lookup (edit distance ≤ 2)
-  → "Did you mean: inv-2024-0088?" — shown separately, never merged into the result list
-
-Both the empty exact-match and the fuzzy suggestion are cached independently,
-keyed by the same normalized query text, gated by the same admission policy above.</div>
+        <div class="ill" style="margin:14px 0;">
+<div class="ill-title">Illustration — a typo handled as a labeled suggestion, not a silent match</div>
+<div class="ill-body">
+  <p class="ill-lead">search <code>"vin-2024-0088"</code></p>
+  <ol class="ill-tl">
+    <li class="mute"><div class="ill-tl-stage">exact/prefix match</div><p>→ 0 results</p></li>
+    <li class="warn"><div class="ill-tl-stage">fallback</div><p>→ fuzzy lookup (edit distance ≤ 2)</p></li>
+    <li class="good"><div class="ill-tl-stage">shown to the user</div>
+      <div class="ill-screen"><span>No results for "vin-2024-0088".</span><b>"Did you mean: inv-2024-0088?"</b></div>
+      <p class="ill-aside">— shown separately, never merged into the result list</p></li>
+  </ol>
+  <p class="ill-note">Both the empty exact-match and the fuzzy suggestion are cached independently, keyed by the same normalized query text, gated by the same admission policy above.</p>
+</div>
+</div>
         </div>
 
-        <div class="example-panel" style="margin:14px 0;"><span class="label">Illustration — same query, three ways in</span>"INV-2024-0088"  /  "inv-2024-0088 "  /  " INV-2024-0088"
-    → normalize → "inv-2024-0088" → ONE shared cache entry, not three, not per-user
-
-"ZZZZ-NOTHING" (matches nothing, for anyone) → index returns 0 results
-    → cached as a shared negative, TTL 5s
-    → same string searched again by ANY user within 5s → "no results" served instantly, index untouched</div>
+        <div class="ill" style="margin:14px 0;">
+<div class="ill-title">Illustration — same query, three ways in</div>
+<div class="ill-body">
+  <div class="ill-card good">
+    <div class="ill-chips"><span><code>"INV-2024-0088"</code></span><span>/</span><span><code>"inv-2024-0088 "</code></span><span>/</span><span><code>" INV-2024-0088"</code></span></div>
+    <p><span class="ill-flow"><span>normalize</span><span>"inv-2024-0088"</span></span></p>
+    <p class="ill-then"><strong>ONE shared cache entry,</strong> not three, not per-user</p>
+  </div>
+  <div class="ill-card info">
+    <p><code>"ZZZZ-NOTHING"</code> (matches nothing, for anyone) → index returns 0 results</p>
+    <ul class="ill-list">
+      <li class="then">cached as a shared negative, TTL 5s</li>
+      <li class="then">same string searched again by ANY user within 5s → "no results" served instantly, <strong>index untouched</strong></li>
+    </ul>
+  </div>
+</div>
+</div>
 
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:16px 0 6px;">Step-by-step — two different users, one cache entry</div>
         <p class="tight" style="font-size:13px; margin-bottom:8px;">Two users, subscribed to different products, search the same invoice number nine seconds apart.</p>
+        <div class="hld-diagram-wrap"><svg viewBox="0 0 900 540" style="width:100%; min-width:720px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="cq-c" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker>
+<marker id="cq-v" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#C08CE0"/></marker>
+<marker id="cq-g" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker>
+<marker id="cq-a" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker>
+<marker id="cq-r" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker>
+<marker id="cq-i" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9FC1E0"/></marker>
+</defs>
+<rect x="24.0" y="14" width="132" height="34" rx="8" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.4"/>
+<text x="90" y="36" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">User A</text>
+<line x1="90" y1="48" x2="90" y2="526" stroke="#94B8D4" stroke-opacity=".35" stroke-width="1.2" stroke-dasharray="3 4"/>
+<rect x="179.0" y="14" width="132" height="34" rx="8" fill="#0E2F52" stroke="#C08CE0" stroke-width="1.4"/>
+<text x="245" y="36" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">User B</text>
+<line x1="245" y1="48" x2="245" y2="526" stroke="#94B8D4" stroke-opacity=".35" stroke-width="1.2" stroke-dasharray="3 4"/>
+<rect x="384.0" y="14" width="132" height="34" rx="8" fill="#0E2F52" stroke="#EAF4FF" stroke-width="1.4"/>
+<text x="450" y="36" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Search Service</text>
+<line x1="450" y1="48" x2="450" y2="526" stroke="#94B8D4" stroke-opacity=".35" stroke-width="1.2" stroke-dasharray="3 4"/>
+<rect x="589.0" y="14" width="132" height="34" rx="8" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.4"/>
+<text x="655" y="36" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Cache (shared)</text>
+<line x1="655" y1="48" x2="655" y2="526" stroke="#94B8D4" stroke-opacity=".35" stroke-width="1.2" stroke-dasharray="3 4"/>
+<rect x="754.0" y="14" width="132" height="34" rx="8" fill="#0E2F52" stroke="#FFD166" stroke-width="1.4"/>
+<text x="820" y="36" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Index</text>
+<line x1="820" y1="48" x2="820" y2="526" stroke="#94B8D4" stroke-opacity=".35" stroke-width="1.2" stroke-dasharray="3 4"/>
+<line x1="96" y1="84" x2="442.2" y2="84" stroke="#6FE0F0" stroke-width="1.6" marker-end="url(#cq-c)"/>
+<text x="270.0" y="77" text-anchor="middle" font-family="Inter" font-size="10" fill="#6FE0F0" stroke="#071B30" stroke-width="4" paint-order="stroke">"INV-2024-0088" after a 300ms pause</text>
+<rect x="365.0" y="96" width="170" height="26" rx="6" fill="#0A2540" stroke="#9FC1E0" stroke-width="1.4"/>
+<text x="450" y="113" text-anchor="middle" font-family="Inter" font-size="10" font-weight="600" fill="#9FC1E0">normalize → "inv-2024-0088"</text>
+<line x1="456" y1="146" x2="647.2" y2="146" stroke="#9FC1E0" stroke-width="1.6" marker-end="url(#cq-i)"/>
+<text x="552.5" y="139" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0" stroke="#071B30" stroke-width="4" paint-order="stroke">GET inv-2024-0088</text>
+<line x1="649" y1="174" x2="457.8" y2="174" stroke="#FF6B5E" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#cq-r)"/>
+<text x="552.5" y="167" text-anchor="middle" font-family="Inter" font-size="10" fill="#FF6B5E" stroke="#071B30" stroke-width="4" paint-order="stroke">MISS — first time anyone searched it</text>
+<line x1="456" y1="206" x2="812.2" y2="206" stroke="#FFD166" stroke-width="1.6" marker-end="url(#cq-a)"/>
+<text x="635.0" y="199" text-anchor="middle" font-family="Inter" font-size="10" fill="#FFD166" stroke="#071B30" stroke-width="4" paint-order="stroke">match across 30+ products</text>
+<line x1="814" y1="234" x2="457.8" y2="234" stroke="#FFD166" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#cq-a)"/>
+<text x="635.0" y="227" text-anchor="middle" font-family="Inter" font-size="10" fill="#FFD166" stroke="#071B30" stroke-width="4" paint-order="stroke">raw match set, unfiltered</text>
+<line x1="456" y1="264" x2="647.2" y2="264" stroke="#7CE0A8" stroke-width="1.6" marker-end="url(#cq-g)"/>
+<text x="552.5" y="257" text-anchor="middle" font-family="Inter" font-size="10" fill="#7CE0A8" stroke="#071B30" stroke-width="4" paint-order="stroke">SET, unfiltered, TTL 30s</text>
+<rect x="375.0" y="278" width="150" height="26" rx="6" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.4"/>
+<text x="450" y="295" text-anchor="middle" font-family="Inter" font-size="10" font-weight="600" fill="#7CE0A8">filter → A's products</text>
+<line x1="444" y1="326" x2="97.8" y2="326" stroke="#6FE0F0" stroke-width="1.6" marker-end="url(#cq-c)"/>
+<text x="270.0" y="319" text-anchor="middle" font-family="Inter" font-size="10" fill="#6FE0F0" stroke="#071B30" stroke-width="4" paint-order="stroke">A's results, status-tagged</text>
+<line x1="20" y1="350" x2="880" y2="350" stroke="#94B8D4" stroke-opacity=".5" stroke-width="1" stroke-dasharray="2 5"/>
+<rect x="378.0" y="340" width="144" height="20" rx="10" fill="#0A2540" stroke="#94B8D4" stroke-opacity=".5"/>
+<text x="450.0" y="354" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#94B8D4">9 seconds later</text>
+<line x1="251" y1="392" x2="442.2" y2="392" stroke="#C08CE0" stroke-width="1.6" marker-end="url(#cq-v)"/>
+<text x="347.5" y="385" text-anchor="middle" font-family="Inter" font-size="10" fill="#C08CE0" stroke="#071B30" stroke-width="4" paint-order="stroke">same text: "inv-2024-0088"</text>
+<line x1="456" y1="422" x2="647.2" y2="422" stroke="#9FC1E0" stroke-width="1.6" marker-end="url(#cq-i)"/>
+<text x="552.5" y="415" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0" stroke="#071B30" stroke-width="4" paint-order="stroke">GET inv-2024-0088</text>
+<line x1="649" y1="450" x2="457.8" y2="450" stroke="#7CE0A8" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#cq-g)"/>
+<text x="552.5" y="443" text-anchor="middle" font-family="Inter" font-size="10" fill="#7CE0A8" stroke="#071B30" stroke-width="4" paint-order="stroke">HIT — the same shared entry</text>
+<rect x="375.0" y="462" width="150" height="26" rx="6" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.4"/>
+<text x="450" y="479" text-anchor="middle" font-family="Inter" font-size="10" font-weight="600" fill="#7CE0A8">filter → B's products</text>
+<line x1="444" y1="512" x2="252.8" y2="512" stroke="#C08CE0" stroke-width="1.6" marker-end="url(#cq-v)"/>
+<text x="347.5" y="505" text-anchor="middle" font-family="Inter" font-size="10" fill="#C08CE0" stroke="#071B30" stroke-width="4" paint-order="stroke">B's results — maybe a different subset</text>
+<text x="820" y="516" text-anchor="middle" font-family="Inter" font-size="10" fill="#FFD166">Index: untouched for B</text>
+</svg></div>
         <ol class="process">
           <li>User A types "INV-2024-0088." The client waits 300ms after the last keystroke before sending anything.</li>
           <li>The query is normalized to "inv-2024-0088" — this is the entire cache key. No user_id in it.</li>
@@ -1690,35 +2023,56 @@ keyed by the same normalized query text, gated by the same admission policy abov
       <div class="card" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">Caching hot keys</h3>
         <p>A hot key is one cache key that gets far more traffic than the rest — enough that even a well-distributed cluster can have a single node buckling under one key's load, because consistent hashing sends that key to the same place every time. Sharding the cluster doesn't fix this; it only spreads the <em>other</em> keys around it.</p>
-        <div class="strategy-grid">
+        <div class="callout cp-detect" style="margin:14px 0;">
+          <span class="label">First, find them — you can only protect a key you know is hot</span>
+          <p>Three practical ways: <span style="font-family:var(--mono)">redis-cli --hotkeys</span> (it needs an LFU <span style="font-family:var(--mono)">maxmemory-policy</span> to work), sampling key accesses in the client and keeping a top-K with a heavy-hitters sketch — the same family as the Count-Min Sketch above — or per-key metrics on the handful of keys you already suspect. Detect first: every technique below should apply only to keys detection actually flags.</p>
+        </div>
+        <div class="strategy-grid cp-g4">
           <div class="strategy-card amber">
-            <div class="strategy-title">Split the key</div>
+            <div class="strategy-title"><span class="cp-g">:N</span>Split the key</div>
             <p><span style="font-family:var(--mono)">cache_key:0</span> through <span style="font-family:var(--mono)">cache_key:N</span> — reads and writes pick a shard at random, spreading one hot key across many nodes.</p>
           </div>
           <div class="strategy-card amber">
-            <div class="strategy-title">Local cache for known-hot keys</div>
+            <div class="strategy-title"><span class="cp-g">L1</span>Local cache for known-hot keys</div>
             <p>A small in-process cache in front of the shared one removes the network hop entirely for the traffic that matters most.</p>
           </div>
           <div class="strategy-card amber">
-            <div class="strategy-title">Request coalescing</div>
+            <div class="strategy-title"><span class="cp-g">1:N</span>Request coalescing</div>
             <p>When a hot key expires, one request refetches it while every other concurrent request waits on that result, instead of all of them hitting the store at once.</p>
           </div>
           <div class="strategy-card amber">
-            <div class="strategy-title">Refresh before expiry, not after</div>
+            <div class="strategy-title"><span class="cp-g">↻</span>Refresh before expiry, not after</div>
             <p>A background or probabilistic early refresh keeps a genuinely hot key from ever going fully cold — sidestepping the stampede question rather than reacting to it.</p>
           </div>
         </div>
 
-        <div class="example-panel" style="margin:14px 0;"><span class="label">Illustration — two ways to relieve one hot key</span>Key splitting:
-  "trending:productX"  (50,000 req/s)  →  split into 8 shards
-  each request: shard = hash(request_id) % 8  →  ~6,250 req/s per shard
-
-Local cache vs. shared cache, for a key known to run hot:
-  Redis round trip:           ~1–2 ms
-  In-process memory read:   ~0.01 ms   (100–200x faster)</div>
+        <div class="ill" style="margin:14px 0;">
+<div class="ill-title">Illustration — two ways to relieve one hot key</div>
+<div class="ill-body">
+  <div class="ill-card warn">
+    <div class="ill-h">Key splitting:</div>
+    <p><code>"trending:productX"</code> (50,000 req/s) → split into 8 shards</p>
+    <div class="cp-hotbar"><span>one node, one key</span><i></i><b>50,000 req/s</b></div>
+    <p class="ill-aside">each request: <code>shard = hash(request_id) % 8</code> → ~6,250 req/s per shard</p>
+    <div class="cp-shards"><span class="cp-shard"><code>:0</code><i></i><small>~6,250</small></span><span class="cp-shard"><code>:1</code><i></i><small>~6,250</small></span><span class="cp-shard"><code>:2</code><i></i><small>~6,250</small></span><span class="cp-shard"><code>:3</code><i></i><small>~6,250</small></span><span class="cp-shard"><code>:4</code><i></i><small>~6,250</small></span><span class="cp-shard"><code>:5</code><i></i><small>~6,250</small></span><span class="cp-shard"><code>:6</code><i></i><small>~6,250</small></span><span class="cp-shard"><code>:7</code><i></i><small>~6,250</small></span></div>
+  </div>
+  <div class="ill-card info">
+    <div class="ill-h">Local cache vs. shared cache, <span class="ill-sub">for a key known to run hot:</span></div>
+    <div class="cp-scale">
+      <div class="cp-scale-row"><span class="k">Redis round trip:</span><span class="bar"><i class="warn" style="--w:100%"></i></span><span class="v">~1–2 ms</span></div>
+      <div class="cp-scale-row"><span class="k">In-process memory read:</span><span class="bar"><i class="good" style="--w:0.7%"></i></span><span class="v">~0.01 ms</span></div>
+    </div>
+    <p class="ill-then"><strong>(100–200x faster)</strong></p>
+  </div>
+</div>
+</div>
 
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--marker); margin:16px 0 6px;">Step-by-step — a real stampede, prevented</div>
         <p class="tight" style="font-size:13px; margin-bottom:8px;">A flash-sale item's price cache expires at the exact moment 200 shoppers are refreshing the page.</p>
+        <div class="cp-stampede">
+          <div class="cp-st bad"><span class="pill bad">Without coalescing</span><div class="cp-grid200"><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i></div><p class="cp-st-foot"><b>200</b> queries hit the pricing database at once</p></div>
+          <div class="cp-st good"><span class="pill good">With coalescing</span><div class="cp-grid200"><i class="g"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i></div><p class="cp-st-foot"><b>1</b> query fetches; 199 wait for its result</p></div>
+        </div>
         <ol class="process">
           <li>The cached price expires at 12:00:00.000.</li>
           <li><strong>Without coalescing:</strong> all 200 requests miss the cache within the same millisecond and independently query the pricing database — 200x duplicate load arriving at once.</li>
@@ -1727,6 +2081,7 @@ Local cache vs. shared cache, for a key known to run hot:
           <li>The first request finishes, writes the price to cache, and clears the marker — all 199 waiting requests read the now-populated cache in the same instant.</li>
           <li>Net effect: one database query served 200 requests, instead of 200 queries landing on it simultaneously.</li>
         </ol>
+        <p class="cp-go"><span class="cp-g">Go</span><span>In Go this is <span style="font-family:var(--mono)">golang.org/x/sync/singleflight</span>: <span style="font-family:var(--mono)">group.Do(key, fn)</span> runs <span style="font-family:var(--mono)">fn</span> once per key while a call is in flight and hands every concurrent caller that same result — the stampede fix in one call.</span></p>
 
         <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--marker); margin:16px 0 6px;">Strategy by scale</div>
         <p class="tight" style="font-size:12.5px; margin-bottom:10px;">Hot-key protection has a cost too — splitting and local caching add real complexity. The question isn't "should I defend against hot keys," it's "at what scale does a hot key become likely enough to justify that cost."</p>
@@ -1808,129 +2163,190 @@ Local cache vs. shared cache, for a key known to run hot:
       <div class="subsection-box" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">First: the bounded things</h3>
         <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Before any tier table, know what can actually saturate. In practice it's almost always one of these, and the first one is far more common than the rest combined.</p>
-        <div class="example-panel" style="margin:0;"><span class="label">What saturates, roughly in order of how often it bites first</span>DB CONNECTIONS      the #1 first wall, and it is pure arithmetic:
-                    app instances × pool size = connections needed
-                    40 instances × 25 pool = 1,000 connections
-                    Postgres default max_connections = 100
-                    → you hit this at trivial traffic, and the symptom
-                      is "the database is down" when it is fine
+        <div class="ill" style="margin:0;">
+<div class="ill-title">What saturates, roughly in order of how often it bites first</div>
+<div class="ill-body">
+  <div class="sl-rank">
+    <div class="sl-item top">
+      <span class="sl-no">#1</span>
+      <div>
+        <div class="ill-h">DB connections <span class="pill bad">the #1 first wall</span></div>
+        <p>and it is pure arithmetic: <code>app instances × pool size = connections needed</code></p>
+        <div class="sl-cap"><span class="k">40 instances × 25 pool = 1,000 connections</span><div class="bar"><i class="over" style="--w:100%"></i><span class="lim" style="--x:10%"></span></div><span class="limlab" style="--x:10%">↑ Postgres default max_connections = 100</span></div>
+        <p class="ill-then">you hit this at trivial traffic, and the symptom is "the database is down" when it is fine</p>
+      </div>
+    </div>
+    <div class="sl-item"><span class="sl-no">#2</span><div><div class="ill-h">Threads / workers</div><p>per instance. A blocking call to a slow dependency holds one for its whole duration — see the API Gateway example's bulkhead dive.</p></div></div>
+    <div class="sl-item"><span class="sl-no">#3</span><div><div class="ill-h">Single-threaded components</div><p>Redis executes commands on one core. Node has one event loop. One slow O(n) command or one CPU-bound handler stalls everything behind it.</p></div></div>
+    <div class="sl-item"><span class="sl-no">#4</span><div><div class="ill-h">Disk IOPS</div><p>random writes on a B-tree, or unindexed reads scanning pages and stealing IOPS from writes.</p></div></div>
+    <div class="sl-item"><span class="sl-no">#5</span><div><div class="ill-h">Lock contention</div><p>a hot row. 50k RPS against one counter row is a serialisation point no amount of hardware fixes.</p></div></div>
+    <div class="sl-item"><span class="sl-no">#6</span><div><div class="ill-h">Partition count</div><p>Kafka consumer parallelism is capped by partitions. More consumers than partitions = idle consumers.</p></div></div>
+    <div class="sl-item"><span class="sl-no">#7</span><div><div class="ill-h">Memory / FDs</div><p>cache working set exceeding RAM, or file-descriptor limits on a connection-heavy service.</p></div></div>
+    <div class="sl-item"><span class="sl-no">#8</span><div><div class="ill-h">Network</div><p>bandwidth rarely; packets-per-second and NAT/conntrack table limits more often than people expect.</p></div></div>
+    <div class="sl-item"><span class="sl-no">#9</span><div><div class="ill-h">Downstream &amp; third-party APIs</div><p>their rate limit and their latency become yours. A partner capped at 100 req/s caps you at 100 req/s, and while it is slow it holds your threads (#2).</p></div></div>
+  </div>
+</div>
+</div>
+      </div>
 
-THREADS / WORKERS   per instance. A blocking call to a slow dependency
-                    holds one for its whole duration — see the API
-                    Gateway example's bulkhead dive.
-
-SINGLE-THREADED     Redis executes commands on one core. Node has one
-COMPONENTS          event loop. One slow O(n) command or one CPU-bound
-                    handler stalls everything behind it.
-
-DISK IOPS           random writes on a B-tree, or unindexed reads
-                    scanning pages and stealing IOPS from writes.
-
-LOCK CONTENTION     a hot row. 50k RPS against one counter row is a
-                    serialisation point no amount of hardware fixes.
-
-PARTITION COUNT     Kafka consumer parallelism is capped by partitions.
-                    More consumers than partitions = idle consumers.
-
-MEMORY / FDs        cache working set exceeding RAM, or file-descriptor
-                    limits on a connection-heavy service.
-
-NETWORK             bandwidth rarely; packets-per-second and NAT/conntrack
-                    table limits more often than people expect.</div>
+      <div class="sl-use">
+        <div class="sl-use-h"><span class="sl-use-tag">How to tell which one you hit</span> the USE method — for every resource, check three things:</div>
+        <div class="sl-use-grid">
+          <div class="u"><b>U</b><span class="n">Utilization</span><p>how busy it is — e.g. connections in use ÷ pool size</p></div>
+          <div class="s"><b>S</b><span class="n">Saturation</span><p>how much work is <strong>waiting</strong> for it — e.g. time spent queued for a free connection</p></div>
+          <div class="e"><b>E</b><span class="n">Errors</span><p>what it's refusing — e.g. "too many connections", pool-acquire timeouts</p></div>
+        </div>
+        <p class="sl-use-foot">Saturation is the one that matters most and is least often graphed: a resource at 70% utilization with a growing wait queue is already your bottleneck. The method is Brendan Gregg's; it turns "the system is slow" into a checklist you can walk resource by resource.</p>
       </div>
 
       <div class="subsection-box" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">The ladder — what breaks, and what it costs to fix</h3>
         <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Numbers are deliberately rough and assume a typical read-heavy web workload on ordinary hardware. A write-heavy or fan-out-heavy system hits each rung far earlier. Use them to locate yourself, not as thresholds to quote.</p>
-        <div class="table-wrap">
-<table class="ref-table">
-        <tr class="rt-head"><th style="width:14%">Rung</th><th style="width:29%">What actually breaks</th><th style="width:29%">The move</th><th>What the move costs you</th></tr>
+        <div class="sl-climb">
+          <div class="sl-climb-h">How you climb — <span>one loop, repeated at every rung</span></div>
+          <ol class="sl-loop">
+            <li><b>Measure</b><span>USE on every resource — utilization, saturation, errors</span></li>
+            <li><b>Find the one bound</b><span>the resource whose queue is growing; there is almost always exactly one</span></li>
+            <li><b>Cheapest move first</b><span>the smallest change that relieves that bound — not the next rung's architecture</span></li>
+            <li><b>Say its cost</b><span>every move buys headroom with a new failure mode</span></li>
+            <li><b>Re-measure</b><span>the bottleneck moves; find where it went</span></li>
+          </ol>
+          <p class="sl-loop-back">↺ back to Measure — you climb one bound at a time, never a whole rung at once</p>
+          <div class="sl-order-h">Cheapest first — the order to try moves in</div>
+          <div class="sl-order"><span>fix the query</span><span>add the index</span><span>pool connections</span><span>scale up</span><span>cache &amp; replicas</span><span>scale out</span><span>go async</span><span>partition</span><span>re-architect</span></div>
+          <p class="sl-order-foot">Each step right is more expensive to build, to run and to undo. Skipping left-hand steps is how a team ends up sharding a database that needed one index.</p>
+        </div>
+        <div class="sl-ladder">
+          <div class="sl-rung r1">
+            <div class="sl-rung-h"><span class="sl-rps">&lt; 100 RPS</span><span class="sl-sub">most systems, forever</span></div>
+            <div class="sl-cols">
+              <div><b>What actually breaks</b><p>Nothing architectural. If it's slow here it's an N+1 query, a missing index, or a synchronous third-party call — not scale.</p></div>
+              <div><b>The move</b><ul class="sl-moves"><li>One app tier, one primary database, managed backups. Stop.</li><li>Instrument it now — request rate, errors, p50/p99 latency, per-resource saturation — so the next rung announces itself instead of arriving as an outage.</li></ul></div>
+              <div class="cost"><b>What the move costs you</b><p>Nothing. Reaching for a queue or a cache at this rung is how teams create problems they then have to solve.</p></div>
+            </div>
+            <div class="sl-signal"><b>Signals you've reached it</b><span>slowness traces to one query or one external call, not to load; p99 stays close to p50</span></div>
+          </div>
+          <div class="sl-rung r2">
+            <div class="sl-rung-h"><span class="sl-rps">~1k RPS</span></div>
+            <div class="sl-cols">
+              <div><b>What actually breaks</b><p>Connection exhaustion (the arithmetic above). Slow queries under concurrency that were fine in isolation. Tail latency starts diverging badly from the mean.</p></div>
+              <div><b>The move</b><ul class="sl-moves"><li>Connection pooler (<span class="tool-tag">PgBouncer</span>) in transaction mode.</li><li>Fix the top 5 slow queries. Add the indexes the query planner is asking for.</li><li>Make the app tier stateless (sessions in Redis or a signed token) and run 2+ instances behind a load balancer.</li><li>Move slow side-work — email, PDF generation, webhooks — onto a background queue so it stops holding request threads.</li></ul></div>
+              <div class="cost"><b>What the move costs you</b><p>Transaction-mode pooling breaks session state — prepared statements, <span style="font-family:var(--mono)">SET</span>, advisory locks, some ORMs. Real migration work, not a config flag. Background jobs need retries and idempotency from their first day.</p></div>
+            </div>
+            <div class="sl-signal"><b>Signals you've reached it</b><span>connection-pool wait time climbing, "too many connections" errors, p99 pulling away from p50</span></div>
+          </div>
+          <div class="sl-rung r3">
+            <div class="sl-rung-h"><span class="sl-rps">~10k RPS</span></div>
+            <div class="sl-cols">
+              <div><b>What actually breaks</b><p>Read volume saturates the primary's IOPS and steals them from writes. One instance can no longer hold the working set.</p></div>
+              <div><b>The move</b><ul class="sl-moves"><li>First, scale the primary up — a bigger instance is the cheapest rung you will ever climb.</li><li>Read replicas for read traffic. Cache-aside in <span class="tool-tag">Redis</span> for hot keys. CDN for anything static or semi-static.</li><li>Autoscale the stateless tier on a leading signal (in-flight requests, queue depth), not CPU alone.</li></ul></div>
+              <div class="cost"><b>What the move costs you</b><p><strong>Replication lag</strong> — read-after-write breaks visibly ("I saved it and it's gone"). <strong>Invalidation</strong> — now your correctness depends on cache eviction being right. <strong>Autoscaling lag</strong> — it reacts in minutes; a spike arrives in seconds (see the edge cases below).</p></div>
+            </div>
+            <div class="sl-signal"><b>Signals you've reached it</b><span>primary CPU and IOPS dominated by reads, the working set no longer fitting in memory, cache and replica lag alarms appearing</span></div>
+          </div>
+          <div class="sl-rung r4">
+            <div class="sl-rung-h"><span class="sl-rps">~100k RPS</span></div>
+            <div class="sl-cols">
+              <div><b>What actually breaks</b><p>Synchronous ACID writes max out disk. Replication lag balloons under write pressure. A single Redis node caps out. Cache stampedes on viral keys melt nodes.</p></div>
+              <div><b>The move</b><ul class="sl-moves"><li>Accept writes asynchronously (<span style="font-family:var(--mono)">202</span> + queue + batch flush).</li><li>Shard the cache. Partition hot tables by tenant or entity.</li><li>Shed load deliberately at the edge (429/503 with Retry-After) and propagate backpressure instead of letting queues grow without bound.</li><li>Give hot keys and hot tenants their own treatment.</li></ul></div>
+              <div class="cost"><b>What the move costs you</b><p><strong>The write is no longer durable when you answer.</strong> You now owe the client a way to find out if it succeeded, plus retries, duplicate delivery, and ordering concerns. And you now decide who gets degraded first — a product decision as much as an engineering one.</p></div>
+            </div>
+            <div class="sl-signal"><b>Signals you've reached it</b><span>write latency and replica lag rising together, one Redis node pinned at 100% CPU, queues growing faster than they drain</span></div>
+          </div>
+          <div class="sl-rung r5">
+            <div class="sl-rung-h"><span class="sl-rps">~1M RPS</span></div>
+            <div class="sl-cols">
+              <div><b>What actually breaks</b><p>B-tree random-write I/O stalls SSD controllers. Cross-region latency dominates. Coordination between shards becomes the bottleneck rather than any single node.</p></div>
+              <div><b>The move</b><ul class="sl-moves"><li>LSM-tree engines for write-heavy tables (<span class="tool-tag">Cassandra</span>, <span class="tool-tag">ScyllaDB</span>), or a managed partitioned store (<span class="tool-tag">DynamoDB</span>).</li><li>In-process L1 cache. Regional sharding with local writes.</li><li>Split the stack into cells — independent copies, each serving a slice of tenants — so one failure or one hot tenant has a bounded blast radius.</li></ul></div>
+              <div class="cost"><b>What the move costs you</b><p>LSM trades write speed for read amplification and compaction load. Regional writes mean giving up global strong consistency — this is where CAP stops being theoretical. Anything that spans cells (global search, admin views, cross-tenant reports) becomes a fan-out query.</p></div>
+            </div>
+            <div class="sl-signal"><b>Signals you've reached it</b><span>compaction and write-amplification alarms, cross-region round trips visible in p99, locks or consensus as the slowest span in traces</span></div>
+          </div>
+        </div>
+        <div class="sl-lanes">
+          <div class="sl-lanes-h">Reads and writes climb different ladders</div>
+          <p class="sl-lanes-sub">Reads have cheap relief valves — cache and replicas multiply read capacity without touching the primary. Writes have none: every write still has to land somewhere durable, so the write path is almost always the one that forces the architecture to change.</p>
+          <div class="sl-lane-grid">
+            <span class="sl-lane-head"></span><span class="sl-lane-head rd">Read path</span><span class="sl-lane-head wr">Write path</span>
+            <span class="sl-lane-rung r1">&lt; 100 RPS</span><span class="sl-lane rd">the single primary serves every read</span><span class="sl-lane wr">the single primary takes every write</span>
+            <span class="sl-lane-rung r2">~1k RPS</span><span class="sl-lane rd">indexes, fix N+1 queries, pool connections</span><span class="sl-lane wr">pool connections, keep transactions short, push side-effects (email, webhooks) to a background queue</span>
+            <span class="sl-lane-rung r3">~10k RPS</span><span class="sl-lane rd">cache-aside, read replicas, CDN — reads are the easy half</span><span class="sl-lane wr">still one primary: scale it up, batch small writes, move hot counters out of single rows</span>
+            <span class="sl-lane-rung r4">~100k RPS</span><span class="sl-lane rd">sharded cache, in-process L1 for hot keys, request coalescing</span><span class="sl-lane wr">accept asynchronously (202 + queue + batch flush), partition by tenant or entity</span>
+            <span class="sl-lane-rung r5">~1M RPS</span><span class="sl-lane rd">regional caches and replicas close to users</span><span class="sl-lane wr">LSM engines, regional primaries with local writes, conflict resolution across regions</span>
+          </div>
+        </div>
+      </div>
 
-        <tr><td><strong>&lt; 100 RPS</strong><br><span style="font-size:11px; color:var(--ink-faint);">most systems, forever</span></td>
-            <td>Nothing architectural. If it's slow here it's an N+1 query, a missing index, or a synchronous third-party call — not scale.</td>
-            <td>One app tier, one primary database, managed backups. Stop.</td>
-            <td>Nothing. Reaching for a queue or a cache at this rung is how teams create problems they then have to solve.</td></tr>
-
-        <tr><td><strong>~1k RPS</strong></td>
-            <td>Connection exhaustion (the arithmetic above). Slow queries under concurrency that were fine in isolation. Tail latency starts diverging badly from the mean.</td>
-            <td>Connection pooler (<span class="tool-tag">PgBouncer</span>) in transaction mode. Fix the top 5 slow queries. Add the indexes the query planner is asking for.</td>
-            <td>Transaction-mode pooling breaks session state — prepared statements, <span style="font-family:var(--mono)">SET</span>, advisory locks, some ORMs. Real migration work, not a config flag.</td></tr>
-
-        <tr><td><strong>~10k RPS</strong></td>
-            <td>Read volume saturates the primary's IOPS and steals them from writes. One instance can no longer hold the working set.</td>
-            <td>Read replicas for read traffic. Cache-aside in <span class="tool-tag">Redis</span> for hot keys. CDN for anything static or semi-static.</td>
-            <td><strong>Replication lag</strong> — read-after-write breaks visibly ("I saved it and it's gone"). <strong>Invalidation</strong> — now your correctness depends on cache eviction being right.</td></tr>
-
-        <tr><td><strong>~100k RPS</strong></td>
-            <td>Synchronous ACID writes max out disk. Replication lag balloons under write pressure. A single Redis node caps out. Cache stampedes on viral keys melt nodes.</td>
-            <td>Accept writes asynchronously (<span style="font-family:var(--mono)">202</span> + queue + batch flush). Shard the cache. Partition hot tables by tenant or entity.</td>
-            <td><strong>The write is no longer durable when you answer.</strong> You now owe the client a way to find out if it succeeded, plus retries, duplicate delivery, and ordering concerns.</td></tr>
-
-        <tr><td><strong>~1M RPS</strong></td>
-            <td>B-tree random-write I/O stalls SSD controllers. Cross-region latency dominates. Coordination between shards becomes the bottleneck rather than any single node.</td>
-            <td>LSM-tree engines for write-heavy tables (<span class="tool-tag">Cassandra</span>, <span class="tool-tag">ScyllaDB</span>, <span class="tool-tag">DynamoDB</span>). In-process L1 cache. Regional sharding with local writes.</td>
-            <td>LSM trades write speed for read amplification and compaction load. Regional writes mean giving up global strong consistency — this is where CAP stops being theoretical.</td></tr>
-      </table>
-</div>
+      <div class="subsection-box sl-edges-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">Where the RPS ladder lies — ten edge cases</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">The ladder measures one axis: requests per second on a read-heavy workload. These are the cases where that number tells you the wrong rung — worth naming out loud in an interview, because each one is a question the interviewer may be waiting for you to ask.</p>
+        <div class="sl-edges">
+          <div class="sl-edge"><div class="sl-edge-h"><span class="sl-eg">W</span>Write-heavy workloads</div><p class="why"><b>Why RPS lies</b>The read-side relief valves — cache and replicas — do nothing for writes. Ingest, logging and IoT pipelines hit the write wall while their RPS still looks modest.</p><p class="do"><b>What to do</b>Reach for queue, batch and partition one or two rungs earlier than the table suggests, and size the primary for write IOPS rather than request count.</p></div>
+          <div class="sl-edge"><div class="sl-edge-h"><span class="sl-eg">×N</span>Fan-out</div><p class="why"><b>Why RPS lies</b>One external request becomes N internal operations: a post to 1,000 followers is 1,000 inbox writes.</p><p class="do"><b>What to do</b>Count internal operations, not external RPS. Bound the fan-out — fan-out on read for huge accounts — as the <a href="#usecase-newsfeed">News Feed example</a> does.</p></div>
+          <div class="sl-edge"><div class="sl-edge-h"><span class="sl-eg">⚡</span>Spikes vs. autoscaling lag</div><p class="why"><b>Why RPS lies</b>Scaling takes minutes — new instances, warm-up, health checks. A sale, a push notification or a news mention arrives in seconds.</p><p class="do"><b>What to do</b>Pre-scale for known events; for unknown ones, queue or put users in a waiting room rather than letting the spike reach the database — see the <a href="#usecase-flashsale">Flash Sale example</a>.</p></div>
+          <div class="sl-edge"><div class="sl-edge-h"><span class="sl-eg">∞</span>Long-lived connections</div><p class="why"><b>Why RPS lies</b>A million idle WebSockets is close to zero RPS — and a million sockets' worth of memory and file descriptors.</p><p class="do"><b>What to do</b>Size by concurrent connections, not requests. Give connections their own tier, and watch FD limits and conntrack tables.</p></div>
+          <div class="sl-edge"><div class="sl-edge-h"><span class="sl-eg">MB</span>Large payloads</div><p class="why"><b>Why RPS lies</b>100 RPS × 10 MB = 1 GB/s. That is a bandwidth problem at a request rate the ladder calls trivial.</p><p class="do"><b>What to do</b>Move the bytes out of the request path: presigned uploads straight to object storage, a CDN for downloads.</p></div>
+          <div class="sl-edge"><div class="sl-edge-h"><span class="sl-eg">TB</span>Storage growth</div><p class="why"><b>Why RPS lies</b>50 writes/s × 5 KB ≈ 7.9 TB a year. Size forces partitioning long before traffic does.</p><p class="do"><b>What to do</b>Partition by time, archive or tier cold data, and set retention before it becomes a migration.</p></div>
+          <div class="sl-edge"><div class="sl-edge-h"><span class="sl-eg">1:N</span>One tenant dominates</div><p class="why"><b>Why RPS lies</b>One enterprise customer or one runaway script can be most of your traffic, and every other tenant inherits its bad day.</p><p class="do"><b>What to do</b>Per-tenant quotas, isolate heavy tenants, and at the top rung cells — see <a href="#usecase-multitenantlimits">Multi-Tenant Rate Limiting</a>.</p></div>
+          <div class="sl-edge"><div class="sl-edge-h"><span class="sl-eg">↘</span>Downstream limits</div><p class="why"><b>Why RPS lies</b>A partner API that allows 100 req/s caps you at 100 req/s, whatever you build in front of it.</p><p class="do"><b>What to do</b>Queue and smooth to their rate, cache their responses, and circuit-break and bulkhead so their outage stays theirs.</p></div>
+          <div class="sl-edge"><div class="sl-edge-h"><span class="sl-eg">❄</span>Cold starts</div><p class="why"><b>Why RPS lies</b>After a deploy, a restart or a cache flush, every request misses at once and the database takes the whole load — at normal traffic.</p><p class="do"><b>What to do</b>Warm caches before cutting traffic over, roll out gradually, and coalesce misses — see the <a href="#cachingplaybook">Caching Playbook</a>.</p></div>
+          <div class="sl-edge"><div class="sl-edge-h"><span class="sl-eg">⏰</span>Synchronised load</div><p class="why"><b>Why RPS lies</b>Cron jobs at :00, apps that all sync on the hour, clients that retry together after an outage — average load is fine, the same second is not.</p><p class="do"><b>What to do</b>Add jitter to schedules and to retry backoff; stagger batch jobs instead of starting them together.</p></div>
+        </div>
       </div>
 
       <div class="subsection-box" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">Every fix creates its next problem</h3>
         <p class="tight" style="font-size:12.5px; margin-bottom:12px;">This is the part that separates a rehearsed answer from a real one. Naming the move is easy; naming what it costs is the actual signal.</p>
-        <div class="example-panel" style="margin:0 0 12px;"><span class="label">The trade you are making, every time</span>caching        → invalidation, stampedes, and a second source of truth
-                 that can silently disagree with the first
-
-replication    → stale reads, and read-after-write that works in dev
-                 (one node) and breaks in prod (many)
-
-queues         → at-least-once delivery, so every consumer must be
-                 idempotent; plus ordering, and a backlog that can
-                 grow silently with no caller timing out
-
-sharding       → rebalancing, hot partitions, and cross-shard queries
-                 that used to be one JOIN
-
-async writes   → the client no longer knows if it worked; you owe them
-                 a status endpoint or a webhook
-
-read replicas  → someone will eventually point a write at one, or
-                 route a read-after-write to a lagging node
-
-more retries   → amplification. Three layers × three retries = 27×
-                 load on the thing already struggling. Retry budgets,
-                 not retry counts.
-
-denormalisation→ multiple copies to keep in sync, and the sync itself
-                 becomes a correctness problem</div>
+        <div class="ill" style="margin:0 0 12px;">
+<div class="ill-title">The trade you are making, every time</div>
+<div class="ill-body">
+  <div class="sl-trades">
+    <div class="sl-trade"><span class="sl-move">caching</span><p>→ invalidation, stampedes, and a second source of truth that can silently disagree with the first</p></div>
+    <div class="sl-trade"><span class="sl-move">replication</span><p>→ stale reads, and read-after-write that works in dev (one node) and breaks in prod (many)</p></div>
+    <div class="sl-trade"><span class="sl-move">queues</span><p>→ at-least-once delivery, so every consumer must be idempotent; plus ordering, and a backlog that can grow silently with no caller timing out</p></div>
+    <div class="sl-trade"><span class="sl-move">sharding</span><p>→ rebalancing, hot partitions, and cross-shard queries that used to be one JOIN</p></div>
+    <div class="sl-trade"><span class="sl-move">async writes</span><p>→ the client no longer knows if it worked; you owe them a status endpoint or a webhook</p></div>
+    <div class="sl-trade"><span class="sl-move">read replicas</span><p>→ someone will eventually point a write at one, or route a read-after-write to a lagging node</p></div>
+    <div class="sl-trade"><span class="sl-move">more retries</span><p>→ amplification. Three layers × three retries = 27× load on the thing already struggling. <strong>Retry budgets, not retry counts.</strong></p></div>
+    <div class="sl-trade"><span class="sl-move">denormalisation</span><p>→ multiple copies to keep in sync, and the sync itself becomes a correctness problem</p></div>
+  </div>
+</div>
+</div>
         <p style="margin:0; color:var(--ink);">A useful habit: when you propose a move, say the cost in the same breath. "Add a read replica — and I'd need to decide which reads tolerate being a few seconds stale" is a far stronger answer than "add a read replica."</p>
       </div>
 
       <div class="subsection-box" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">Two numbers worth knowing by heart</h3>
-        <div class="example-panel" style="margin:0 0 12px;"><span class="label">Little's Law, and the connection arithmetic</span>LITTLE'S LAW        concurrency = throughput × latency
-
-  It tells you how many things are in flight at once, which is what
-  actually determines pool sizes, thread counts, and whether you are
-  about to saturate something bounded.
-
-    2,000 RPS × 50ms  =  100 concurrent requests in flight
-    2,000 RPS × 500ms =  1,000 concurrent  ← same traffic, 10× the
-                                             resources held
-
-  This is why a dependency getting SLOWER looks exactly like traffic
-  getting HIGHER from inside your service. Latency and load are the
-  same problem wearing different clothes.
-
-CONNECTION MATH     instances × pool_size ≤ max_connections
-
-    40 instances × 25 = 1,000 wanted
-    Postgres max_connections = 100 (default)
-    → 900 connections refused; the app reports "database down"
-
-  With PgBouncer in transaction mode:
-    40 instances × 25 app-side = 1,000 client connections
-    multiplexed onto ~50 real server connections
-    → the pooler is doing the arithmetic for you</div>
+        <div class="ill" style="margin:0 0 12px;">
+<div class="ill-title">Little's Law, and the connection arithmetic</div>
+<div class="ill-body">
+  <div class="ill-card info">
+    <div class="ill-h">Little's Law</div>
+    <p class="sl-formula">concurrency = throughput × latency</p>
+    <p>It tells you how many things are in flight at once, which is what actually determines pool sizes, thread counts, and whether you are about to saturate something bounded.</p>
+    <div class="cp-scale">
+      <div class="cp-scale-row"><span class="k">2,000 RPS × 50ms</span><span class="bar"><i class="good" style="--w:10%"></i></span><span class="v">= 100 concurrent requests in flight</span></div>
+      <div class="cp-scale-row"><span class="k">2,000 RPS × 500ms</span><span class="bar"><i class="bad" style="--w:100%"></i></span><span class="v">= 1,000 concurrent</span></div>
+    </div>
+    <p class="ill-aside">← same traffic, 10× the resources held</p>
+    <p class="ill-note">This is why a dependency getting SLOWER looks exactly like traffic getting HIGHER from inside your service. Latency and load are the same problem wearing different clothes.</p>
+  </div>
+  <div class="ill-cols">
+    <div class="ill-card bad">
+      <div class="ill-h">Connection math</div>
+      <p class="sl-formula">instances × pool_size ≤ max_connections</p>
+      <div class="sl-cap"><span class="k">40 instances × 25 = 1,000 wanted</span><div class="bar"><i class="over" style="--w:100%"></i><span class="lim" style="--x:10%"></span></div><span class="limlab" style="--x:10%">↑ Postgres max_connections = 100 (default)</span></div>
+      <p class="ill-then">900 connections refused; the app reports "database down"</p>
+    </div>
+    <div class="ill-card good">
+      <div class="ill-h">With PgBouncer in transaction mode:</div>
+      <p>40 instances × 25 app-side = 1,000 client connections</p>
+      <div class="sl-cap"><span class="k">multiplexed onto ~50 real server connections</span><div class="bar"><i class="ok" style="--w:5%"></i><span class="lim" style="--x:10%"></span></div><span class="limlab" style="--x:10%">↑ limit 100</span></div>
+      <p class="ill-then">the pooler is doing the arithmetic for you</p>
+    </div>
+  </div>
+</div>
+</div>
         <p style="margin:0; color:var(--ink);">The second one is worth internalising because it is the most common production incident in this entire list, it happens at embarrassingly low traffic, and the error message points at the wrong component.</p>
       </div>
 
@@ -1938,8 +2354,8 @@ CONNECTION MATH     instances × pool_size ≤ max_connections
         <h3 class="subhead" style="margin-top:0;">How to actually use this in an interview</h3>
         <ul class="item-list">
           <li><strong>Trace one request end to end before scaling anything</strong> — client → gateway → service → cache → database → queue → worker → dependency. You cannot say what saturates first without knowing what it touches.</li>
-          <li><strong>Estimate only enough to pick a rung</strong> — peak QPS, read/write ratio, payload size, and working-set size. At 50 writes/sec, a distributed write architecture is a wrong answer. At 500k, partitioning and backpressure deserve real discussion.</li>
-          <li><strong>Peak, not average</strong> — daily traffic divided by 86,400 is the number that makes systems fall over. Real traffic concentrates; a 3–10× peak-to-mean ratio is ordinary, and event-driven spikes are far worse.</li>
+          <li><strong>Estimate only enough to pick a rung</strong> — peak QPS, read/write ratio, payload size, and working-set size — plus storage growth and concurrent connections, the two axes where RPS misleads most. The <a href="#mathtoolkit">Math Toolkit calculator</a> places you on a rung from these numbers. At 50 writes/sec, a distributed write architecture is a wrong answer. At 500k, partitioning and backpressure deserve real discussion.</li>
+          <li><strong>Peak, not average</strong> — daily traffic divided by 86,400 is only the average; the peak is the number that makes systems fall over. Real traffic concentrates; a 3–10× peak-to-mean ratio is ordinary, and event-driven spikes are far worse.</li>
           <li><strong>Design for the next rung, not the last one</strong> — building for 1M RPS at 1k is as wrong as ignoring growth entirely, and it is the more expensive mistake because you pay the complexity immediately.</li>
           <li><strong>Watch p99, not the mean</strong> — the mean hides the queueing that precedes every saturation event. When p99 rises while the mean is flat, something bounded is filling up.</li>
         </ul>
@@ -2096,56 +2512,28 @@ CONNECTION MATH     instances × pool_size ≤ max_connections
           <text x="614" y="942" font-family="Inter" font-size="10" fill="#9FC1E0">Server error — retry with backoff</text>
         </svg>
       </div>
-      <div class="diagram-caption">Nine checks, in the order that avoids leaking information — authentication before validation, so an anonymous caller never learns whether their body was well-formed. Two things the common version of this chart leaves out: <strong>429</strong>, which is the most frequent real rejection in any public API, and <strong>409</strong>, which is the only 4xx that means "try again later" rather than "fix your request." Colour encodes what a client should <em>do</em>, which is the actual job of a status code.</div>
+      <div class="diagram-caption">Nine checks, in the order that avoids leaking information — authentication before semantic validation, so an anonymous caller never learns whether their data would have been accepted. Two things the common version of this chart leaves out: <strong>429</strong>, which is the most frequent real rejection in any public API, and <strong>409</strong>, which is the only 4xx that means "try again later" rather than "fix your request." Colour encodes what a client should <em>do</em>, which is the actual job of a status code.</div>
 
       <div class="subsection-box" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">The decision, in order</h3>
-        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Walk these top to bottom and stop at the first match. The order matters — checking authentication before parsing, for instance, avoids telling an anonymous caller whether their malformed body was valid.</p>
-        <div class="example-panel" style="margin:0;"><span class="label">One pass, first match wins</span>1 · Could you parse it at all?
-     malformed JSON, bad syntax            → 400 Bad Request
-
-2 · Does the route exist?
-     no such path                          → 404 Not Found
-
-3 · Who is calling?
-     no credentials, or invalid/expired    → 401 Unauthorized
-     ← the name is wrong; 401 means UNAUTHENTICATED
-
-4 · Are they allowed?
-     authenticated, but lacks permission   → 403 Forbidden
-     ← 403 means authenticated and still no
-
-     leaking existence is a concern?       → 404 instead
-     ← "this repo exists but isn't yours" IS information
-
-5 · Over their limit?
-     rate or quota exceeded                → 429 Too Many Requests
-     ← ALWAYS with Retry-After
-
-6 · Is the shape right but the meaning wrong?
-     valid JSON, fails validation          → 422 Unprocessable Entity
-     ← e.g. end_date before start_date, or a negative amount
-
-7 · Does the target resource exist?
-     valid request, no such record         → 404 Not Found
-
-8 · Does it conflict with current state?
-     duplicate, version mismatch,          → 409 Conflict
-     already-consumed idempotency key      ← "not now" rather than
-                                             "never"
-
-9 · Did YOUR side fail?
-     unhandled exception                   → 500 Internal Server Error
-     upstream returned garbage             → 502 Bad Gateway
-     deliberately shedding load / draining → 503 Service Unavailable
-     upstream timed out                    → 504 Gateway Timeout
-
-10 · It worked. What kind of worked?
-     GET with a body                       → 200 OK
-     POST that created something           → 201 Created + Location
-     accepted, not yet done                → 202 Accepted
-     succeeded, nothing to say             → 204 No Content
-     ← DELETE and many PUTs land here</div>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Walk these top to bottom and stop at the first match. The order matters — checking authentication before validating the contents, for instance, avoids telling an anonymous caller whether their data would have been accepted.</p>
+        <div class="ill" style="margin:0;">
+<div class="ill-title">One pass, first match wins</div>
+<div class="ill-body">
+  <div class="sc-steps">
+    <div class="sc-step"><div class="ill-h">1 · Could you parse it at all?</div><div class="sc-out"><span class="cond">malformed JSON, bad syntax</span><span class="sc-chip c4">400 Bad Request</span></div></div>
+    <div class="sc-step"><div class="ill-h">2 · Does the route exist?</div><div class="sc-out"><span class="cond">no such path</span><span class="sc-chip c4">404 Not Found</span></div></div>
+    <div class="sc-step"><div class="ill-h">3 · Who is calling?</div><div class="sc-out"><span class="cond">no credentials, or invalid/expired</span><span class="sc-chip c4">401 Unauthorized</span><span class="note">← the name is wrong; 401 means UNAUTHENTICATED</span></div></div>
+    <div class="sc-step"><div class="ill-h">4 · Are they allowed?</div><div class="sc-out"><span class="cond">authenticated, but lacks permission</span><span class="sc-chip c4">403 Forbidden</span><span class="note">← 403 means authenticated and still no</span></div><div class="sc-out"><span class="cond">leaking existence is a concern?</span><span class="sc-chip c4">404 instead</span><span class="note">← "this repo exists but isn't yours" IS information</span></div></div>
+    <div class="sc-step"><div class="ill-h">5 · Over their limit?</div><div class="sc-out"><span class="cond">rate or quota exceeded</span><span class="sc-chip c429">429 Too Many Requests</span><span class="note">← ALWAYS with Retry-After</span></div></div>
+    <div class="sc-step"><div class="ill-h">6 · Is the shape right but the meaning wrong?</div><div class="sc-out"><span class="cond">valid JSON, fails validation</span><span class="sc-chip c4">422 Unprocessable Entity</span><span class="note">← e.g. end_date before start_date, or a negative amount</span></div></div>
+    <div class="sc-step"><div class="ill-h">7 · Does the target resource exist?</div><div class="sc-out"><span class="cond">valid request, no such record</span><span class="sc-chip c4">404 Not Found</span></div></div>
+    <div class="sc-step"><div class="ill-h">8 · Does it conflict with current state?</div><div class="sc-out"><span class="cond">duplicate, version mismatch, already-consumed idempotency key</span><span class="sc-chip c4">409 Conflict</span><span class="note">← "not now" rather than "never"</span></div></div>
+    <div class="sc-step"><div class="ill-h">9 · Did YOUR side fail?</div><div class="sc-out"><span class="cond">unhandled exception</span><span class="sc-chip c5">500 Internal Server Error</span></div><div class="sc-out"><span class="cond">upstream returned garbage</span><span class="sc-chip c5">502 Bad Gateway</span></div><div class="sc-out"><span class="cond">deliberately shedding load / draining</span><span class="sc-chip c5">503 Service Unavailable</span></div><div class="sc-out"><span class="cond">upstream timed out</span><span class="sc-chip c5">504 Gateway Timeout</span></div></div>
+    <div class="sc-step"><div class="ill-h">10 · It worked. What kind of worked?</div><div class="sc-out"><span class="cond">GET with a body</span><span class="sc-chip c2">200 OK</span></div><div class="sc-out"><span class="cond">POST that created something</span><span class="sc-chip c2">201 Created + Location</span></div><div class="sc-out"><span class="cond">accepted, not yet done</span><span class="sc-chip c2">202 Accepted</span></div><div class="sc-out"><span class="cond">succeeded, nothing to say</span><span class="sc-chip c2">204 No Content</span><span class="note">← DELETE and many PUTs land here</span></div></div>
+  </div>
+</div>
+</div>
       </div>
 
       <div class="subsection-box" style="margin-top:18px;">
@@ -2153,64 +2541,94 @@ CONNECTION MATH     instances × pool_size ≤ max_connections
         <div class="table-wrap">
 <table class="ref-table">
         <tr class="rt-head"><th style="width:18%">The confusion</th><th style="width:41%">The rule</th><th>Why it matters operationally</th></tr>
-        <tr><td><strong>401 vs 403</strong></td><td>401 = I don't know who you are. 403 = I know, and no.</td><td>A client SDK should <em>refresh the token</em> on 401 and <em>give up</em> on 403. Returning 403 for an expired token means the client never refreshes and the user is stuck logged out.</td></tr>
-        <tr><td><strong>400 vs 422</strong></td><td>400 = I couldn't parse it. 422 = I parsed it, and the contents are wrong.</td><td>Mostly a clarity win, but it separates "the client is broken" from "the user typed something invalid" in your dashboards — two very different alerts.</td></tr>
-        <tr><td><strong>403 vs 404</strong></td><td>403 admits the thing exists. 404 doesn't.</td><td>A deliberate choice, not an accident. For private resources, 403 leaks existence — an attacker can enumerate what's there. Most systems return 404 for anything the caller can't see.</td></tr>
-        <tr><td><strong>409 vs 422</strong></td><td>422 is wrong forever. 409 is wrong <em>right now</em>.</td><td>409 implies retry-after-resolving; 422 implies fix-your-input. A well-behaved client treats them completely differently.</td></tr>
-        <tr><td><strong>500 vs 503</strong></td><td>500 = something broke unexpectedly. 503 = I'm deliberately not serving you.</td><td>503 with <span style="font-family:var(--mono)">Retry-After</span> is how you shed load gracefully during a deploy or overload. 500 tells a load balancer the instance may be sick; 503 tells it this is intentional.</td></tr>
-        <tr><td><strong>502 vs 504</strong></td><td>502 = upstream answered with nonsense. 504 = upstream never answered.</td><td>These almost always come from your gateway or proxy, not your app — so which one you see tells you <em>where</em> the failure is before you open a single log.</td></tr>
+        <tr><td><span class="sc-pair"><span class="sc-chip c4">401</span> vs <span class="sc-chip c4">403</span></span></td><td>401 = I don't know who you are. 403 = I know, and no.</td><td>A client SDK should <em>refresh the token</em> on 401 and <em>give up</em> on 403. Returning 403 for an expired token means the client never refreshes and the user is stuck logged out.</td></tr>
+        <tr><td><span class="sc-pair"><span class="sc-chip c4">400</span> vs <span class="sc-chip c4">422</span></span></td><td>400 = I couldn't parse it. 422 = I parsed it, and the contents are wrong.</td><td>Mostly a clarity win, but it separates "the client is broken" from "the user typed something invalid" in your dashboards — two very different alerts.</td></tr>
+        <tr><td><span class="sc-pair"><span class="sc-chip c4">403</span> vs <span class="sc-chip c4">404</span></span></td><td>403 admits the thing exists. 404 doesn't.</td><td>A deliberate choice, not an accident. For private resources, 403 leaks existence — an attacker can enumerate what's there. Most systems return 404 for anything the caller can't see.</td></tr>
+        <tr><td><span class="sc-pair"><span class="sc-chip c4">409</span> vs <span class="sc-chip c4">422</span></span></td><td>422 is wrong forever. 409 is wrong <em>right now</em>.</td><td>409 implies retry-after-resolving; 422 implies fix-your-input. A well-behaved client treats them completely differently.</td></tr>
+        <tr><td><span class="sc-pair"><span class="sc-chip c5">500</span> vs <span class="sc-chip c5">503</span></span></td><td>500 = something broke unexpectedly. 503 = I'm deliberately not serving you.</td><td>503 with <span style="font-family:var(--mono)">Retry-After</span> is how you shed load gracefully during a deploy or overload. 500 tells a load balancer the instance may be sick; 503 tells it this is intentional.</td></tr>
+        <tr><td><span class="sc-pair"><span class="sc-chip c5">502</span> vs <span class="sc-chip c5">504</span></span></td><td>502 = upstream answered with nonsense. 504 = upstream never answered.</td><td>These almost always come from your gateway or proxy, not your app — so which one you see tells you <em>where</em> the failure is before you open a single log.</td></tr>
       </table>
 </div>
       </div>
 
       <div class="subsection-box" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">Retryability — the thing the code is really encoding</h3>
-        <div class="example-panel" style="margin:0 0 12px;"><span class="label">What a client library does with each class</span>RETRY, with backoff
-  408 Request Timeout      transient
-  429 Too Many Requests    retry AFTER the Retry-After interval,
-                           not immediately — that is the whole point
-  500 Internal Server Err  might be a blip
-  502 Bad Gateway          upstream hiccup
-  503 Service Unavailable  explicitly "try later"
-  504 Gateway Timeout      ← but see the warning below
-
-DO NOT RETRY — retrying changes nothing
-  400  the body is still malformed
-  401  the token is still invalid (refresh it, then retry once)
-  403  permission will not appear on its own
-  404  it still will not exist
-  422  the data is still semantically wrong
-
-THE 504 TRAP, worth stating plainly
-  A timeout does NOT mean the work didn't happen. The upstream may
-  have completed it and simply answered too slowly.
-  → retrying a 504 on a non-idempotent write can double-charge a
-    customer
-  → this is exactly why the payment example puts an idempotency key
-    on the request BEFORE any of this matters
-
-NEVER DO THIS
-  200 OK
-  { "success": false, "error": "insufficient funds" }
-
-  → every proxy, cache, load balancer, retry policy and monitoring
-    dashboard now believes this request succeeded
-  → your error rate graph is a flat line while customers fail
-  → the status code is machine-readable; the body is not</div>
+        <div class="ill" style="margin:0 0 12px;">
+<div class="ill-title">What a client library does with each class</div>
+<div class="ill-body">
+  <div class="ill-cols">
+    <div class="ill-card sc-retry">
+      <div class="ill-h">RETRY, <span class="ill-sub">with backoff</span></div>
+      <div class="sc-list">
+        <div><span class="sc-chip c429">408 Request Timeout</span><span>transient</span></div>
+        <div><span class="sc-chip c429">429 Too Many Requests</span><span>retry AFTER the Retry-After interval, not immediately — that is the whole point</span></div>
+        <div><span class="sc-chip c5">500 Internal Server Err</span><span>might be a blip</span></div>
+        <div><span class="sc-chip c5">502 Bad Gateway</span><span>upstream hiccup</span></div>
+        <div><span class="sc-chip c5">503 Service Unavailable</span><span>explicitly "try later"</span></div>
+        <div><span class="sc-chip c5">504 Gateway Timeout</span><span>← but see the warning below</span></div>
+      </div>
+      <p class="ill-aside">Retry-After is either a number of seconds or an HTTP date — clients must handle both. For quota visibility before a 429 ever happens, many APIs also return remaining-quota headers; an IETF HTTPAPI draft (RateLimit / RateLimit-Policy) is standardising them.</p>
+    </div>
+    <div class="ill-card bad">
+      <div class="ill-h">DO NOT RETRY <span class="ill-sub">— retrying changes nothing</span></div>
+      <div class="sc-list">
+        <div><span class="sc-chip c4">400</span><span>the body is still malformed</span></div>
+        <div><span class="sc-chip c4">401</span><span>the token is still invalid (refresh it, then retry once)</span></div>
+        <div><span class="sc-chip c4">403</span><span>permission will not appear on its own</span></div>
+        <div><span class="sc-chip c4">404</span><span>it still will not exist</span></div>
+        <div><span class="sc-chip c4">422</span><span>the data is still semantically wrong</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="ill-card warn">
+    <div class="ill-h">THE 504 TRAP, <span class="ill-sub">worth stating plainly</span></div>
+    <p>A timeout does NOT mean the work didn't happen. The upstream may have completed it and simply answered too slowly.</p>
+    <ul class="ill-list">
+      <li class="con">retrying a 504 on a non-idempotent write can double-charge a customer</li>
+      <li class="then">this is exactly why the payment example puts an idempotency key on the request BEFORE any of this matters</li>
+    </ul>
+  </div>
+  <div class="ill-card bad">
+    <div class="ill-h"><span class="pill bad">Never do this</span></div>
+<pre class="ill-code"><span class="ok">200 OK</span>
+{ "success": false, "error": "insufficient funds" }</pre>
+    <ul class="ill-list">
+      <li class="then">every proxy, cache, load balancer, retry policy and monitoring dashboard now believes this request succeeded</li>
+      <li class="then">your error rate graph is a flat line while customers fail</li>
+      <li class="then"><strong>the status code is machine-readable; the body is not</strong></li>
+    </ul>
+  </div>
+</div>
+</div>
         <p style="margin:0; color:var(--ink);">If you remember one thing: <strong>choose the code by asking what you want the caller to do next</strong>, not by which one best describes your internal state. That reframing resolves most arguments about 400 versus 422 in about five seconds.</p>
       </div>
 
       <div class="subsection-box" style="margin-top:18px;">
         <h3 class="subhead" style="margin-top:0;">Codes worth using that most APIs never reach for</h3>
-        <ul class="item-list">
-          <li><strong><span style="font-family:var(--mono)">201 Created</span> with a <span style="font-family:var(--mono)">Location</span> header</strong> — tells the client where the new thing lives, so it doesn't have to guess a URL or re-query to find out.</li>
-          <li><strong><span style="font-family:var(--mono)">202 Accepted</span></strong> — the honest answer for async work. It means "I have durably recorded your request and will process it," and it obliges you to give the client a way to check the outcome. The flash sale and payment examples on this page both depend on it.</li>
-          <li><strong><span style="font-family:var(--mono)">204 No Content</span></strong> — the right answer for most <span style="font-family:var(--mono)">DELETE</span>s. Returning <span style="font-family:var(--mono)">200</span> with <span style="font-family:var(--mono)">{"deleted": true}</span> is noise the client has to parse to learn nothing.</li>
-          <li><strong><span style="font-family:var(--mono)">410 Gone</span></strong> — for an endpoint you retired deliberately. Unlike 404, it says "this existed and was removed," which points a confused consumer at your migration guide instead of at their own routing config. The versioning example uses this.</li>
-          <li><strong><span style="font-family:var(--mono)">412 Precondition Failed</span></strong> — with <span style="font-family:var(--mono)">If-Match</span>, this is how you do optimistic concurrency over HTTP properly rather than inventing a version field in the body.</li>
-          <li><strong><span style="font-family:var(--mono)">207 Multi-Status</span></strong> — for genuine batch endpoints where some items succeed and some fail. The alternative, a 200 containing a mixed results array, hits the same problem as the 200-with-error above.</li>
-        </ul>
+        <div class="sc-uses">
+          <div class="sc-use"><div class="sc-use-h"><span class="sc-chip c2">201 Created</span> with a <span style="font-family:var(--mono)">Location</span> header</div><p>tells the client where the new thing lives, so it doesn't have to guess a URL or re-query to find out.</p></div>
+          <div class="sc-use"><div class="sc-use-h"><span class="sc-chip c2">202 Accepted</span></div><p>the honest answer for async work. It means "I have durably recorded your request and will process it," and it obliges you to give the client a way to check the outcome. The flash sale and payment examples on this page both depend on it.</p></div>
+          <div class="sc-use"><div class="sc-use-h"><span class="sc-chip c2">204 No Content</span></div><p>the right answer for most <span style="font-family:var(--mono)">DELETE</span>s. Returning <span style="font-family:var(--mono)">200</span> with <span style="font-family:var(--mono)">{"deleted": true}</span> is noise the client has to parse to learn nothing.</p></div>
+          <div class="sc-use"><div class="sc-use-h"><span class="sc-chip c4">410 Gone</span></div><p>for an endpoint you retired deliberately. Unlike 404, it says "this existed and was removed," which points a confused consumer at your migration guide instead of at their own routing config. The versioning example uses this.</p></div>
+          <div class="sc-use"><div class="sc-use-h"><span class="sc-chip c4">412 Precondition Failed</span></div><p>with <span style="font-family:var(--mono)">If-Match</span>, this is how you do optimistic concurrency over HTTP properly rather than inventing a version field in the body.</p></div>
+          <div class="sc-use"><div class="sc-use-h"><span class="sc-chip c2">207 Multi-Status</span></div><p>for genuine batch endpoints where some items succeed and some fail. The alternative, a 200 containing a mixed results array, hits the same problem as the 200-with-error above.</p></div>
+        </div>
+
         <p style="margin:12px 0 0; color:var(--ink);">One structural recommendation: pair the code with a machine-readable error body in a consistent shape — <span class="tool-tag">RFC 9457</span> (Problem Details) is the standard worth adopting, because it gives you a stable <span style="font-family:var(--mono)">type</span> field clients can branch on without parsing prose.</p>
+        <div class="sc-problem">
+          <div class="sc-problem-h"><span class="sc-chip c4">403</span> what a Problem Details response looks like</div>
+<pre class="ill-code">HTTP/1.1 403 Forbidden
+Content-Type: application/problem+json
+
+{
+  "type":     "https://api.example.com/problems/insufficient-scope",
+  "title":    "Insufficient scope",
+  "status":   403,
+  "detail":   "This token lacks invoices:write.",
+  "instance": "/v1/invoices/inv_991"
+}</pre>
+          <p><strong>type</strong> is the stable identifier clients branch on; <strong>title</strong> is for humans and may change; <strong>detail</strong> explains this occurrence. RFC 9457 replaced RFC 7807 in 2023 with the same shape, so existing 7807 clients keep working.</p>
+        </div>
       </div>
     </section>
 
