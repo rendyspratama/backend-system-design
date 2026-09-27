@@ -491,6 +491,34 @@
   .sc-list > div{ display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 9px; font-size:13px; color:var(--ink-dim); }
   .ill-card.sc-retry{ border-top-color:#C08CE0; }
   @container (max-width:460px){ .sc-chip{ white-space:normal; } }
+
+  /* ================= Data Correctness ================= */
+  .dc-grid{ display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+  @container (min-width:560px){ .dc-grid{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .dc-grid3{ display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+  @container (min-width:720px){ .dc-grid3{ grid-template-columns:repeat(3, minmax(0,1fr)); } }
+  #datacorrectness .dc-matrix td.rh .ill-sub{ display:block; margin-top:1px; font-size:11.5px; font-weight:400; color:var(--ink-faint); }
+  #datacorrectness .ill-table.kv td:first-child{ color:var(--accent); }   /* T1 lane */
+  #datacorrectness .ill-table.kv td:nth-child(2){ color:#C08CE0; }        /* T2 lane */
+  .dc-ladder{ display:flex; flex-direction:column; gap:8px; }
+  .dc-rung{ display:grid; grid-template-columns:2.2rem minmax(0,1fr); gap:10px; padding:10px 12px; border:1px solid var(--hairline);
+    border-left:4px solid var(--dc); border-radius:8px; background:rgba(255,255,255,.02); }
+  .dc-no{ display:grid; place-items:center; height:28px; border-radius:7px; font-family:var(--mono); font-size:13px; font-weight:800; color:var(--bg-deep); background:var(--dc); }
+  .dc-rung .ill-h{ color:var(--dc); margin-bottom:4px; }
+  .ill .dc-rung p{ margin:4px 0 0; }
+  .ill .dc-when{ font-size:12.5px; color:var(--ink-faint); }
+  .dc-when b{ font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dc); margin-right:4px; }
+  /* the six-column matrix stacks earlier than ordinary panel tables, using the same stacked layout */
+  @container (max-width:880px){
+    .ill-table.dc-matrix thead{ display:none; }
+    .ill-table.dc-matrix, .ill-table.dc-matrix tbody, .ill-table.dc-matrix tr, .ill-table.dc-matrix td{ display:block; width:100%; }
+    .ill-table.dc-matrix tr{ padding:8px 0; border-bottom:1px solid var(--hairline-soft); }
+    .ill-table.dc-matrix tr:last-child{ border-bottom:0; }
+    .ill-table.dc-matrix td, .ill-table.dc-matrix td.rh{ padding:3px 0; border:0; white-space:normal; }
+    .ill-table.dc-matrix td[data-label]{ position:relative; padding-left:9.5em; }
+    .ill-table.dc-matrix td[data-label]::before{ content:attr(data-label); position:absolute; left:0; top:6px; width:9em;
+      font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); }
+  }
   /* narrow panels: stack the structure, never shrink the type */
   @container (max-width:460px){
     .ill-body{ padding:12px 12px 14px; }
@@ -1205,6 +1233,7 @@
       <a class="nav-link" href="#cachingplaybook"><span class="num">⚡</span>Caching Playbook</a>
       <a class="nav-link" href="#scaleladder"><span class="num">↗</span>Scale Ladder</a>
       <a class="nav-link" href="#statuscodes"><span class="num">⚑</span>HTTP Status Codes</a>
+      <a class="nav-link" href="#datacorrectness"><span class="num">⇆</span>Data Correctness</a>
       <a class="nav-link" href="#glossary"><span class="num">§</span>Glossary</a>
     </div>
 
@@ -1240,6 +1269,8 @@
       <a class="nav-link" href="#usecase-trusteddevice"><span class="num">AB</span>Trusted Device Login Approval</a>
       <a class="nav-link" href="#usecase-sociallogin"><span class="num">AC</span>Password &amp; Social Login</a>
       <a class="nav-link" href="#usecase-apikeys"><span class="num">AD</span>API Key Management</a>
+      <a class="nav-link" href="#usecase-tenancy"><span class="num">AE</span>Tenant Isolation</a>
+      <a class="nav-link" href="#usecase-webhooks"><span class="num">AF</span>Webhook Delivery</a>
     </div>
 
     <div class="nav-group">
@@ -2669,6 +2700,201 @@ Content-Type: application/problem+json
 }</pre>
           <p><strong>type</strong> is the stable identifier clients branch on; <strong>title</strong> is for humans and may change; <strong>detail</strong> explains this occurrence. RFC 9457 replaced RFC 7807 in 2023 with the same shape, so existing 7807 clients keep working.</p>
         </div>
+      </div>
+    </section>
+
+    <section class="section" id="datacorrectness">
+      <div class="eyebrow">Toolkit</div>
+      <h2 class="section-title">Data Correctness — Transactions, Isolation &amp; Consistency</h2>
+      <p style="margin-top:10px; max-width:680px;">Most data bugs aren't crashes. They are two transactions that are each correct on their own, interleaving in a way nobody pictured — and the database's default settings don't stop most of them. This toolkit is the reference for three questions interviewers ask in every design that stores money or state: <strong>what can go wrong when writes overlap, which guarantee stops it, and what that guarantee costs.</strong></p>
+
+      <div class="subsection-box" style="margin-top:22px;">
+        <h3 class="subhead" style="margin-top:0;">1 · Five ways overlapping transactions go wrong</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Each is two transactions, T1 and T2, reading and writing the same data. Read each timeline top to bottom.</p>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — the anomalies, as timelines</div>
+<div class="ill-body">
+  <div class="dc-grid">
+    <div class="ill-card">
+      <div class="ill-h"><span class="pill mute">1</span> Dirty read</div>
+      <table class="ill-table kv"><tbody>
+        <tr><td>T1: set invoice total = 900</td><td></td></tr>
+        <tr><td></td><td>T2: reads 900, emails the customer</td></tr>
+        <tr><td>T1: ROLLBACK</td><td></td></tr>
+      </tbody></table>
+      <p class="ill-then">the email quotes a total that never existed</p>
+    </div>
+    <div class="ill-card">
+      <div class="ill-h"><span class="pill mute">2</span> Non-repeatable read</div>
+      <table class="ill-table kv"><tbody>
+        <tr><td>T1: reads status = draft</td><td></td></tr>
+        <tr><td></td><td>T2: sets status = sent, COMMIT</td></tr>
+        <tr><td>T1: reads again → sent</td><td></td></tr>
+      </tbody></table>
+      <p class="ill-then">the same query gives two answers inside one transaction</p>
+    </div>
+    <div class="ill-card">
+      <div class="ill-h"><span class="pill mute">3</span> Phantom</div>
+      <table class="ill-table kv"><tbody>
+        <tr><td>T1: counts overdue invoices → 12</td><td></td></tr>
+        <tr><td></td><td>T2: inserts an overdue invoice, COMMIT</td></tr>
+        <tr><td>T1: sums overdue amounts → 13 rows</td><td></td></tr>
+      </tbody></table>
+      <p class="ill-then">a report whose count and total disagree</p>
+    </div>
+    <div class="ill-card">
+      <div class="ill-h"><span class="pill mute">4</span> Lost update</div>
+      <table class="ill-table kv"><tbody>
+        <tr><td>T1: reads balance 500</td><td></td></tr>
+        <tr><td></td><td>T2: reads balance 500</td></tr>
+        <tr><td>T1: writes 500 − 100 = 400</td><td></td></tr>
+        <tr><td></td><td>T2: writes 500 − 200 = 300</td></tr>
+      </tbody></table>
+      <p class="ill-then">final balance 300 — T1's debit vanished</p>
+    </div>
+  </div>
+  <div class="ill-card bad">
+    <div class="ill-h"><span class="pill bad">5</span> Write skew <span class="ill-sub">— the one that gets past snapshot isolation</span></div>
+    <p>Rule: <strong>every business must keep at least one admin.</strong> It has two, Ana and Budi, and each tries to remove the other at the same moment.</p>
+    <table class="ill-table kv"><tbody>
+      <tr><td>T1 (Ana): counts admins → 2, so removing Budi is allowed</td><td></td></tr>
+      <tr><td></td><td>T2 (Budi): counts admins → 2, so removing Ana is allowed</td></tr>
+      <tr><td>T1: removes Budi, COMMIT</td><td></td></tr>
+      <tr><td></td><td>T2: removes Ana, COMMIT</td></tr>
+    </tbody></table>
+    <p class="ill-then"><strong>zero admins.</strong> Each transaction checked the rule and was right about what it saw; they wrote different rows, so nothing conflicted.</p>
+    <p class="ill-aside">This is the double-booking bug from the <a href="#usecase-meetingroom" style="color:var(--accent);">meeting room</a> example in another form: a decision based on reading rows that another transaction is about to change — or to insert.</p>
+  </div>
+</div>
+</div>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">2 · What each isolation level actually prevents — in PostgreSQL</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">The SQL standard describes levels loosely and each database implements them differently, so it's worth knowing the one you use. This is PostgreSQL's behaviour.</p>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — the isolation matrix</div>
+<div class="ill-body">
+  <table class="ill-table dc-matrix">
+    <thead><tr><th></th><th>Dirty read</th><th>Non-repeatable</th><th>Phantom</th><th>Lost update</th><th>Write skew</th></tr></thead>
+    <tbody>
+      <tr><td class="rh wrap">Read Committed <span class="pill info">default</span></td><td data-label="Dirty read"><span class="pill good">prevented</span></td><td data-label="Non-repeatable"><span class="pill bad">possible</span></td><td data-label="Phantom"><span class="pill bad">possible</span></td><td data-label="Lost update"><span class="pill bad">possible</span></td><td data-label="Write skew"><span class="pill bad">possible</span></td></tr>
+      <tr><td class="rh wrap">Repeatable Read <span class="ill-sub">snapshot isolation</span></td><td data-label="Dirty read"><span class="pill good">prevented</span></td><td data-label="Non-repeatable"><span class="pill good">prevented</span></td><td data-label="Phantom"><span class="pill good">prevented</span></td><td data-label="Lost update"><span class="pill warn">one aborts: 40001</span></td><td data-label="Write skew"><span class="pill bad">possible</span></td></tr>
+      <tr><td class="rh wrap">Serializable <span class="ill-sub">SSI</span></td><td data-label="Dirty read"><span class="pill good">prevented</span></td><td data-label="Non-repeatable"><span class="pill good">prevented</span></td><td data-label="Phantom"><span class="pill good">prevented</span></td><td data-label="Lost update"><span class="pill warn">one aborts: 40001</span></td><td data-label="Write skew"><span class="pill warn">one aborts: 40001</span></td></tr>
+    </tbody>
+  </table>
+  <ul class="ill-list">
+    <li class="then">PostgreSQL never allows dirty reads — asking for Read Uncommitted gives you Read Committed.</li>
+    <li class="then">The standard permits phantoms at Repeatable Read; PostgreSQL's snapshot implementation prevents them. MySQL's InnoDB defaults to Repeatable Read and implements it differently again — check your database, don't assume.</li>
+    <li class="then">"Lost update: possible" at Read Committed means read-then-write in application code. An atomic <code>UPDATE … SET balance = balance − 100</code> is safe even there, because the database re-reads the row under its lock.</li>
+  </ul>
+  <p class="ill-note">Stronger levels don't prevent conflicts by waiting — they <strong>abort</strong> one transaction with SQLSTATE <code>40001</code> (serialization failure). Choosing Repeatable Read or Serializable is a promise that every transaction can be safely retried.</p>
+</div>
+</div>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">3 · The enforcement ladder — how to protect an invariant</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Ordered by preference. Start at the top and stop at the first rung that can express your rule: the higher rungs are enforced by the database for every writer, including the code nobody has written yet.</p>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — six ways to stop the anomalies, in order of preference</div>
+<div class="ill-body">
+  <div class="dc-ladder">
+    <div class="dc-rung" style="--dc:#7CE0A8"><span class="dc-no">1</span><div><div class="ill-h">Constraint</div>
+      <p>The database rejects any write that breaks the rule — <code>UNIQUE</code>, <code>CHECK</code>, <code>EXCLUDE</code>, foreign keys. "One active subscription per business" is a partial unique index: <code>CREATE UNIQUE INDEX … ON subscriptions (business_id) WHERE status = 'active'</code>.</p>
+      <p class="dc-when"><b>Use when</b> the rule can be stated about the data itself. <b>Loser sees</b> a constraint violation → <code>409</code>.</p></div></div>
+    <div class="dc-rung" style="--dc:#7CE0A8"><span class="dc-no">2</span><div><div class="ill-h">Atomic conditional update</div>
+      <p>Check and change in one statement, with no read-modify-write in the application: <code>UPDATE accounts SET balance = balance − $1 WHERE id = $2 AND balance &gt;= $1</code>. Zero rows affected means the rule said no.</p>
+      <p class="dc-when"><b>Use when</b> the rule concerns one row. <b>Loser sees</b> zero rows → a clear refusal, as in the <a href="#usecase-ticketmaster" style="color:var(--accent);">Ticketmaster</a> seat hold.</p></div></div>
+    <div class="dc-rung" style="--dc:#6FE0F0"><span class="dc-no">3</span><div><div class="ill-h">Optimistic concurrency</div>
+      <p>Each row carries a version. Updates say <code>… WHERE id = $1 AND version = $2</code> and increment it; zero rows means someone else changed it first. Over HTTP this is an <code>ETag</code> with <code>If-Match</code>.</p>
+      <p class="dc-when"><b>Use when</b> conflicts are rare — a person editing a record. <b>Loser sees</b> <code>409</code> or <code>412</code>, then reloads.</p></div></div>
+    <div class="dc-rung" style="--dc:#FFD166"><span class="dc-no">4</span><div><div class="ill-h">Pessimistic lock</div>
+      <p><code>SELECT … FOR UPDATE</code> locks the rows you read, so a competing transaction waits. For write skew, lock the rows you are <em>counting</em> — or simply lock the parent: every admin change first locks the business row, which puts them in single file.</p>
+      <p class="dc-when"><b>Use when</b> conflicts are frequent or the rule spans rows. <b>Watch</b> lock ordering, or two transactions deadlock.</p></div></div>
+    <div class="dc-rung" style="--dc:#FF9E6B"><span class="dc-no">5</span><div><div class="ill-h">Serializable + retry</div>
+      <p>Run the transaction at <code>SERIALIZABLE</code> and let the database detect dangerous interleavings. It aborts one side with <code>40001</code>; the application retries the whole transaction.</p>
+      <p class="dc-when"><b>Use when</b> the invariant is too complex to lock precisely. <b>Cost</b> retries under contention, and every transaction must be retry-safe.</p></div></div>
+    <div class="dc-rung" style="--dc:#C08CE0"><span class="dc-no">6</span><div><div class="ill-h">Advisory lock</div>
+      <p>A named lock with no row behind it — for when the thing to protect doesn't exist yet, like an empty time slot. See the <a href="#usecase-meetingroom" style="color:var(--accent);">meeting room</a> example.</p>
+      <p class="dc-when"><b>Use when</b> there is nothing to lock or constrain. <b>Watch</b> it is only as good as every writer remembering to take it.</p></div></div>
+  </div>
+  <p class="ill-note">The write-skew bug above has two good fixes: lock the business row (rung 4) or run the removal at Serializable (rung 5). It can't be a simple constraint — "at least one admin" is a rule about a <em>set</em> of rows, not any single row, which is exactly why it slips past every isolation level below Serializable.</p>
+</div>
+</div>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">4 · Across services — when one transaction isn't available</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Everything above assumes one database. Once a business operation spans services, each with its own database, there is no single <span style="font-family:var(--mono)">COMMIT</span> — and the choice is between blocking and giving up isolation.</p>
+        <div class="hld-diagram-wrap">
+          <svg viewBox="0 0 900 330" style="width:100%; min-width:800px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg" role="img"><defs><marker id="dcx-0" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker><marker id="dcx-1" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker><marker id="dcx-2" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker><marker id="dcx-3" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#C08CE0"/></marker><marker id="dcx-4" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker><marker id="dcx-5" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#94B8D4"/></marker></defs><text x="20" y="22" text-anchor="start" font-family="JetBrains Mono" font-size="10.5" font-weight="700" fill="#C08CE0">TWO-PHASE COMMIT — ATOMIC, BUT IT CAN BLOCK</text><text x="470" y="22" text-anchor="start" font-family="JetBrains Mono" font-size="10.5" font-weight="700" fill="#7CE0A8">SAGA — NEVER BLOCKS, BUT NO ISOLATION BETWEEN STEPS</text><line x1="448" y1="10" x2="448" y2="320" stroke="#94B8D4" stroke-opacity=".3" stroke-dasharray="3 4"/><rect x="140" y="44" width="160" height="40" rx="7" fill="#0E2F52" stroke="#C08CE0" stroke-width="1.5"/><text x="220.0" y="61.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Coordinator</text><text x="220.0" y="76.0" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#C08CE0">✗ crashes after prepare</text><rect x="20" y="166" width="170" height="40" rx="7" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.5"/><text x="105.0" y="183.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Invoices DB</text><text x="105.0" y="198.0" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">prepared · locks held</text><rect x="250" y="166" width="170" height="40" rx="7" fill="#0E2F52" stroke="#94B8D4" stroke-width="1.5"/><text x="335.0" y="183.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">Ledger DB</text><text x="335.0" y="198.0" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#94B8D4">prepared · locks held</text><line x1="190" y1="84" x2="120" y2="163" stroke="#C08CE0" stroke-width="1.5" marker-end="url(#dcx-3)"/><line x1="250" y1="84" x2="320" y2="163" stroke="#C08CE0" stroke-width="1.5" marker-end="url(#dcx-3)"/><text x="128" y="122" text-anchor="end" font-family="Inter" font-size="10" fill="#C08CE0" stroke="#071B30" stroke-width="4" paint-order="stroke">prepare → yes</text><text x="312" y="122" text-anchor="start" font-family="Inter" font-size="10" fill="#C08CE0" stroke="#071B30" stroke-width="4" paint-order="stroke">prepare → yes</text><text x="220" y="148" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#FF6B5E" stroke="#071B30" stroke-width="4" paint-order="stroke">phase 2 · commit — never arrives</text><text x="220" y="236" text-anchor="middle" font-family="Inter" font-size="11" font-weight="700" fill="#FF6B5E" stroke="#071B30" stroke-width="4" paint-order="stroke">in doubt: can’t commit, can’t abort</text><text x="220" y="256" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#FF6B5E" stroke="#071B30" stroke-width="4" paint-order="stroke">rows stay locked until the coordinator returns</text><text x="220" y="296" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0" stroke="#071B30" stroke-width="4" paint-order="stroke">needs every participant to support it (XA) —</text><text x="220" y="312" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0" stroke="#071B30" stroke-width="4" paint-order="stroke">rare across microservices, reasonable inside one database cluster</text><rect x="470" y="44" width="126" height="40" rx="7" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/><text x="533.0" y="61.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">T1</text><text x="533.0" y="76.0" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">reserve funds</text><rect x="616" y="44" width="126" height="40" rx="7" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/><text x="679.0" y="61.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">T2</text><text x="679.0" y="76.0" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#7CE0A8">debit ledger</text><rect x="762" y="44" width="126" height="40" rx="7" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/><text x="825.0" y="61.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">T3</text><text x="825.0" y="76.0" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FF6B5E">charge card</text><line x1="596" y1="64" x2="613" y2="64" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#dcx-1)"/><line x1="742" y1="64" x2="759" y2="64" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#dcx-1)"/><text x="823" y="100" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="700" fill="#FF6B5E" stroke="#071B30" stroke-width="4" paint-order="stroke">✗ declined</text><rect x="616" y="166" width="126" height="40" rx="7" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/><text x="679.0" y="183.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">C2</text><text x="679.0" y="198.0" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">reverse ledger</text><rect x="470" y="166" width="126" height="40" rx="7" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/><text x="533.0" y="183.0" text-anchor="middle" font-family="JetBrains Mono" font-size="11.5" font-weight="700" fill="#EAF4FF">C1</text><text x="533.0" y="198.0" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#FFD166">release funds</text><path d="M 823,106 L 823,186 L 745,186" fill="none" stroke="#FFD166" stroke-width="1.5" marker-end="url(#dcx-2)"/><line x1="616" y1="186" x2="599" y2="186" stroke="#FFD166" stroke-width="1.5" marker-end="url(#dcx-2)"/><text x="680" y="236" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0" stroke="#071B30" stroke-width="4" paint-order="stroke">each step commits on its own; failure runs</text><text x="680" y="252" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0" stroke="#071B30" stroke-width="4" paint-order="stroke">compensations in reverse order</text><text x="680" y="286" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="700" fill="#FFD166" stroke="#071B30" stroke-width="4" paint-order="stroke">between steps, other transactions can see</text><text x="680" y="302" text-anchor="middle" font-family="Inter" font-size="10.5" font-weight="700" fill="#FFD166" stroke="#071B30" stroke-width="4" paint-order="stroke">funds reserved for a charge that later fails</text></svg>
+        </div>
+        <div class="diagram-caption">Two-phase commit keeps all-or-nothing semantics but leaves participants locked and unable to decide if the coordinator dies between phases. A saga never blocks — each step commits locally and failures are undone by compensations — but other transactions can see the in-between states, so the design has to tolerate them.</div>
+        <div class="ill" style="margin:14px 0 10px;">
+<div class="ill-title">Illustration — the dual-write problem, and the outbox</div>
+<div class="ill-body">
+  <p class="ill-lead">Saving an invoice and publishing <code>invoice.paid</code> are two writes to two systems. Any ordering of them fails somewhere.</p>
+  <div class="dc-grid3">
+    <div class="ill-card bad">
+      <div class="ill-h">Database, then publish</div>
+      <p>the process crashes between the two</p>
+      <p class="ill-then">the invoice is paid, and <strong>no one downstream ever hears</strong></p>
+    </div>
+    <div class="ill-card bad">
+      <div class="ill-h">Publish, then database</div>
+      <p>the database write fails after the event went out</p>
+      <p class="ill-then">subscribers act on a payment <strong>that never happened</strong></p>
+    </div>
+    <div class="ill-card good">
+      <div class="ill-h">Outbox</div>
+      <p>the invoice and an outbox row commit in <strong>one</strong> transaction; a relay publishes afterwards</p>
+      <p class="ill-then">both or neither — delivery becomes at-least-once, so consumers deduplicate</p>
+    </div>
+  </div>
+</div>
+</div>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:34%">The problem</th><th>The tool</th></tr>
+        <tr><td>Write to the database <em>and</em> publish an event</td><td>Transactional outbox — as in <a href="#usecase-webhooks" style="color:var(--accent);">webhook delivery</a> and the <a href="#usecase-auditlog" style="color:var(--accent);">audit log</a>.</td></tr>
+        <tr><td>Change data owned by several services</td><td>A saga with a compensation per step, as in the <a href="#usecase-payments" style="color:var(--accent);">payment API</a>; 2PC only between databases you control that support it.</td></tr>
+        <tr><td>A client retries a request that may have succeeded</td><td>An idempotency key, claimed atomically before the work — the payment API's first deep dive.</td></tr>
+        <tr><td>A consumer receives the same message twice</td><td>Deduplicate on the message or event id; at-least-once delivery makes duplicates normal.</td></tr>
+        <tr><td>Other transactions see a saga half-finished</td><td>Make the state explicit — a <span style="font-family:var(--mono)">PENDING</span> status others respect — and design steps to be safely re-readable.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="subsection-box" style="margin-top:18px;">
+        <h3 class="subhead" style="margin-top:0;">5 · Reading your own writes when reads go to replicas</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Read replicas lag the primary by milliseconds to seconds. That is invisible in aggregate and very visible to one user who has just saved something — the "I saved it and it's gone" cost on the <a href="#scaleladder" style="color:var(--accent);">Scale Ladder</a>'s ~10k rung.</p>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — the save that disappears, and three fixes</div>
+<div class="ill-body">
+  <ol class="ill-tl">
+    <li class="good"><div class="ill-tl-stage">t = 0</div><p>the user saves an invoice — written to the primary</p></li>
+    <li class="warn"><div class="ill-tl-stage">t = 30 ms</div><p>the app reloads the invoice list — read from a replica 200 ms behind</p></li>
+    <li class="bad"><div class="ill-tl-stage">result</div><p>the new invoice isn't in the list; the user saves it again, and now there are two</p></li>
+  </ol>
+  <div class="dc-grid3">
+    <div class="ill-card good"><div class="ill-h">Read from the primary after a write</div><p>route that user's reads to the primary for a few seconds after they write. Simple, and usually enough.</p></div>
+    <div class="ill-card good"><div class="ill-h">Wait for the replica to catch up</div><p>remember the commit's WAL position; read from a replica only once it has replayed that far (<code>pg_last_wal_replay_lsn()</code>), otherwise use the primary.</p></div>
+    <div class="ill-card info"><div class="ill-h">Stick a user to one replica</div><p>each user always reads the same replica, so time never appears to go backwards between two reads — monotonic reads.</p></div>
+  </div>
+  <p class="ill-note">The duplicate save in the timeline is also why the create endpoint deserves an idempotency key: a user retrying because the UI looked wrong is a retry like any other.</p>
+</div>
+</div>
+      </div>
+
+      <div class="callout keydive" style="margin-top:18px;">
+        <span class="label">How to answer "how do you stop X from happening twice?"</span>
+        <ol class="process" style="margin:6px 0 0;">
+          <li><strong>Name the invariant</strong> in one sentence — "a seat is held by at most one booking", "a business keeps at least one admin".</li>
+          <li><strong>Name the anomaly</strong> that breaks it — lost update, or write skew — and the isolation level at which it happens. That one sentence shows you know why the default isn't enough.</li>
+          <li><strong>Pick the highest rung of the ladder</strong> that can express the rule: a constraint if possible, an atomic update if it's one row, a lock or Serializable if it spans rows.</li>
+          <li><strong>Say what the loser sees</strong> — a <span style="font-family:var(--mono)">409</span>, a <span style="font-family:var(--mono)">412</span>, or a transparent retry on <span style="font-family:var(--mono)">40001</span> — because "one of them fails" is only half an answer until you've said how.</li>
+        </ol>
       </div>
     </section>
 
@@ -14879,6 +15105,729 @@ else                                → refuse, fall back to Design B</pre>
       </details>
     </section>
 
+    <section class="section" id="usecase-tenancy">
+      <details class="uc-details">
+        <summary class="uc-summary">
+          <div class="eyebrow">Worked Example AE — The Invoice That Belongs to Someone Else</div>
+          <div class="usecase-head">
+            <h2 class="section-title">Design Tenant Isolation for a Multi-Product B2B API</h2>
+            <span class="uc-tag">where the tenant comes from · BOLA · pool, bridge or silo · RLS as the safety net</span>
+          </div>
+          <div class="uc-hint">Click to expand</div>
+        </summary>
+        <div class="uc-body">
+      <p style="max-width:680px;">Thousands of businesses share one platform: the same services, the same databases, the same public API, across accounting, payroll and invoicing products. The single failure that ends trust in a B2B platform is one business seeing another's data. It almost never happens through a clever attack on the crypto — it happens because one query forgot one <span style="font-family:var(--mono)">WHERE</span> clause. This example designs isolation so that a single forgotten clause is not enough to cause a leak.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>Every request acts on behalf of exactly one business — the tenant — and can only read or change that business's data.</li>
+              <li>One user can belong to many businesses (an accountant serving thirty clients) and switch between them.</li>
+              <li>Partner apps are authorised per business, never platform-wide.</li>
+              <li>Support staff can reach a customer's data only through a time-boxed, reasoned, audited grant.</li>
+              <li>A business can be exported, erased, or pinned to a region on its own.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>Isolation must survive a bug in application code — one missing filter must not leak.</li>
+              <li>A request for another business's object must be indistinguishable from a request for an object that doesn't exist.</li>
+              <li>One very large or very busy business must not degrade the others.</li>
+              <li>Isolation checks add no meaningful latency — no extra network hop per request.</li>
+              <li>Hundreds of thousands of small businesses and a handful of very large ones, on the same platform.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">The first NFR is the one that shapes everything. "Developers must remember to filter by tenant" is a hope, not a design — the design is whatever still holds on the day someone forgets.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>Business</strong> <span class="fields">(id, region, isolation_tier, plan)</span> — the tenant. <span style="font-family:var(--mono)">isolation_tier</span> is pool or silo, and decides where its data lives.</li>
+            <li><strong>Membership</strong> <span class="fields">(user_id, business_id, role)</span> — a user's role inside one business; an accountant has many rows.</li>
+            <li><strong>Grant</strong> <span class="fields">(client_id, user_id, business_id, scopes)</span> — an OAuth grant names exactly one business.</li>
+            <li><strong>Invoice</strong> <span class="fields">(id, business_id, customer_id, amount, …)</span> — every tenant-owned row carries <span style="font-family:var(--mono)">business_id</span>, with no exceptions.</li>
+            <li><strong>SupportAccess</strong> <span class="fields">(agent_id, business_id, reason, expires_at)</span> — break-glass access, always expiring.</li>
+          </ul>
+          <p style="margin:12px 0 0; font-size:13.5px;"><strong style="font-family:var(--mono); color:var(--optional);">business_id</strong> leads every composite index — <span style="font-family:var(--mono)">(business_id, created_at)</span>, not <span style="font-family:var(--mono)">(created_at, business_id)</span> — because every query filters on it first, and the database should be able to jump straight to one tenant's rows.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p style="overflow-wrap:anywhere;"><span style="font-family:var(--mono)">GET /v1/invoices/{invoice_id}</span> → the business comes from the token, never from the request<br>
+          <span style="font-family:var(--mono)">GET /v1/businesses/{business_id}/invoices</span> → the path business must equal the token's business, or <span style="font-family:var(--mono)">404</span><br>
+          <span style="font-family:var(--mono)">POST /oauth/token</span> → a token is minted for exactly one business; switching business means obtaining another token<br>
+          <span style="font-family:var(--mono)">POST /internal/support-access</span> → grant an agent time-boxed access to one business, with a reason, audited</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>A token is issued for one business; its <span style="font-family:var(--mono)">business_id</span> claim is signed and cannot be altered.</li>
+            <li>The gateway verifies the token, strips any tenant header the client sent, and forwards the business as trusted context.</li>
+            <li>The service places the business in the request context; nothing downstream reads it from anywhere else.</li>
+            <li>The repository opens a transaction and sets the database's tenant context for that transaction only.</li>
+            <li>Every query is scoped by <span style="font-family:var(--mono)">business_id</span> — and the database enforces the same rule underneath with row-level security.</li>
+            <li>Anything that leaves the request — a queued job, a cache entry, a log line — carries the <span style="font-family:var(--mono)">business_id</span> with it.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>Defence in depth: the gateway fixes <em>who</em> the tenant is, the repository scopes every query, and the database enforces the same rule independently, so a bug in one layer is caught by the next. A detection layer watches for anyone probing the boundary. The paths that never touch the request pipeline — queues, caches, search, logs — each carry the tenant explicitly.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Five below: <strong>(a)</strong> BOLA — the bug valid tokens don't catch, <strong>(b)</strong> where the tenant comes from, <strong>(c)</strong> pool, bridge or silo, <strong>(d)</strong> row-level security and the connection-pooler trap, and <strong>(e)</strong> the leaks that bypass the database — then the edge cases.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 900 540" style="width:100%; min-width:800px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg" role="img"><defs><marker id="aet-0" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker><marker id="aet-1" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker><marker id="aet-2" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker><marker id="aet-3" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#C08CE0"/></marker><marker id="aet-4" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker><marker id="aet-5" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#94B8D4"/></marker><marker id="aet-6" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#8FB4FF"/></marker></defs><text x="450" y="24" text-anchor="middle" font-family="Inter" font-size="12.5" font-weight="700" fill="#EAF4FF">four independent layers — the first three each stop this leak alone; the fourth catches whoever is probing for it</text><rect x="14" y="96" width="156" height="150" rx="9" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/><text x="92" y="122" text-anchor="middle" font-family="Inter" font-size="12" font-weight="700" fill="#EAF4FF">Partner app</text><text x="92" y="148" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#9FC1E0">token → business A</text><text x="92" y="172" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#9FC1E0">GET /v1/invoices/</text><text x="92" y="188" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#FF6B5E">inv_992</text><text x="92" y="214" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">inv_992 belongs to</text><text x="92" y="230" text-anchor="middle" font-family="Inter" font-size="10" fill="#FF6B5E">business B</text><rect x="196" y="70" width="152" height="200" rx="9" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.6"/><circle cx="216" cy="92" r="11" fill="#6FE0F0"/><text x="216" y="96" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#071B30">1</text><text x="234" y="97" text-anchor="start" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#6FE0F0">Gateway</text><text x="272" y="128" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">token verified</text><text x="272" y="150" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#EAF4FF">→ business A</text><text x="272" y="172" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">client-sent tenant</text><text x="272" y="194" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#EAF4FF">headers stripped</text><text x="272" y="216" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">path business</text><text x="272" y="238" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#EAF4FF">must = token</text><rect x="366" y="70" width="152" height="200" rx="9" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.6"/><circle cx="386" cy="92" r="11" fill="#7CE0A8"/><text x="386" y="96" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#071B30">2</text><text x="404" y="97" text-anchor="start" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#7CE0A8">Repository</text><text x="442" y="128" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">every query carries</text><text x="442" y="150" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#EAF4FF">business_id:</text><text x="442" y="172" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#9FC1E0">WHERE id = $1</text><text x="442" y="194" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#EAF4FF">AND business_id = $2</text><text x="442" y="216" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">→ 0 rows</text><rect x="536" y="70" width="152" height="200" rx="9" fill="#0E2F52" stroke="#C08CE0" stroke-width="1.6"/><circle cx="556" cy="92" r="11" fill="#C08CE0"/><text x="556" y="96" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#071B30">3</text><text x="574" y="97" text-anchor="start" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#C08CE0">Postgres RLS</text><text x="612" y="128" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">policy on the table:</text><text x="612" y="150" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#EAF4FF">business_id =</text><text x="612" y="172" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#9FC1E0">current_setting(…)</text><text x="612" y="194" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#EAF4FF">holds even when</text><text x="612" y="216" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">layer 2 has a bug</text><rect x="706" y="70" width="152" height="200" rx="9" fill="#0E2F52" stroke="#FFD166" stroke-width="1.6"/><circle cx="726" cy="92" r="11" fill="#FFD166"/><text x="726" y="96" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="700" fill="#071B30">4</text><text x="744" y="97" text-anchor="start" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#FFD166">Detect</text><text x="782" y="128" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">cross-tenant tests</text><text x="782" y="150" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#EAF4FF">for every endpoint</text><text x="782" y="172" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">in CI</text><text x="782" y="194" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#EAF4FF">404-rate alert</text><text x="782" y="216" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">per client</text><text x="782" y="238" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#EAF4FF">catches probing</text><line x1="170" y1="170" x2="194" y2="170" stroke="#94B8D4" stroke-width="1.5" marker-end="url(#aet-5)"/><line x1="348" y1="170" x2="372" y2="170" stroke="#94B8D4" stroke-width="1.5" marker-end="url(#aet-5)"/><line x1="518" y1="170" x2="542" y2="170" stroke="#94B8D4" stroke-width="1.5" marker-end="url(#aet-5)"/><line x1="688" y1="170" x2="712" y2="170" stroke="#94B8D4" stroke-width="1.5" marker-end="url(#aet-5)"/><rect x="196" y="290" width="662" height="40" rx="8" fill="#0A2540" stroke="#7CE0A8" stroke-width="1.4"/><text x="527" y="315" text-anchor="middle" font-family="Inter" font-size="11.5" font-weight="700" fill="#7CE0A8">inv_992 is not visible to business A → 0 rows → 404 Not Found  (not 403: existence isn’t confirmed)</text><path d="M 527,270 L 527,287" fill="none" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#aet-1)"/><text x="450" y="370" text-anchor="middle" font-family="Inter" font-size="12" font-weight="700" fill="#EAF4FF">paths that never pass through the request pipeline — each needs its own tenant scoping</text><rect x="20" y="392" width="200" height="118" rx="9" fill="#0E2F52" stroke="#8FB4FF" stroke-width="1.4" stroke-dasharray="5 4"/><text x="120" y="416" text-anchor="middle" font-family="Inter" font-size="12" font-weight="700" fill="#8FB4FF">Queue / async job</text><text x="120" y="442" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#9FC1E0">message carries business_id</text><text x="120" y="462" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">worker sets context</text><text x="120" y="482" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">before any read</text><rect x="240" y="392" width="200" height="118" rx="9" fill="#0E2F52" stroke="#8FB4FF" stroke-width="1.4" stroke-dasharray="5 4"/><text x="340" y="416" text-anchor="middle" font-family="Inter" font-size="12" font-weight="700" fill="#8FB4FF">Cache</text><text x="340" y="442" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#9FC1E0">key = b:{business_id}:…</text><text x="340" y="462" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">a key without the tenant</text><text x="340" y="482" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">serves A’s data to B</text><rect x="460" y="392" width="200" height="118" rx="9" fill="#0E2F52" stroke="#8FB4FF" stroke-width="1.4" stroke-dasharray="5 4"/><text x="560" y="416" text-anchor="middle" font-family="Inter" font-size="12" font-weight="700" fill="#8FB4FF">Search index</text><text x="560" y="442" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#9FC1E0">business_id filter on</text><text x="560" y="462" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">every query — the index</text><text x="560" y="482" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">has no RLS</text><rect x="680" y="392" width="200" height="118" rx="9" fill="#0E2F52" stroke="#8FB4FF" stroke-width="1.4" stroke-dasharray="5 4"/><text x="780" y="416" text-anchor="middle" font-family="Inter" font-size="12" font-weight="700" fill="#8FB4FF">Logs, exports, files</text><text x="780" y="442" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#9FC1E0">business_id on every line</text><text x="780" y="462" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">object keys prefixed</text><text x="780" y="482" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">by business</text></svg>
+      </div>
+      <div class="diagram-caption">Defence in depth for one business's data. Layers 1–3 each stop a cross-tenant read on their own, so a bug has to exist in all three at once to leak; layer 4 turns quiet probing into an alert. The dashed row is where isolation most often fails in practice — outside the request pipeline, where no gateway or policy is watching.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col read">
+          <div class="flow-title">A legitimate request</div>
+          <ol>
+            <li>A partner app holds a token for business A and asks for <span style="font-family:var(--mono)">inv_118</span>.</li>
+            <li>The gateway verifies the token and forwards business A as trusted context.</li>
+            <li>The repository reads <span style="font-family:var(--mono)">inv_118</span> scoped to business A; RLS agrees.</li>
+            <li><span style="font-family:var(--mono)">200 OK</span> with the invoice.</li>
+          </ol>
+        </div>
+        <div class="flow-col write">
+          <div class="flow-title">The same request, one ID changed</div>
+          <ol>
+            <li>The same token asks for <span style="font-family:var(--mono)">inv_992</span>, which belongs to business B.</li>
+            <li>Authentication passes. The scope <span style="font-family:var(--mono)">invoices:read</span> passes. Nothing so far has looked at who owns the invoice.</li>
+            <li>The scoped query returns zero rows — and would still return zero if that filter had been forgotten, because RLS hides B's rows.</li>
+            <li><span style="font-family:var(--mono)">404 Not Found</span>: business A cannot even learn that <span style="font-family:var(--mono)">inv_992</span> exists.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — BOLA, the bug a valid token doesn't catch</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Only this business's data</span><span class="explains-tag nfr"><b>NFR</b>Indistinguishable from not-found</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Broken Object Level Authorization is the first entry in the OWASP API Security Top 10 (API1:2023) — the most common serious API flaw, not an exotic one.</li>
+          <li>It is invisible to the checks people trust: the token is valid and the scope is correct. Authentication answers <em>who</em> is calling and scopes answer <em>what kind</em> of action; neither asks whether <em>this specific object</em> belongs to them.</li>
+          <li>The bug is a lookup by ID alone. Any endpoint that takes an ID from the caller and fetches by that ID without the tenant is vulnerable — reads, updates, deletes, and exports alike.</li>
+          <li>The fix is structural: the tenant is part of every lookup, so an object from another business simply isn't found.</li>
+          <li>Answer <span style="font-family:var(--mono)">404</span>, not <span style="font-family:var(--mono)">403</span>. A 403 confirms the invoice exists — itself a leak, and an invitation to enumerate. The <a href="#statuscodes" style="color:var(--accent);">status codes toolkit</a> makes the same call.</li>
+          <li>Unguessable IDs help as a second layer, but they are not the fix: IDs leak through emails, URLs, screenshots and logs.</li>
+        </ol>
+        <p>The sentence to say in an interview: <em>authentication tells me who you are; object-level authorization tells me whether this particular thing is yours — and it has to happen on every request that takes an ID.</em></p>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — every check passes, and it still leaks</div>
+<div class="ill-body">
+  <div class="ill-chips"><span><span class="pill good">✓ token valid</span></span><span><span class="pill good">✓ scope invoices:read</span></span><span><span class="pill bad">✗ owner of inv_992 never checked</span></span></div>
+  <div class="ill-cols">
+    <div class="ill-card bad">
+      <div class="ill-h">Vulnerable <span class="ill-sub">— fetch by ID alone</span></div>
+<pre class="ill-code">SELECT * FROM invoices
+WHERE id = $1</pre>
+      <ul class="ill-list">
+        <li class="then">business A's token + <code>inv_992</code> → business B's invoice</li>
+        <li class="con"><strong>200 OK</strong> — and the logs look perfectly normal</li>
+      </ul>
+    </div>
+    <div class="ill-card good">
+      <div class="ill-h">Fixed <span class="ill-sub">— the tenant is part of the lookup</span></div>
+<pre class="ill-code">SELECT * FROM invoices
+WHERE id = $1 AND business_id = $2</pre>
+      <ul class="ill-list">
+        <li class="then">same request → zero rows</li>
+        <li class="pro"><strong>404 Not Found</strong> — identical to an ID that never existed</li>
+      </ul>
+    </div>
+  </div>
+  <p class="ill-note">The repository takes <code>business_id</code> from the request context as a required argument on every method. A lookup that omits it doesn't compile — which is far stronger than a code-review checklist item.</p>
+</div>
+</div>
+        <ul class="item-list">
+          <li><strong>Writes are the same bug</strong> — <span style="font-family:var(--mono)">UPDATE … WHERE id = $1</span> lets business A edit business B's invoice. Scope updates and deletes exactly like reads.</li>
+          <li><strong>Watch references inside bodies too</strong> — a request that creates an invoice for <span style="font-family:var(--mono)">customer_id</span> must check that customer belongs to the same business, or A can attach B's customer to its own invoice.</li>
+          <li><strong>Test it mechanically</strong> — for every endpoint that takes an ID, CI requests business B's object with business A's token and expects <span style="font-family:var(--mono)">404</span>. New endpoints inherit the test automatically.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — where the tenant comes from</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Exactly one business per request</span><span class="explains-tag"><b>FR</b>Many businesses per user</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Every isolation mechanism below depends on one value being right: which business this request acts for. If a caller can choose that value freely, every layer faithfully protects the wrong tenant.</li>
+          <li>The only trustworthy source is something the caller cannot alter — a claim inside a signed token, minted by the authorization server for one business.</li>
+          <li>A tenant in the URL is fine as <em>addressing</em>, but it must be checked against the token, never used instead of it.</li>
+          <li>A tenant header sent by the client is the classic mistake: it looks like context but is just user input. The gateway strips it on the way in, then sets its own trusted version on the way to services.</li>
+          <li>An accountant with thirty clients doesn't get one token for all thirty. Each token names one business; switching clients means obtaining a token for the next one. That keeps "one request, one tenant" true even for users who belong to many.</li>
+        </ol>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — every place a tenant could come from</div>
+<div class="ill-body">
+  <table class="ill-table">
+    <thead><tr><th>Source</th><th>Verdict</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td class="rh wrap">claim in the signed token</td><td data-label="Verdict"><span class="pill good">authoritative</span></td><td data-label="Why">minted by the authorization server for one business; the caller cannot change it</td></tr>
+      <tr><td class="rh wrap">business_id in the URL path</td><td data-label="Verdict"><span class="pill warn">must match the token</span></td><td data-label="Why">useful for addressing; a mismatch returns 404, never a silent switch</td></tr>
+      <tr><td class="rh wrap">X-Business-Id header from the client</td><td data-label="Verdict"><span class="pill bad">never trusted</span></td><td data-label="Why">it's user input wearing a header's clothes — stripped at the gateway</td></tr>
+      <tr><td class="rh wrap">business_id in the request body</td><td data-label="Verdict"><span class="pill bad">never trusted</span></td><td data-label="Why">same problem, easier to miss in review</td></tr>
+      <tr><td class="rh wrap">header set by the gateway, inside the mesh</td><td data-label="Verdict"><span class="pill good">trusted</span></td><td data-label="Why">only because the gateway stripped the client's version and mTLS proves who sent it — see the <a href="#usecase-platform" style="color:var(--accent);">microservices platform</a> example</td></tr>
+    </tbody>
+  </table>
+</div>
+</div>
+        <ul class="item-list">
+          <li><strong>API keys carry a tenant too</strong> — a key belongs to one business, so key verification yields the <span style="font-family:var(--mono)">business_id</span> exactly as a token does (see <a href="#usecase-apikeys" style="color:var(--accent);">API Key Management</a>).</li>
+          <li><strong>A token for a removed membership must stop working</strong> — when a user leaves a business, their grants for it are revoked, and short token lifetimes bound how long an already-issued token survives.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — pool, bridge or silo</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Huge and tiny tenants on one platform</span><span class="explains-tag nfr"><b>NFR</b>No noisy neighbours</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>There are three ways to separate tenants' data, and they trade isolation strength against cost and operational load.</li>
+          <li><strong>Pool</strong>: shared tables, every row tagged with <span style="font-family:var(--mono)">business_id</span>. Cheapest per tenant and one schema to migrate — but isolation depends entirely on the scoping and RLS above.</li>
+          <li><strong>Bridge</strong>: a schema per tenant inside a shared database. Stronger separation, but every migration runs once per schema, and tens of thousands of schemas strain the catalog and the deploy pipeline.</li>
+          <li><strong>Silo</strong>: a database per tenant. The strongest isolation, per-tenant restore and residency for free — and the highest cost, which small tenants can't justify.</li>
+          <li>With hundreds of thousands of small businesses and a few very large ones, no single model fits. The answer is tiered: pool by default, silo for the handful of large or regulated tenants — recorded as <span style="font-family:var(--mono)">isolation_tier</span> and routed on every request.</li>
+        </ol>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — three isolation models, side by side</div>
+<div class="ill-body">
+  <table class="ill-table">
+    <thead><tr><th></th><th>Pool<span class="sub">shared tables</span></th><th>Bridge<span class="sub">schema per tenant</span></th><th>Silo<span class="sub">database per tenant</span></th></tr></thead>
+    <tbody>
+      <tr><td class="rh">isolation</td><td data-label="Pool"><span class="pill warn">logical — code + RLS</span></td><td data-label="Bridge"><span class="pill info">namespace</span></td><td data-label="Silo"><span class="pill good">physical</span></td></tr>
+      <tr><td class="rh">cost per tenant</td><td data-label="Pool">lowest</td><td data-label="Bridge">medium</td><td data-label="Silo">highest — a floor per database</td></tr>
+      <tr><td class="rh">migrations</td><td data-label="Pool">once</td><td data-label="Bridge">once per schema</td><td data-label="Silo">once per database, orchestrated</td></tr>
+      <tr><td class="rh">noisy neighbour</td><td data-label="Pool">real risk — needs quotas</td><td data-label="Bridge">still shares the server</td><td data-label="Silo">contained</td></tr>
+      <tr><td class="rh">restore one tenant</td><td data-label="Pool">hard — extract its rows</td><td data-label="Bridge">restore one schema</td><td data-label="Silo">restore one database</td></tr>
+      <tr><td class="rh">residency &amp; erasure</td><td data-label="Pool">per-row work</td><td data-label="Bridge">per-schema</td><td data-label="Silo">place or drop the database</td></tr>
+      <tr><td class="rh">fits</td><td data-label="Pool">the long tail of small businesses</td><td data-label="Bridge">a few hundred mid-size tenants</td><td data-label="Silo">large or regulated customers</td></tr>
+    </tbody>
+  </table>
+  <p class="ill-note">Tiered is the usual answer, and it has a cost worth naming: two code paths for data placement, and a migration path for a tenant that grows from pool to silo — copy its rows, catch up, then flip <code>isolation_tier</code> at a quiet moment.</p>
+</div>
+</div>
+        <ul class="item-list">
+          <li><strong>Sharding follows the tenant</strong> — when the pool outgrows one database, shard by <span style="font-family:var(--mono)">business_id</span> so each business's rows stay together and its joins stay local. A single very busy business then becomes a hot shard, which is exactly when it graduates to a silo.</li>
+          <li><strong>Noisy neighbours are a quota problem as much as a data problem</strong> — per-business rate limits and connection limits come from the <a href="#usecase-multitenantlimits" style="color:var(--accent);">multi-tenant rate limiting</a> example.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — row-level security, and the connection-pooler trap</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>Survives a bug in application code</span><span class="explains-tag nfr"><b>NFR</b>No extra network hop</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Scoping in the repository is necessary but lives in application code, where a new query can simply forget it. The database should enforce the same rule underneath, independently.</li>
+          <li>Postgres row-level security attaches a policy to the table: the database adds the tenant condition to every query itself, and a row that doesn't match is invisible — even to a query that forgot its <span style="font-family:var(--mono)">WHERE</span> clause.</li>
+          <li>The policy compares each row against a per-transaction setting holding the current business, set by the repository at the start of every transaction.</li>
+          <li>The setting must be transaction-scoped. The platform runs PgBouncer in transaction mode, and a <em>session</em>-level setting stays on the server connection after the transaction ends — where the next tenant's transaction can pick it up.</li>
+          <li>Three details decide whether RLS actually protects anything: the app must connect as a role that is neither the table owner (or the table must use <span style="font-family:var(--mono)">FORCE</span>) nor a superuser nor granted <span style="font-family:var(--mono)">BYPASSRLS</span>; a missing setting must fail closed; and <span style="font-family:var(--mono)">business_id</span> must lead the indexes so the added condition is cheap.</li>
+        </ol>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — the policy, and the connection-pooler bug that defeats it</div>
+<div class="ill-body">
+<pre class="ill-code">ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices FORCE ROW LEVEL SECURITY;      -- applies to the table owner too
+
+CREATE POLICY business_isolation ON invoices
+  USING      (business_id = nullif(current_setting('app.business_id', true), '')::uuid)
+  WITH CHECK (business_id = nullif(current_setting('app.business_id', true), '')::uuid);
+
+-- per transaction, from the repository:
+BEGIN;
+SELECT set_config('app.business_id', $1, true);   -- true = this transaction only
+SELECT * FROM invoices WHERE id = $2;             -- RLS adds the tenant condition
+COMMIT;</pre>
+  <div class="ill-cols">
+    <div class="ill-card bad">
+      <div class="ill-h">Session-level <span class="ill-sub">— <code>SET app.business_id = …</code></span></div>
+      <ol class="ill-tl">
+        <li><div class="ill-tl-stage">txn 1</div><p>business A's request sets A on server connection #7</p></li>
+        <li class="warn"><div class="ill-tl-stage">commit</div><p>PgBouncer returns connection #7 to the pool — <strong>the setting stays</strong></p></li>
+        <li class="bad"><div class="ill-tl-stage">txn 2</div><p>business B's request lands on #7; if its code path skips the set, it runs <strong>as business A</strong></p></li>
+      </ol>
+    </div>
+    <div class="ill-card good">
+      <div class="ill-h">Transaction-level <span class="ill-sub">— <code>set_config(…, true)</code></span></div>
+      <ol class="ill-tl">
+        <li><div class="ill-tl-stage">txn 1</div><p>business A's request sets A for this transaction</p></li>
+        <li class="good"><div class="ill-tl-stage">commit</div><p>the setting ends with the transaction</p></li>
+        <li class="good"><div class="ill-tl-stage">txn 2</div><p>business B's request that forgot to set it sees <strong>no rows</strong> — the missing setting fails closed</p></li>
+      </ol>
+    </div>
+  </div>
+  <p class="ill-note"><code>set_config(…, true)</code> rather than <code>SET LOCAL</code> for one practical reason: it takes the business as a bind parameter, so the tenant ID is never concatenated into SQL. And the policy reads the setting defensively: <code>current_setting(…, true)</code> returns NULL if the setting was never defined, but an <em>empty string</em> on a pooled connection where an earlier transaction set it — so <code>nullif(…, '')</code> turns both into NULL, which matches no rows. Silence instead of a leak.</p>
+</div>
+</div>
+        <ul class="item-list">
+          <li><strong>RLS is the safety net, not the design</strong> — keep the explicit <span style="font-family:var(--mono)">business_id</span> filter in queries too. It makes intent readable, it helps the planner, and it means a mistake in a policy is caught by the code, and vice versa.</li>
+          <li><strong>Migrations and admin jobs run as a separate role</strong> — the only role allowed to bypass RLS, never used by request-serving code, and audited when it is used.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — the leaks that bypass the database</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Only this business's data</span><span class="explains-tag"><b>FR</b>Export, erase, pin on its own</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Row-level security protects one thing: the primary database. Tenant data is also copied into caches, queues, search indexes, warehouses, logs and files — none of which have a policy watching them.</li>
+          <li>Each copy needs the tenant carried with it explicitly, and each reader needs to re-apply it. The rule is simple: tenant data never travels without its <span style="font-family:var(--mono)">business_id</span>.</li>
+          <li>Background work is the most common gap: a worker picking up a message has no request, no token and no gateway — only what the message says. So the message carries the business, and the worker sets the database context before its first read.</li>
+        </ol>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — every copy of tenant data, and how each one leaks</div>
+<div class="ill-body">
+  <table class="ill-table">
+    <thead><tr><th>Where the data goes</th><th>How it leaks</th><th>The fix</th></tr></thead>
+    <tbody>
+      <tr><td class="rh wrap">cache</td><td data-label="Leaks">key <code>invoice:992</code> without the tenant — whoever asks first fills it, anyone can read it</td><td data-label="Fix">key <code>b:{business_id}:invoice:992</code>, or re-check ownership on every read</td></tr>
+      <tr><td class="rh wrap">queue / async job</td><td data-label="Leaks">the worker has no request context and queries unscoped</td><td data-label="Fix"><code>business_id</code> in every message; the worker sets context before any read</td></tr>
+      <tr><td class="rh wrap">search index</td><td data-label="Leaks">one shared index, no row-level security</td><td data-label="Fix">a mandatory <code>business_id</code> filter added by the search client, not by each caller</td></tr>
+      <tr><td class="rh wrap">analytics warehouse</td><td data-label="Leaks">cross-tenant tables feed customer-facing reports</td><td data-label="Fix">keep <code>business_id</code> in every table; customer-facing views filter by it</td></tr>
+      <tr><td class="rh wrap">logs &amp; error trackers</td><td data-label="Leaks">payloads with invoice data readable by anyone with log access</td><td data-label="Fix">log <code>business_id</code> and IDs, never payloads</td></tr>
+      <tr><td class="rh wrap">exports &amp; files</td><td data-label="Leaks">a guessable object path serves B's export to A</td><td data-label="Fix">object keys prefixed by business, served only through short-lived presigned URLs issued after the ownership check</td></tr>
+    </tbody>
+  </table>
+  <p class="ill-note">The caching row connects to the <a href="#cachingplaybook" style="color:var(--accent);">Caching Playbook</a>: a shared cache entry is safe only when every read is filtered for the caller afterwards. Tenant data that is cached should either be keyed by tenant or filtered on the way out — never neither.</p>
+</div>
+</div>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Edge cases worth raising before the interviewer does</span>
+        <ul class="item-list">
+          <li><strong>The accountant with thirty clients</strong> — one person, thirty memberships, one token per business at a time. The UI's business switcher obtains a new token; it never flips a header.</li>
+          <li><strong>A document two businesses both need</strong> — an invoice sent from business A to business B belongs to both. Model it as two tenant-owned records (A's sent invoice, B's received bill) linked by an ID, not one row visible to two tenants; each side then has its own lifecycle, permissions and erasure.</li>
+          <li><strong>Support access</strong> — a support agent never gets platform-wide read access. A <span style="font-family:var(--mono)">SupportAccess</span> grant names one business, a reason and an expiry, every read under it goes to the <a href="#usecase-auditlog" style="color:var(--accent);">audit log</a>, and the customer can see that access happened.</li>
+          <li><strong>Offboarding and erasure</strong> — in a silo, drop the database. In the pool, delete by <span style="font-family:var(--mono)">business_id</span> across every table, and destroy the business's encryption key so backups and archives become unreadable — the crypto-shredding technique from the audit log example.</li>
+          <li><strong>Data residency</strong> — <span style="font-family:var(--mono)">Business.region</span> pins where its data lives. A business that must stay in one country is served by that region's database, cache and queue — a residency requirement quietly turns into a routing requirement.</li>
+          <li><strong>A tenant outgrows the pool</strong> — copy its rows to a new silo, keep them in sync while it catches up, then flip <span style="font-family:var(--mono)">isolation_tier</span> in a brief write pause. Plan this path before the first large customer signs, not after.</li>
+        </ul>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>Survives a bug in application code</td><td>Three independent layers — token-derived tenant, repository scoping, and row-level security — so a leak needs the same mistake in all three at once.</td></tr>
+        <tr><td>Indistinguishable from not-found</td><td>Another business's object is filtered out before it is ever loaded, so the response is a genuine <span style="font-family:var(--mono)">404</span>, not a 403 that confirms it exists.</td></tr>
+        <tr><td>One business per request, many per user</td><td>Tokens name exactly one business; switching business means a new token, so the rule holds even for an accountant with thirty clients.</td></tr>
+        <tr><td>No noisy neighbours</td><td>Per-business quotas in the pool; large tenants graduate to a silo where their load is physically separate.</td></tr>
+        <tr><td>No meaningful added latency</td><td>The tenant comes from the token already being verified; RLS is a predicate on an index that already leads with <span style="font-family:var(--mono)">business_id</span>.</td></tr>
+        <tr><td>Export, erase or pin one business</td><td>Every row, message, cache key and file carries <span style="font-family:var(--mono)">business_id</span>; silos make it a single database operation.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>Pool vs. silo</td><td>The pool is cheap and simple to operate but isolation is logical; silos are strong and give per-tenant restore, at a cost small businesses can't justify. Tiering buys both, at the price of two placement paths.</td></tr>
+        <tr><td>RLS on top of query scoping</td><td>Some policy complexity and a role discipline to maintain, in exchange for isolation that survives a forgotten filter.</td></tr>
+        <tr><td>404 instead of 403</td><td>Harder debugging for the caller — "is it missing or forbidden?" — in exchange for never confirming that another business's object exists.</td></tr>
+        <tr><td>One token per business</td><td>An extra token exchange when an accountant switches clients, in exchange for "one request, one tenant" holding without exception.</td></tr>
+        <tr><td>Tenant-keyed caches</td><td>Lower hit rates for data several businesses could have shared, in exchange for caches that cannot serve one business's data to another.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>Enforcement in the database</td><td><span class="tool-tag">PostgreSQL</span> row-level security with <span style="font-family:var(--mono)">FORCE</span>, and a non-owner application role without <span style="font-family:var(--mono)">BYPASSRLS</span></td></tr>
+        <tr><td>Connection pooling</td><td><span class="tool-tag">PgBouncer</span> in transaction mode — which is exactly why tenant context must be transaction-scoped</td></tr>
+        <tr><td>Sharding by tenant</td><td><span class="tool-tag">Citus</span> distributes Postgres tables by a tenant column so each business's rows and joins stay on one node</td></tr>
+        <tr><td>Tenant propagation in Go</td><td><span class="tool-tag">context.Context</span> carrying the business from middleware to repository, with repository methods that require it as an argument</td></tr>
+        <tr><td>Authorization policy</td><td><span class="tool-tag">OPA</span> or <span class="tool-tag">Cedar</span> when rules outgrow "same business and has this role"</td></tr>
+        <tr><td>Checklist</td><td><span class="tool-tag">OWASP API Security Top 10</span> — BOLA is API1:2023; test every ID-taking endpoint against it</td></tr>
+      </table>
+</div>
+      </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="section" id="usecase-webhooks">
+      <details class="uc-details">
+        <summary class="uc-summary">
+          <div class="eyebrow">Worked Example AF — The Customer Whose Server Is Down</div>
+          <div class="usecase-head">
+            <h2 class="section-title">Design a Webhook Delivery System</h2>
+            <span class="uc-tag">at-least-once · signing &amp; replay · retries that don't stampede · one dead endpoint can't stall the rest</span>
+          </div>
+          <div class="uc-hint">Click to expand</div>
+        </summary>
+        <div class="uc-body">
+      <p style="max-width:680px;">When an invoice is paid or a payroll run completes, partner apps want to know immediately — so the platform calls <em>their</em> HTTPS endpoint with the event. The hard part isn't sending an HTTP request. It is that thousands of servers you don't control will be slow, down, misconfigured, or lying about success, and your delivery system has to stay correct and fair through all of it.</p>
+
+      <div class="mini-steps">
+        <div class="mini-step"><div class="badge-hatch sm">1</div><div class="mini-body">
+          <div class="mini-title">Requirements</div>
+          <div class="req-block">
+            <span class="req-label fr">Functional</span>
+            <ul class="item-list">
+              <li>Partners subscribe an HTTPS endpoint to event types for one business.</li>
+              <li>Every event reaches every matching endpoint — even one that is down for a day.</li>
+              <li>Receivers can prove an event came from the platform, unaltered, and wasn't replayed.</li>
+              <li>Partners can see each delivery attempt and replay any event.</li>
+              <li>Endpoints that keep failing are disabled, and their owners told.</li>
+            </ul>
+          </div>
+          <div class="req-block">
+            <span class="req-label nfr">Non-functional</span>
+            <ul class="item-list">
+              <li>Emitting an event never slows or fails the business transaction that produced it.</li>
+              <li>No event is lost across crashes, deploys or outages.</li>
+              <li>One slow or dead endpoint must not delay deliveries to anyone else.</li>
+              <li>A large endpoint recovering from an outage must not be flattened by its own backlog.</li>
+              <li>Delivery calls must never reach the platform's own internal network.</li>
+            </ul>
+          </div>
+          <p style="font-size:13px; color:var(--ink-faint); font-style:italic; margin-top:10px;">The third NFR is the one teams miss. A delivery system with one shared queue works perfectly in testing, where every endpoint is healthy — and falls over the first time one customer's server starts dropping packets.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">2</div><div class="mini-body">
+          <div class="mini-title">Core Entities</div>
+          <ul class="entity-list">
+            <li><strong>Event</strong> <span class="fields">(id, business_id, type, resource_id, created_at)</span> — immutable; its <span style="font-family:var(--mono)">id</span> is what receivers deduplicate on.</li>
+            <li><strong>Endpoint</strong> <span class="fields">(id, business_id, url, event_types, secrets, status)</span> — status is active, failing or disabled; more than one secret during rotation.</li>
+            <li><strong>Delivery</strong> <span class="fields">(event_id, endpoint_id, state, attempts, next_attempt_at)</span> — one per event per endpoint; pending, succeeded or dead.</li>
+            <li><strong>Attempt</strong> <span class="fields">(delivery_id, at, status_code, latency_ms, error)</span> — the history partners see in their dashboard.</li>
+          </ul>
+          <p style="margin:12px 0 0; font-size:13.5px;"><strong style="font-family:var(--mono); color:var(--optional);">business_id</strong> is on the endpoint for the same reason it is everywhere in the <a href="#usecase-tenancy" style="color:var(--accent);">tenant isolation</a> example: fan-out must never deliver business B's event to business A's endpoint. A misrouted webhook is a cross-tenant leak that arrives by POST.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">3</div><div class="mini-body">
+          <div class="mini-title">API</div>
+          <p style="overflow-wrap:anywhere;"><span style="font-family:var(--mono)">POST /v1/webhook-endpoints</span> → register a URL and event types; the signing secret is returned once<br>
+          <span style="font-family:var(--mono)">GET /v1/webhook-endpoints/{id}/deliveries</span> → every attempt, with status code and latency<br>
+          <span style="font-family:var(--mono)">POST /v1/events/{id}/redeliver</span> → replay one event to one endpoint<br>
+          <span style="font-family:var(--mono)">POST /v1/webhook-endpoints/{id}/rotate-secret</span> → add a new secret while the old one keeps working<br>
+          <span style="font-family:var(--mono)">GET /v1/events?since=…</span> → a pull-based backstop: a partner that was down can list what it missed</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">4</div><div class="mini-body">
+          <div class="mini-title">Data Flow — genuinely earns its place here</div>
+          <ol class="item-list" style="list-style:none; padding:0;">
+            <li>The invoice service writes the paid invoice and an outbox row in one transaction.</li>
+            <li>A relay publishes outbox rows to a durable event log and marks them sent.</li>
+            <li>Fan-out matches each event against subscriptions for the same business, creating one delivery per endpoint.</li>
+            <li>Workers sign and POST each delivery, one lane per endpoint, with a hard timeout.</li>
+            <li>A <span style="font-family:var(--mono)">2xx</span> completes the delivery; anything else schedules a retry with backoff and jitter.</li>
+            <li>After the final attempt the delivery is dead-lettered, the owner is notified, and it stays replayable.</li>
+          </ol>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm">5</div><div class="mini-body">
+          <div class="mini-title">High-Level Design</div>
+          <p>Three stages with different jobs. Recording the event is transactional and never waits on the network. Delivery is isolated per endpoint, so the slowest customer only slows themselves. Failure handling moves retries out of the live path entirely, into a scheduler that brings each one back when it is due.</p>
+        </div></div>
+        <div class="mini-step"><div class="badge-hatch sm amber">6</div><div class="mini-body">
+          <div class="mini-title">Deep Dives</div>
+          <p>Five below: <strong>(a)</strong> why delivery can only be at-least-once, <strong>(b)</strong> signing and replay protection, <strong>(c)</strong> retries that don't stampede, <strong>(d)</strong> one dead endpoint must not stall the rest, and <strong>(e)</strong> thin events and ordering — then the edge cases, including the one that turns webhooks into an attack on your own network.</p>
+        </div></div>
+      </div>
+
+      <div class="hld-diagram-wrap">
+        <svg viewBox="0 0 900 560" style="width:100%; min-width:800px; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg" role="img"><defs><marker id="afw-0" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6FE0F0"/></marker><marker id="afw-1" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7CE0A8"/></marker><marker id="afw-2" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FFD166"/></marker><marker id="afw-3" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#C08CE0"/></marker><marker id="afw-4" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#FF6B5E"/></marker><marker id="afw-5" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#94B8D4"/></marker><marker id="afw-6" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#8FB4FF"/></marker></defs><text x="20" y="26" text-anchor="start" font-family="JetBrains Mono" font-size="10.5" font-weight="700" fill="#6FE0F0">1 · RECORD THE EVENT — NEVER BLOCK THE BUSINESS TRANSACTION</text><rect x="20" y="40" width="180" height="86" rx="9" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/><text x="110.0" y="61" text-anchor="middle" font-family="Inter" font-size="11.5" font-weight="700" fill="#6FE0F0">Invoice service</text><text x="110.0" y="80" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">invoice row + outbox row</text><text x="110.0" y="96" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">in ONE transaction</text><rect x="240" y="40" width="150" height="86" rx="9" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/><text x="315.0" y="61" text-anchor="middle" font-family="Inter" font-size="11.5" font-weight="700" fill="#6FE0F0">Outbox relay</text><text x="315.0" y="80" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">polls the outbox,</text><text x="315.0" y="96" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">publishes, marks sent</text><rect x="430" y="40" width="150" height="86" rx="9" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/><text x="505.0" y="61" text-anchor="middle" font-family="Inter" font-size="11.5" font-weight="700" fill="#6FE0F0">Event log</text><text x="505.0" y="80" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">durable, replayable</text><text x="505.0" y="96" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">(e.g. Kafka)</text><rect x="620" y="40" width="260" height="86" rx="9" fill="#0E2F52" stroke="#6FE0F0" stroke-width="1.5"/><text x="750.0" y="61" text-anchor="middle" font-family="Inter" font-size="11.5" font-weight="700" fill="#6FE0F0">Fan-out</text><text x="750.0" y="80" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">match event type + business</text><text x="750.0" y="96" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">against subscriptions →</text><text x="750.0" y="112" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">one delivery per endpoint</text><line x1="200" y1="83" x2="237" y2="83" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#afw-0)"/><line x1="390" y1="83" x2="427" y2="83" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#afw-0)"/><line x1="580" y1="83" x2="617" y2="83" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#afw-0)"/><text x="20" y="150" text-anchor="start" font-family="JetBrains Mono" font-size="10.5" font-weight="700" fill="#7CE0A8">2 · DELIVER — EACH ENDPOINT GETS ITS OWN LANE, SO ONE DEAD SERVER CAN’T STALL THE REST</text><rect x="20" y="190" width="330" height="44" rx="8" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/><rect x="32" y="202" width="12" height="20" rx="2" fill="#7CE0A8" fill-opacity="0.3"/><rect x="49" y="202" width="12" height="20" rx="2" fill="#7CE0A8" fill-opacity="0.42"/><rect x="66" y="202" width="12" height="20" rx="2" fill="#7CE0A8" fill-opacity="0.54"/><rect x="83" y="202" width="12" height="20" rx="2" fill="#7CE0A8" fill-opacity="0.6599999999999999"/><rect x="100" y="202" width="12" height="20" rx="2" fill="#7CE0A8" fill-opacity="0.78"/><text x="130" y="217" text-anchor="start" font-family="Inter" font-size="10.5" fill="#EAF4FF">endpoint A · healthy</text><line x1="350" y1="212" x2="437" y2="212" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#afw-1)"/><rect x="700" y="190" width="180" height="44" rx="8" fill="#0E2F52" stroke="#7CE0A8" stroke-width="1.5"/><text x="790" y="217" text-anchor="middle" font-family="Inter" font-size="11" font-weight="700" fill="#7CE0A8">✓ 200 in 80 ms</text><rect x="20" y="250" width="330" height="44" rx="8" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/><rect x="32" y="262" width="12" height="20" rx="2" fill="#FFD166" fill-opacity="0.3"/><rect x="49" y="262" width="12" height="20" rx="2" fill="#FFD166" fill-opacity="0.42"/><rect x="66" y="262" width="12" height="20" rx="2" fill="#FFD166" fill-opacity="0.54"/><rect x="83" y="262" width="12" height="20" rx="2" fill="#FFD166" fill-opacity="0.6599999999999999"/><rect x="100" y="262" width="12" height="20" rx="2" fill="#FFD166" fill-opacity="0.78"/><text x="130" y="277" text-anchor="start" font-family="Inter" font-size="10.5" fill="#EAF4FF">endpoint B · slow, max 5 in flight</text><line x1="350" y1="272" x2="437" y2="272" stroke="#FFD166" stroke-width="1.5" marker-end="url(#afw-2)"/><rect x="700" y="250" width="180" height="44" rx="8" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5"/><text x="790" y="277" text-anchor="middle" font-family="Inter" font-size="11" font-weight="700" fill="#FFD166">⏱ 8 s responses</text><rect x="20" y="310" width="330" height="44" rx="8" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/><rect x="32" y="322" width="12" height="20" rx="2" fill="#FF6B5E" fill-opacity="0.3"/><rect x="49" y="322" width="12" height="20" rx="2" fill="#FF6B5E" fill-opacity="0.42"/><rect x="66" y="322" width="12" height="20" rx="2" fill="#FF6B5E" fill-opacity="0.54"/><rect x="83" y="322" width="12" height="20" rx="2" fill="#FF6B5E" fill-opacity="0.6599999999999999"/><rect x="100" y="322" width="12" height="20" rx="2" fill="#FF6B5E" fill-opacity="0.78"/><text x="130" y="337" text-anchor="start" font-family="Inter" font-size="10.5" fill="#EAF4FF">endpoint C · down</text><line x1="350" y1="332" x2="437" y2="332" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#afw-4)"/><rect x="700" y="310" width="180" height="44" rx="8" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5"/><text x="790" y="337" text-anchor="middle" font-family="Inter" font-size="11" font-weight="700" fill="#FF6B5E">✗ connection refused</text><path d="M 750,126 L 750,170 L 185,170 L 185,187" fill="none" stroke="#6FE0F0" stroke-width="1.5" marker-end="url(#afw-0)"/><rect x="440" y="186" width="200" height="172" rx="9" fill="#0E2F52" stroke="#C08CE0" stroke-width="1.6"/><text x="540" y="212" text-anchor="middle" font-family="Inter" font-size="12" font-weight="700" fill="#C08CE0">Delivery workers</text><text x="540" y="236" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">sign: HMAC over</text><text x="540" y="258" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#EAF4FF">id · timestamp · raw body</text><text x="540" y="280" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">POST, 10 s timeout</text><text x="540" y="302" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#EAF4FF">no redirects followed</text><text x="540" y="324" text-anchor="middle" font-family="Inter" font-size="10.5" fill="#9FC1E0">resolved IP must be public</text><line x1="640" y1="212" x2="697" y2="212" stroke="#7CE0A8" stroke-width="1.5" marker-end="url(#afw-1)"/><line x1="640" y1="272" x2="697" y2="272" stroke="#FFD166" stroke-width="1.5" marker-end="url(#afw-2)"/><line x1="640" y1="332" x2="697" y2="332" stroke="#FF6B5E" stroke-width="1.5" marker-end="url(#afw-4)"/><text x="20" y="378" text-anchor="start" font-family="JetBrains Mono" font-size="10.5" font-weight="700" fill="#FFD166">3 · FAIL SAFELY — RETRY LATER, NEVER AT THE HEAD OF THE LIVE QUEUE</text><rect x="20" y="416" width="300" height="100" rx="9" fill="#0E2F52" stroke="#FFD166" stroke-width="1.5" stroke-dasharray="5 4"/><text x="170.0" y="437" text-anchor="middle" font-family="Inter" font-size="11.5" font-weight="700" fill="#FFD166">Retry scheduler</text><text x="170.0" y="456" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">backoff with jitter: 10 s, 1 m, 5 m,</text><text x="170.0" y="472" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">30 m, 2 h … over ~3 days</text><text x="170.0" y="488" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">honours Retry-After on 429</text><rect x="360" y="416" width="250" height="100" rx="9" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5" stroke-dasharray="5 4"/><text x="485.0" y="437" text-anchor="middle" font-family="Inter" font-size="11.5" font-weight="700" fill="#FF6B5E">Dead letter</text><text x="485.0" y="456" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">attempts exhausted →</text><text x="485.0" y="472" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">owner notified,</text><text x="485.0" y="488" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">replay from the dashboard</text><rect x="650" y="416" width="230" height="100" rx="9" fill="#0E2F52" stroke="#FF6B5E" stroke-width="1.5" stroke-dasharray="5 4"/><text x="765.0" y="437" text-anchor="middle" font-family="Inter" font-size="11.5" font-weight="700" fill="#FF6B5E">Endpoint health</text><text x="765.0" y="456" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">failing for days →</text><text x="765.0" y="472" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">marked disabled;</text><text x="765.0" y="488" text-anchor="middle" font-family="Inter" font-size="10" fill="#9FC1E0">410 Gone → disable now</text><path d="M 790,358 L 790,394 L 170,394 L 170,413" fill="none" stroke="#FF6B5E" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#afw-4)"/><path d="M 320,466 L 340,466" fill="none" stroke="#FFD166" stroke-width="1.5" stroke-dasharray="5 4"/><line x1="340" y1="466" x2="357" y2="466" stroke="#FFD166" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#afw-2)"/><path d="M 20,480 L 9,480 L 9,332 L 17,332" fill="none" stroke="#FFD166" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#afw-2)"/><text x="450" y="542" text-anchor="middle" font-family="Inter" font-size="10" fill="#FFD166" stroke="#071B30" stroke-width="4" paint-order="stroke">↺ a retry re-enters endpoint C’s lane when it is due — never the head of the live queue</text></svg>
+      </div>
+      <div class="diagram-caption">Record, deliver, fail safely. The outbox makes emitting an event part of the business transaction without making the transaction wait on anyone's server. Per-endpoint lanes keep a slow or dead endpoint from consuming the shared worker pool, and retries return through the scheduler rather than blocking the head of a live queue.</div>
+
+      <div class="flow-narrative">
+        <div class="flow-col read">
+          <div class="flow-title">A healthy delivery</div>
+          <ol>
+            <li>Invoice <span style="font-family:var(--mono)">inv_118</span> is paid; the event is recorded with the payment itself.</li>
+            <li>Fan-out finds one matching endpoint for that business.</li>
+            <li>A worker signs and POSTs it; the partner verifies the signature and replies <span style="font-family:var(--mono)">200</span> in 80 ms.</li>
+            <li>The delivery is marked succeeded, with the attempt visible in the partner's dashboard.</li>
+          </ol>
+        </div>
+        <div class="flow-col write">
+          <div class="flow-title">The partner's server is down for six hours</div>
+          <ol>
+            <li>The first attempt fails; the delivery is scheduled for 10 seconds later, then a minute, then five.</li>
+            <li>Meanwhile every other partner's events flow normally — this endpoint's lane is the only one waiting.</li>
+            <li>The server comes back; the next scheduled retry succeeds, and its backlog drains at a capped rate rather than all at once.</li>
+            <li>Nothing was lost, nothing was delayed for anyone else, and the partner can see exactly what happened.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="callout keydive">
+        <span class="label">Key deep dive — why delivery can only be at-least-once</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Every event reaches every endpoint</span><span class="explains-tag nfr"><b>NFR</b>No event lost</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>The sender only knows a delivery succeeded when it receives a <span style="font-family:var(--mono)">2xx</span>. Silence means nothing either way.</li>
+          <li>A receiver can process the event and then fail to answer — its response times out, the connection drops, or it crashes after committing.</li>
+          <li>From the sender's side that is indistinguishable from never having received it. The only safe choice is to send it again.</li>
+          <li>So duplicates are not a bug to eliminate; they are the price of never losing an event. Exactly-once delivery across a network you don't control isn't on offer.</li>
+          <li>What makes duplicates harmless is on the receiving side: every event carries a stable id, and receivers record the ids they've processed — the same idempotency idea as the <a href="#usecase-payments" style="color:var(--accent);">payment API</a>.</li>
+        </ol>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — the duplicate no sender can prevent</div>
+<div class="ill-body">
+  <ol class="ill-tl">
+    <li><div class="ill-tl-stage">attempt 1</div><p>platform POSTs event <code>evt_7f3</code></p></li>
+    <li class="good"><div class="ill-tl-stage">receiver</div><p>processes it — marks the invoice paid in its own system</p></li>
+    <li class="bad"><div class="ill-tl-stage">response</div><p>the connection drops before the <code>200</code> arrives; the platform sees a timeout</p></li>
+    <li class="warn"><div class="ill-tl-stage">attempt 2</div><p>platform correctly retries <code>evt_7f3</code> — the receiver now has it twice</p></li>
+  </ol>
+  <div class="ill-cols">
+    <div class="ill-card bad">
+      <div class="ill-h">Receiver without dedupe</div>
+      <p class="ill-then">records the payment twice — a customer's books are now wrong</p>
+    </div>
+    <div class="ill-card good">
+      <div class="ill-h">Receiver with dedupe</div>
+      <p class="ill-then"><code>evt_7f3</code> already seen → reply <code>200</code>, do nothing</p>
+    </div>
+  </div>
+  <p class="ill-note">The platform's documentation should say this in the first paragraph: <em>events may arrive more than once; deduplicate on the event id.</em> A receiver that isn't told will assume exactly-once and be wrong on its first bad network day.</p>
+</div>
+</div>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — signing, and replay protection</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Prove it came from the platform</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>A webhook endpoint is a public URL. Anyone who finds it can POST a convincing fake "invoice paid" event to it.</li>
+          <li>So each delivery is signed with a secret shared only between the platform and that endpoint: an HMAC-SHA256 over the event id, a timestamp and the raw body.</li>
+          <li>The receiver recomputes the HMAC and compares it in constant time. A match proves who sent it and that nothing was altered.</li>
+          <li>A valid signature can still be captured and resent later. Including the timestamp in the signed content — and rejecting anything older than a few minutes — closes that replay window.</li>
+          <li>Rotating a secret must not break delivery: during the overlap the platform signs with both secrets, and the receiver accepts either.</li>
+        </ol>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — what is signed, and what the receiver checks</div>
+<div class="ill-body">
+<pre class="ill-code">POST /webhooks/mfc  HTTP/1.1
+webhook-id:        evt_7f3
+webhook-timestamp: 1759059600
+webhook-signature: v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj9o9NDN/H/pI4=
+
+signed content = "evt_7f3" + "." + "1759059600" + "." + raw_body
+signature      = base64( HMAC-SHA256(endpoint_secret, signed content) )</pre>
+  <ol class="ill-steps">
+    <li>read the <strong>raw</strong> body bytes — before any JSON parsing</li>
+    <li>recompute the HMAC over id · timestamp · raw body</li>
+    <li>compare in constant time (<code>hmac.Equal</code> in Go) — never <code>==</code></li>
+    <li>reject if the timestamp is more than ~5 minutes old or in the future</li>
+    <li>deduplicate on <code>webhook-id</code>, reply <code>2xx</code> quickly, process asynchronously</li>
+  </ol>
+  <div class="ill-card warn">
+    <div class="ill-h">The bug nearly every receiver hits once</div>
+    <p>Parsing the JSON and re-serialising it before verifying. Key order, whitespace and number formatting change, the bytes differ, and every valid signature fails. Verify first, against exactly the bytes that arrived.</p>
+  </div>
+  <p class="ill-note">These header names follow the Standard Webhooks specification. Using an existing spec means partners can verify with published libraries instead of reverse-engineering yours.</p>
+</div>
+</div>
+        <ul class="item-list">
+          <li><strong>Why not only an IP allowlist or mTLS</strong> — publishing stable egress IPs is a useful extra, and some partners will want it, but it proves where a request came from, not that its body is intact. Signatures do both, and work behind any proxy.</li>
+          <li><strong>Asymmetric signatures are an option</strong> — signing with a private key (for example Ed25519) lets receivers verify with a public key, so there is no shared secret for either side to leak.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — retries that don't stampede</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Reach an endpoint that is down for a day</span><span class="explains-tag nfr"><b>NFR</b>Don't flatten a recovering endpoint</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Most failures are brief — a deploy, a restart, a blip — so the first retries should come quickly.</li>
+          <li>Some outages last hours. Retrying every few seconds for hours wastes effort and hammers a server that is trying to recover, so the gaps grow: exponential backoff.</li>
+          <li>If thousands of deliveries failed at the same moment, identical backoff brings them all back at the same moment too. Adding random jitter to each gap spreads them out.</li>
+          <li>The response decides what happens next: <span style="font-family:var(--mono)">5xx</span>, timeouts and refused connections are retried; <span style="font-family:var(--mono)">429</span> waits for <span style="font-family:var(--mono)">Retry-After</span>; <span style="font-family:var(--mono)">410 Gone</span> means the endpoint was deliberately removed, so stop and disable it.</li>
+          <li>Retries have to end somewhere. After the last attempt the delivery is dead-lettered, not dropped: the owner is told, and it can be replayed once the endpoint is fixed.</li>
+        </ol>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — ten attempts over about three days</div>
+<div class="ill-body">
+  <table class="ill-table">
+    <thead><tr><th>Attempt</th><th>Wait before it</th><th>Time since the event</th></tr></thead>
+    <tbody>
+      <tr><td class="rh">1</td><td data-label="Wait">—</td><td data-label="Since">immediately</td></tr>
+      <tr><td class="rh">2</td><td data-label="Wait">10 s</td><td data-label="Since">10 s</td></tr>
+      <tr><td class="rh">3</td><td data-label="Wait">1 min</td><td data-label="Since">1 min 10 s</td></tr>
+      <tr><td class="rh">4</td><td data-label="Wait">5 min</td><td data-label="Since">6 min 10 s</td></tr>
+      <tr><td class="rh">5</td><td data-label="Wait">30 min</td><td data-label="Since">36 min 10 s</td></tr>
+      <tr><td class="rh">6</td><td data-label="Wait">2 h</td><td data-label="Since">2 h 36 min</td></tr>
+      <tr><td class="rh">7</td><td data-label="Wait">6 h</td><td data-label="Since">8 h 36 min</td></tr>
+      <tr><td class="rh">8</td><td data-label="Wait">12 h</td><td data-label="Since">20 h 36 min</td></tr>
+      <tr><td class="rh">9</td><td data-label="Wait">24 h</td><td data-label="Since">1 day 20 h 36 min</td></tr>
+      <tr><td class="rh">10</td><td data-label="Wait">24 h</td><td data-label="Since">2 days 20 h 36 min <span class="pill bad">then dead letter</span></td></tr>
+    </tbody>
+  </table>
+  <p class="ill-note">Each wait gets ±20% random jitter. Without it, the thousands of deliveries that failed during the same outage would all retry in the same second — and the endpoint that just came back up would go straight back down.</p>
+</div>
+</div>
+        <ul class="item-list">
+          <li><strong>Schedule retries by time, not by sleeping</strong> — a worker that sleeps between attempts is a worker doing nothing. Store <span style="font-family:var(--mono)">next_attempt_at</span> and let a scheduler release deliveries when they're due.</li>
+          <li><strong>Drain a backlog at a capped rate</strong> — an endpoint that was down for six hours may have thousands of events waiting. Deliver them at a limited rate that backs off on <span style="font-family:var(--mono)">429</span>, not all at once.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — one dead endpoint must not stall the rest</span>
+        <div class="explains-row"><span class="explains-tag nfr"><b>NFR</b>A slow endpoint only slows itself</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>The obvious design is one queue and a pool of workers. It fails in a specific, predictable way.</li>
+          <li>Not all failures cost the same. A refused connection fails in milliseconds. A server that silently drops packets makes every attempt wait for the full timeout — and that is the dangerous one.</li>
+          <li>Little's Law gives the cost: workers held = arrival rate × time each is held. An endpoint receiving 50 events a second, each waiting 10 seconds, holds 500 workers — more than the entire pool of 200.</li>
+          <li>With one shared queue, every other partner's events now wait behind that one customer. Their webhooks go late because someone else's server is broken.</li>
+          <li>The fix is a per-endpoint concurrency limit — each endpoint gets its own lane with at most a few requests in flight. A broken endpoint then backs up only its own lane.</li>
+        </ol>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — the same broken endpoint, two designs</div>
+<div class="ill-body">
+  <div class="ill-cols">
+    <div class="ill-card bad">
+      <div class="ill-h">One shared queue</div>
+      <div class="cp-scale">
+        <div class="cp-scale-row"><span class="k">workers the dead endpoint wants</span><span class="bar"><i class="bad" style="--w:100%"></i></span><span class="v">500</span></div>
+        <div class="cp-scale-row"><span class="k">workers that exist</span><span class="bar"><i class="warn" style="--w:40%"></i></span><span class="v">200</span></div>
+      </div>
+      <ul class="ill-list">
+        <li class="then">50 events/s × 10 s timeout = 500 workers held</li>
+        <li class="con"><strong>the whole pool is waiting on one customer</strong> — everyone's webhooks go late</li>
+      </ul>
+    </div>
+    <div class="ill-card good">
+      <div class="ill-h">A lane per endpoint, 5 in flight</div>
+      <div class="cp-scale">
+        <div class="cp-scale-row"><span class="k">workers the dead endpoint can hold</span><span class="bar"><i class="good" style="--w:1%"></i></span><span class="v">5</span></div>
+        <div class="cp-scale-row"><span class="k">workers left for everyone else</span><span class="bar"><i class="good" style="--w:39%"></i></span><span class="v">195</span></div>
+      </div>
+      <ul class="ill-list">
+        <li class="then">that endpoint's throughput drops to 0.5 deliveries/s — only its own backlog grows</li>
+        <li class="pro"><strong>every other partner is unaffected</strong></li>
+      </ul>
+    </div>
+  </div>
+  <p class="ill-note">This is the bulkhead pattern from the <a href="#usecase-apigateway" style="color:var(--accent);">API gateway</a> and the arithmetic from the <a href="#scaleladder" style="color:var(--accent);">Scale Ladder</a>, applied to outbound calls. Latency is load: a slow dependency consumes capacity exactly as extra traffic would.</p>
+</div>
+</div>
+        <ul class="item-list">
+          <li><strong>Keep timeouts short</strong> — receivers are asked to acknowledge quickly and process asynchronously, so a 10-second timeout is generous. A 60-second one would multiply the damage above by six.</li>
+          <li><strong>Consistently failing endpoints move to a slow lane</strong> — after a run of failures an endpoint is probed at a low rate instead of receiving full traffic, until it recovers.</li>
+        </ul>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Key deep dive — thin events, and why order isn't guaranteed</span>
+        <div class="explains-row"><span class="explains-tag"><b>FR</b>Every event reaches every endpoint</span></div>
+        <div style="font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:8px 0 8px;">Thought process</div>
+        <ol class="process" style="margin-bottom:14px;">
+          <li>Retries reorder events. If <span style="font-family:var(--mono)">invoice.updated</span> fails once and <span style="font-family:var(--mono)">invoice.paid</span> succeeds first, the receiver sees them backwards.</li>
+          <li>Guaranteeing order would mean holding every later event for an endpoint until an earlier one succeeds — so one failing event would block that endpoint's entire stream. Most platforms don't promise order, and say so.</li>
+          <li>The receiver needs a way to act correctly on events that arrive out of order and late.</li>
+          <li>One answer is to put a version or timestamp on each resource, so the receiver ignores anything older than what it has.</li>
+          <li>A simpler one is a <em>thin</em> event: say what happened and to which resource, and let the receiver fetch the current state. Whatever order events arrive in, the fetch always returns the truth.</li>
+        </ol>
+        <div class="ill" style="margin:10px 0;">
+<div class="ill-title">Illustration — a fat event vs. a thin one</div>
+<div class="ill-body">
+  <div class="ill-cols">
+    <div class="ill-card warn">
+      <div class="ill-h">Fat <span class="ill-sub">— the whole resource in the payload</span></div>
+<pre class="ill-code">{ "type": "invoice.updated",
+  "data": { "id": "inv_118", "status": "sent",
+            "customer": {…}, "lines": [ … ] } }</pre>
+      <ul class="ill-list">
+        <li class="pro">no extra call for the receiver</li>
+        <li class="con">stale by the time a retry lands</li>
+        <li class="con">full customer data leaves the platform in every delivery and every retry</li>
+      </ul>
+    </div>
+    <div class="ill-card good">
+      <div class="ill-h">Thin <span class="ill-sub">— what happened, to what</span></div>
+<pre class="ill-code">{ "id": "evt_7f3", "type": "invoice.updated",
+  "resource": "inv_118",
+  "created_at": "2026-09-27T14:03:11Z" }</pre>
+      <ul class="ill-list">
+        <li class="pro">order stops mattering — the fetch returns current state</li>
+        <li class="pro">the fetch goes through normal authorization and scopes</li>
+        <li class="con">one extra API call per event</li>
+      </ul>
+    </div>
+  </div>
+  <p class="ill-note">A thin event that is replayed three days late still leads the receiver to the right answer, because it asks for the current invoice rather than trusting a three-day-old copy.</p>
+</div>
+</div>
+      </div>
+
+      <div class="callout keydive" style="margin-top:14px;">
+        <span class="label">Edge cases worth raising before the interviewer does</span>
+        <ul class="item-list">
+          <li><strong>A webhook URL pointed at your own network (SSRF)</strong> — a partner registers <span style="font-family:var(--mono)">http://169.254.169.254/…</span> (a cloud metadata service) or an internal hostname, and your delivery workers dutifully call it from inside your network. Allow HTTPS only, refuse private, loopback and link-local addresses, and check the <em>resolved IP at connection time</em>, not just when the URL is registered — otherwise a hostname that resolves to a public IP at registration can resolve to an internal one later. Don't follow redirects, which are another route inside.</li>
+          <li><strong>An endpoint that replies 200 and then fails</strong> — the platform can only trust the status code. Delivery history and replay are what let the partner recover from their own bug.</li>
+          <li><strong>A secret rotation</strong> — sign with both the old and new secrets during the overlap; the receiver accepts either, and the old one is removed once the partner confirms.</li>
+          <li><strong>A business closes its account</strong> — pending deliveries for its endpoints are cancelled and its events purged on the same schedule as the rest of its data.</li>
+          <li><strong>An event that matches no subscription</strong> — it is still recorded in the event log, so a partner that subscribes later, or lists events with <span style="font-family:var(--mono)">GET /v1/events</span>, can still find it.</li>
+          <li><strong>A huge endpoint returns from a long outage</strong> — its backlog is drained at a capped, <span style="font-family:var(--mono)">429</span>-aware rate, so recovery doesn't become a second outage.</li>
+        </ul>
+      </div>
+
+      <div class="result-card nfr-card">
+        <h3 class="subhead">Does it hold up?</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:38%">Requirement</th><th>How</th></tr>
+        <tr><td>Never slows the business transaction</td><td>The event is an outbox row written in the same transaction; publishing and delivery happen afterwards, off the request path.</td></tr>
+        <tr><td>No event lost</td><td>Outbox, durable event log, and deliveries that end in a dead letter rather than being dropped — plus a pull-based events API as a backstop.</td></tr>
+        <tr><td>One slow endpoint only slows itself</td><td>A lane per endpoint with a small in-flight cap, so a blackholed server holds 5 workers instead of 500.</td></tr>
+        <tr><td>Recovering endpoints aren't flattened</td><td>Exponential backoff with jitter, and backlogs drained at a capped rate that honours <span style="font-family:var(--mono)">429</span>.</td></tr>
+        <tr><td>Receivers can trust what arrives</td><td>HMAC over id, timestamp and raw body; a short timestamp tolerance against replay; dedupe on the event id.</td></tr>
+        <tr><td>Never reaches the internal network</td><td>HTTPS only, resolved IPs checked at connect time against private ranges, and redirects refused.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tradeoff-card">
+        <h3 class="subhead">Key trade-offs</h3>
+        <div class="table-wrap">
+<table class="ref-table">
+        <tr class="rt-head"><th style="width:32%">Decision</th><th>The trade-off</th></tr>
+        <tr><td>At-least-once delivery</td><td>Receivers must deduplicate, in exchange for never losing an event. Exactly-once isn't available across a network you don't control.</td></tr>
+        <tr><td>No ordering guarantee</td><td>Receivers must tolerate reordering, in exchange for one failing event never blocking an endpoint's whole stream.</td></tr>
+        <tr><td>Thin vs. fat events</td><td>An extra API call per event, in exchange for current data, normal authorization, and less data leaving the platform.</td></tr>
+        <tr><td>Per-endpoint lanes</td><td>More scheduling machinery than one queue, in exchange for fairness: a broken customer can't slow the rest.</td></tr>
+        <tr><td>A finite retry window</td><td>Events can end in a dead letter after about three days, in exchange for bounded work — with replay so nothing is actually gone.</td></tr>
+      </table>
+</div>
+      </div>
+
+      <div class="result-card tools-card">
+        <h3 class="subhead">Tools you might reach for</h3>
+        <div class="table-wrap">
+<table class="ref-table tools-table">
+        <tr class="rt-head"><th>Component</th><th>Real-world options</th></tr>
+        <tr><td>Recording events</td><td><span class="tool-tag">PostgreSQL</span> transactional outbox, relayed to <span class="tool-tag">Kafka</span> as the durable, replayable event log</td></tr>
+        <tr><td>Retry scheduling</td><td><span class="tool-tag">Redis</span> sorted set scored by <span style="font-family:var(--mono)">next_attempt_at</span>, or a delayed queue such as <span class="tool-tag">SQS</span> delay seconds</td></tr>
+        <tr><td>Per-endpoint concurrency</td><td>a semaphore per endpoint in <span class="tool-tag">Redis</span>, or partitioning deliveries by endpoint so each lane has its own consumer</td></tr>
+        <tr><td>HTTP client in Go</td><td><span class="tool-tag">net/http</span> with a client <span style="font-family:var(--mono)">Timeout</span>, <span style="font-family:var(--mono)">CheckRedirect</span> returning <span style="font-family:var(--mono)">http.ErrUseLastResponse</span>, and a <span style="font-family:var(--mono)">net.Dialer</span> <span style="font-family:var(--mono)">Control</span> hook that rejects private IPs at connect time</td></tr>
+        <tr><td>Signing</td><td><span class="tool-tag">crypto/hmac</span> with <span style="font-family:var(--mono)">hmac.Equal</span>; the <span class="tool-tag">Standard Webhooks</span> spec for header names and format</td></tr>
+        <tr><td>Buy instead of build</td><td><span class="tool-tag">Svix</span> — webhook sending as a service, with an open-source server</td></tr>
+      </table>
+</div>
+      </div>
+        </div>
+      </details>
+    </section>
+
 
     <section class="section" id="answerspines">
       <div class="eyebrow">Turning Examples Into Answers</div>
@@ -15004,11 +15953,11 @@ evasive; "it depends on X, and I'd find out by Y" is judgement.</div>
       </div>
 
       <div class="subsection-box" style="margin-top:18px;">
-        <h3 class="subhead" style="margin-top:0;">Two questions with no example behind them — handle verbally</h3>
-        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Both are specific to a multi-product API platform, and neither has a worked example on this page yet. Know the argument well enough to reason aloud.</p>
+        <h3 class="subhead" style="margin-top:0;">Two questions specific to a multi-product platform</h3>
+        <p class="tight" style="font-size:12.5px; margin-bottom:12px;">Both are specific to a multi-product API platform. The first still has no worked example — know the argument well enough to reason aloud; the second is now worked through in full in AE.</p>
         <ul class="item-list">
           <li><strong>"How would you design scopes across the whole product suite?"</strong> — scope granularity is a UX problem wearing security clothes. Thirty products × resource types × read/write produces a consent screen nobody reads, and a user shown sixty checkboxes clicks accept. Namespace by product, keep per-product granularity deliberately coarse, and use step-up authorisation at call time for the genuinely dangerous operations rather than pre-granting them. Close with the part that makes it the platform team's call: <em>scopes outlive every implementation — you cannot rename one once partners depend on it.</em></li>
-          <li><strong>"Our customers are companies, not people — how does a token work?"</strong> — a token has to carry two orthogonal facts: which human authorised this, and which business's data it grants access to. One accountant with forty client companies is a single identity with forty entity grants. The follow-up to be ready for is what happens when that accountant is removed from one client: entity grants must be revocable independently of the user's identity, which makes them a first-class relational record rather than a claim baked into a long-lived token.</li>
+          <li><strong>"Our customers are companies, not people — how does a token work?"</strong> — a token has to carry two orthogonal facts: which human authorised this, and which business's data it grants access to. One accountant with forty client companies is a single identity with forty entity grants. The follow-up to be ready for is what happens when that accountant is removed from one client: entity grants must be revocable independently of the user's identity, which makes them a first-class relational record rather than a claim baked into a long-lived token. The full design — where the business comes from on every request, BOLA, and row-level security underneath — is worked through in <a href="#usecase-tenancy" style="color:var(--accent);">AE — Tenant Isolation</a>.</li>
         </ul>
       </div>
     </section>
