@@ -1310,6 +1310,23 @@
   .mt-empty[hidden]{ display:none; }
   @media (max-width:560px){ .mt-stat .v{ font-size:17px; } }
 </style>
+<style>
+  /* Case Catalog v2 — interview lines and view modes */
+  .cc-say{ border-left:3px solid var(--marker); background:rgba(255,209,102,0.07); border-radius:0 8px 8px 0; padding:10px 13px; margin-top:2px; }
+  .cc-say .cc-label{ color:var(--marker); }
+  .cc-say p{ margin:0; font-style:italic; font-size:13.5px; line-height:1.6; color:var(--ink); }
+  .cc-modes{ display:inline-flex; border:1px solid var(--hairline); border-radius:8px; overflow:hidden; }
+  .cc-mode{ font-family:var(--mono); font-size:11px; letter-spacing:.03em; padding:5px 11px; background:transparent; color:var(--ink-dim); border:0; border-right:1px solid var(--hairline); cursor:pointer; }
+  .cc-mode:last-child{ border-right:0; }
+  .cc-mode[aria-pressed="true"]{ background:var(--accent-soft); color:var(--accent); }
+  .cc-reveal{ display:none; align-self:flex-start; font-family:var(--mono); font-size:11px; padding:6px 12px; border-radius:6px; border:1px dashed var(--marker); background:transparent; color:var(--marker); cursor:pointer; margin:2px 0 8px; }
+  #casecatalog.cc-m-lines .cc-situ, #casecatalog.cc-m-lines .cc-pair, #casecatalog.cc-m-lines .cc-more{ display:none; }
+  #casecatalog.cc-m-lines .cc-grid{ grid-template-columns:1fr; gap:8px; }
+  #casecatalog.cc-m-lines .cc-card{ padding-bottom:12px; }
+  #casecatalog.cc-m-practice .cc-card:not(.cc-shown) .cc-say, #casecatalog.cc-m-practice .cc-card:not(.cc-shown) .cc-pair, #casecatalog.cc-m-practice .cc-card:not(.cc-shown) .cc-more{ display:none; }
+  #casecatalog.cc-m-practice .cc-card:not(.cc-shown) .cc-reveal{ display:inline-block; }
+  @media (max-width:560px){ .cc-meta{ flex-wrap:wrap; gap:8px; } .cc-mode{ padding:5px 8px; } }
+</style>
 </head>
 <body>
 
@@ -1792,8 +1809,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
 
     <section class="section" id="casecatalog">
       <div class="eyebrow">Toolkit</div>
-      <h2 class="section-title">Case Catalog — the Case, the Approach, the Trade-off</h2>
-      <p style="margin-top:10px; max-width:680px;">System design is mostly recognising a <strong>case</strong> and reaching for the right <strong>approach</strong> — and then saying what it <strong>costs</strong>. Every card below is one sentence in three parts: <em>when this happens, do this, and accept that.</em> The last part is the one that separates a senior answer from a list of technologies, so say it out loud.</p>
+      <h2 class="section-title">Case Catalog — the Case, the Approach, the Trade-off, and How to Say It</h2>
+      <p style="margin-top:10px; max-width:680px;">System design is mostly recognising a <strong>case</strong> and reaching for the right <strong>approach</strong> — and then saying what it <strong>costs</strong>. Every card below has four parts: <em>when this happens</em>, <em>do this</em>, <em>accept that</em> — and <strong>how to say it</strong>: a first-person answer that names the choice, why it beats the obvious alternative, and the cost you accept. That last line is what an interviewer actually hears, so practise saying it.</p>
 
       <p class="tight" style="margin-top:12px; max-width:680px; font-size:13.5px; color:var(--ink-dim);">Six tensions sit behind almost every trade-off here: <strong>consistency ↔ latency</strong> · <strong>freshness ↔ cost</strong> · <strong>exactness ↔ speed</strong> · <strong>isolation ↔ efficiency</strong> · <strong>simplicity ↔ scale</strong> · <strong>safety ↔ speed of change</strong>. When you read a card, ask which one it is buying.</p>
 
@@ -1801,13 +1818,15 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
         <div class="cc-tools">
           <label class="cc-searchwrap"><span class="cc-searchicon" aria-hidden="true">⌕</span><input id="cc-q" class="cc-search" type="search" placeholder="Search the cases — try “duplicate”, “hot key”, “offline”, “tenant”…" autocomplete="off" aria-label="Search the cases"></label>
           <div class="cc-chips" role="group" aria-label="Filter by category"><button type="button" class="cc-chip" data-cat="all" aria-pressed="true">All<b>136</b></button><button type="button" class="cc-chip" data-cat="search" aria-pressed="false" style="--cc:#6FE0F0">Search &amp; discovery<b>8</b></button><button type="button" class="cc-chip" data-cat="data" aria-pressed="false" style="--cc:#8FB4FF">Data &amp; storage<b>9</b></button><button type="button" class="cc-chip" data-cat="consistency" aria-pressed="false" style="--cc:#FFD166">Consistency &amp; correctness<b>9</b></button><button type="button" class="cc-chip" data-cat="scale" aria-pressed="false" style="--cc:#7CE0A8">Scaling reads &amp; writes<b>16</b></button><button type="button" class="cc-chip" data-cat="async" aria-pressed="false" style="--cc:#C08CE0">Async &amp; real-time<b>10</b></button><button type="button" class="cc-chip" data-cat="reliability" aria-pressed="false" style="--cc:#FF6B5E">Reliability &amp; operations<b>16</b></button><button type="button" class="cc-chip" data-cat="security" aria-pressed="false" style="--cc:#F58FB8">Security, identity &amp; tenancy<b>13</b></button><button type="button" class="cc-chip" data-cat="files" aria-pressed="false" style="--cc:#FFA45C">Files, media &amp; sync<b>7</b></button><button type="button" class="cc-chip" data-cat="blocks" aria-pressed="false" style="--cc:#A5B4FC">Distributed building blocks<b>9</b></button><button type="button" class="cc-chip" data-cat="pipelines" aria-pressed="false" style="--cc:#5EEAD4">Analytics &amp; pipelines<b>10</b></button><button type="button" class="cc-chip" data-cat="api" aria-pressed="false" style="--cc:#7DD3FC">API &amp; integration<b>11</b></button><button type="button" class="cc-chip" data-cat="edge" aria-pressed="false" style="--cc:#BEF264">Edge cases: time, money &amp; text<b>11</b></button><button type="button" class="cc-chip" data-cat="ai" aria-pressed="false" style="--cc:#FDA4AF">AI &amp; LLM systems<b>7</b></button></div>
-          <div class="cc-meta"><span id="cc-count">136 of 136 cases</span><button type="button" id="cc-expand" class="cc-btn" data-open="0">Expand all</button></div>
+          <div class="cc-meta"><span id="cc-count">136 of 136 cases</span><span class="cc-modes" role="group" aria-label="View"><button type="button" class="cc-mode" data-mode="full" aria-pressed="true">Full cards</button><button type="button" class="cc-mode" data-mode="lines" aria-pressed="false">Interview lines</button><button type="button" class="cc-mode" data-mode="practice" aria-pressed="false">Practice</button></span><button type="button" id="cc-expand" class="cc-btn" data-open="0">Expand all</button></div>
         </div>
         <div class="cc-grid">
         <article class="cc-card" data-cat="search" style="--cc:#6FE0F0">
           <div class="cc-top"><span class="cc-cat">Search &amp; discovery</span><span class="cc-no">#01</span> <span class="cc-alias" hidden> elasticsearch opensearch full-text inverted index </span></div>
           <h3 class="cc-title">A user searches products by text and filters</h3>
           <p class="cc-situ">Millions of products. People type words, pick a category and a price range, and expect results in under 200 ms.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d put a search engine — OpenSearch — beside the database and feed it from the change stream, rather than LIKE queries on the primary, because inverted indexes make text, filters and ranking fast at millions of rows. The trade-off I accept is a few seconds of lag, so checkout always reads price and stock from the source.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A search engine (Elasticsearch or OpenSearch) fed by a change stream. Pre-built inverted indexes make text matching, filters and ranking fast; shard by product id and replicate for reads.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Eventual consistency. The index lags the database by seconds and is only a copy, so price and stock on a result are for display and checkout reads the source.</p></div>
@@ -1825,6 +1844,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Search &amp; discovery</span><span class="cc-no">#02</span> <span class="cc-alias" hidden> typeahead trie prefix </span></div>
           <h3 class="cc-title">Autocomplete as the user types</h3>
           <p class="cc-situ">A suggestion must appear within about 100 ms of every keystroke.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d precompute popular prefixes from search logs into a trie or edge n-grams and cache the top suggestions at the edge, rather than querying the main index on every keystroke, and debounce on the client. I accept that suggestions are as fresh as the last refresh — they show what&#x27;s popular, not what&#x27;s new.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A prefix structure (a trie or edge n-grams) over precomputed popular queries, refreshed offline from logs; cache the top suggestions per prefix at the edge; debounce keystrokes on the client.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Suggestions are stale by the refresh interval and cost memory. They show what was popular, not what is new.</p></div>
@@ -1842,6 +1863,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Search &amp; discovery</span><span class="cc-no">#03</span> <span class="cc-alias" hidden> acl authorization permission filter </span></div>
           <h3 class="cc-title">Search must never show what a user may not see</h3>
           <p class="cc-situ">Private channels, restricted documents and per-tenant data all sit in one index.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d put the permission filter inside the search query — public, or one of the scopes this user belongs to — rather than filtering the results afterwards, because filtering a truncated result set drops real matches and moves data the user can&#x27;t see. The cost is a heavier query and a reindex when visibility changes.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Filter inside the query: a public flag plus the few private scopes the user belongs to. Store a scope id on every document, and re-check the hits against the source before returning them.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>The permission filter costs more than the text match itself (about 100 times an unfiltered query in the chat test), and a visibility change forces a bulk reindex.</p></div>
@@ -1859,6 +1882,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Search &amp; discovery</span><span class="cc-no">#04</span> <span class="cc-alias" hidden> tombstone soft delete versioning </span></div>
           <h3 class="cc-title">A deleted or edited item must disappear from search</h3>
           <p class="cc-situ">A deleted message or product still shows up in results.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d treat edits and deletes as versions: a delete is a tombstone with a higher version, and every copy applies a change only if it&#x27;s newer. Rather than deleting from each index directly — which a late update can resurrect — the version rule makes order irrelevant. The cost is tombstones until compaction.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Model edits and deletes as versions. A delete is a tombstone with a higher version, and every consumer applies a change only if it is newer than what it holds.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Tombstones take space until compacted, and every consumer has to follow the rule.</p></div>
@@ -1876,6 +1901,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Search &amp; discovery</span><span class="cc-no">#05</span> <span class="cc-alias" hidden> geohash quadtree s2 proximity location nearby </span></div>
           <h3 class="cc-title">Find things near me</h3>
           <p class="cc-situ">Nearest drivers, shops or listings within a few kilometres.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d index locations by spatial cell — geohash or S2 — query the user&#x27;s cell and its neighbours, then sort the candidates by exact distance, rather than computing distance to every row. I&#x27;d pick the cell size from the search radius and split dense cells, accepting edge cases at cell boundaries.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Index locations by a spatial cell (geohash, quadtree or S2), query the cell and its neighbours, then sort the candidates by exact distance.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Cell size is a compromise between precision and cost. Queries near a boundary need neighbouring cells, and dense areas create hot cells.</p></div>
@@ -1893,6 +1920,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Search &amp; discovery</span><span class="cc-no">#06</span> <span class="cc-alias" hidden> reindex alias swap zero downtime </span></div>
           <h3 class="cc-title">Rebuild or change a search index without downtime</h3>
           <p class="cc-situ">A new analyzer, a new field or a bigger shard count needs a fresh index.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d build a new index from a snapshot plus the change stream, let it catch up, verify counts, then swap an alias, rather than reindexing in place. The old index stays until I&#x27;m sure, so rollback is one alias swap.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Build the new index from a snapshot plus the change stream from a saved offset, let it catch up, verify counts, then swap an alias and keep the old index until you are sure.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Double the storage and indexing work while both exist, and a longer build means more catching up.</p></div>
@@ -1910,6 +1939,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Search &amp; discovery</span><span class="cc-no">#07</span> <span class="cc-alias" hidden> fuzzy synonyms stemming relevance ranking analyzer </span></div>
           <h3 class="cc-title">Typos, synonyms and relevance</h3>
           <p class="cc-situ">People misspell words, use different names for the same thing, and expect the best result first.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d add stemming and synonyms, fuzzy matching with a small edit distance, and per-field boosts, then tune ranking from real clicks, rather than guessing relevance once. Each recall gain risks precision, so I&#x27;d measure it.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Analyzers for stemming and synonyms, fuzzy matching with a small edit-distance limit, boosts per field, and ranking tuned from real clicks and conversions.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Better recall costs precision, and relevance tuning is continuous work that needs measurement.</p></div>
@@ -1927,6 +1958,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Search &amp; discovery</span><span class="cc-no">#08</span> <span class="cc-alias" hidden> search_after track_total_hits facets deep paging </span></div>
           <h3 class="cc-title">Result counts and deep paging on huge result sets</h3>
           <p class="cc-situ">“About 1.2 million results”, and someone jumps to page 10,000.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d cap exact counts — &#x27;10,000+&#x27; — compute facets on the filtered set, and page deep with search_after, rather than exact totals and offsets, which get slower the deeper users go.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Cap exact totals (for example stop counting at 10,000) or show an estimate, compute facet counts on the filtered set, and page deep with a cursor (search_after) rather than offsets.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Counts become approximate and users cannot jump to an arbitrary page.</p></div>
@@ -1944,9 +1977,11 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Data &amp; storage</span><span class="cc-no">#09</span> <span class="cc-alias" hidden> relational document key-value dynamodb postgres mongodb </span></div>
           <h3 class="cc-title">Choose SQL or NoSQL for a new feature</h3>
           <p class="cc-situ">A team has to pick the store for a new service.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d start relational when the data has relationships and needs transactions or ad-hoc queries, and choose a key-value or wide-column store only when access is by key at a scale one primary can&#x27;t take. NoSQL scales by partitioning on a key I must pick up front — so I&#x27;d name the partition key and check it spreads load before choosing it.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Start relational when you need joins, constraints or transactions. Choose a key-value or wide-column store when access is by key at very large scale and the schema is flexible. Add a search engine as a copy for text.</p></div>
-            <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Relational gives correctness and flexible queries but scales writes by sharding. NoSQL scales simply, but you give up joins and ad-hoc queries and design around the access patterns up front.</p></div>
+            <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Relational gives transactions, constraints and ad-hoc queries; it scales reads with replicas, and writes by partitioning (application sharding, Citus or Vitess) that you plan and operate. NoSQL stores such as DynamoDB or Cassandra partition by the key you choose and spread partitions across nodes, so adding nodes adds capacity — but only if the key spreads load evenly: a hot key still overloads one partition. You give up joins and ad-hoc queries (and pay extra for multi-item transactions), and design tables around the access patterns up front.</p></div>
           </div>
           <details class="cc-more">
             <summary><span class="cc-caret" aria-hidden="true"></span>Edge case · when not to use · examples</summary>
@@ -1961,6 +1996,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Data &amp; storage</span><span class="cc-no">#10</span> <span class="cc-alias" hidden> noisy neighbour neighbor cell isolation </span></div>
           <h3 class="cc-title">One tenant is most of the load</h3>
           <p class="cc-situ">Two customers use 80% of the database, the queue and the cache.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d add per-tenant limits first, then move the largest tenant to its own cell — compute, cache, and finally database — with a routing table, rather than scaling the shared stack for one customer. That buys isolation and independent scaling at the cost of more stacks and a planned migration.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Per-tenant limits first. Then separate compute, cache and finally the database for the largest tenants — a dedicated cell — moved with a filtered replication stream and a versioned routing table.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>More stacks to run and a migration to plan, in exchange for isolation and independent scaling.</p></div>
@@ -1978,6 +2015,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Data &amp; storage</span><span class="cc-no">#11</span> <span class="cc-alias" hidden> partitioning retention archive time-series </span></div>
           <h3 class="cc-title">A table that only grows</h3>
           <p class="cc-situ">Messages, events or logs: billions of rows, recent ones hot, old ones rarely read.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d partition by time, keep queries key-and-range shaped, and drop or tier old partitions on a retention policy, rather than deleting rows from one huge table. Dropping a partition is instant; the catch is that unique keys must include the partition column.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Partition by time (or by a hash of a key), set a retention period, tier old data to cheaper storage, and keep queries key-and-range shaped.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>A partitioned table’s unique keys must include the partition column, which can break idempotency, and restoring old data is slower.</p></div>
@@ -1995,6 +2034,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Data &amp; storage</span><span class="cc-no">#12</span> <span class="cc-alias" hidden> blob object storage s3 presigned </span></div>
           <h3 class="cc-title">Store big files and blobs</h3>
           <p class="cc-situ">Uploads of images, documents or video.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d keep the bytes in object storage, uploaded and downloaded through short-lived presigned URLs, and only metadata in the database, rather than blobs in the database, which bloats backups and replication. The trade-off is two systems that must agree, so I&#x27;d add a cleanup job for orphans.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>The bytes go to object storage through presigned URLs. Only metadata — name, owner, hash, size — lives in the database.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Two systems that must agree: a metadata row can point at a missing object, or an object can be left orphaned.</p></div>
@@ -2012,6 +2053,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Data &amp; storage</span><span class="cc-no">#13</span> <span class="cc-alias" hidden> migration expand contract ddl </span></div>
           <h3 class="cc-title">Change the schema without downtime</h3>
           <p class="cc-situ">Rename a column or split a table while traffic keeps running.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use expand, migrate, contract: add the new column or table, write to both, backfill, switch reads, then remove the old shape — rather than one ALTER that locks a big table. It takes a few releases, but every step can be rolled back with no downtime.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Expand, migrate, contract: add the new shape, write to both, backfill, switch reads, then remove the old one.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>It takes several releases and temporary duplication, in exchange for no outage and an easy rollback.</p></div>
@@ -2029,6 +2072,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Data &amp; storage</span><span class="cc-no">#14</span> <span class="cc-alias" hidden> schema per tenant database per tenant shared tables </span></div>
           <h3 class="cc-title">Multi-tenant data: shared tables, schema per tenant, or database per tenant</h3>
           <p class="cc-situ">Many customers, very different sizes and isolation needs.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d default to shared tables with the tenant id in every key, plus row-level security, and give only very large or regulated tenants their own schema or database — one database per tenant multiplies migrations and connections.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Shared tables with the tenant id in every key by default; a separate schema or database for the few very large or regulated tenants.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Shared tables are efficient but rely on discipline for isolation. Separate databases isolate well but multiply migrations, connections and operations.</p></div>
@@ -2046,6 +2091,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Data &amp; storage</span><span class="cc-no">#15</span> <span class="cc-alias" hidden> tree folders org chart closure table materialised path </span></div>
           <h3 class="cc-title">Store a hierarchy</h3>
           <p class="cc-situ">Folders, an org chart, or nested comments.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d keep parent pointers for cheap moves, plus a closure table or materialised path when I need fast &#x27;everything under this node&#x27; queries — the choice depends on whether moves or subtree reads dominate.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Parent pointers for cheap moves, plus a closure table or a materialised path when you need fast “everything under this node” queries.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Parent pointers make moves one row but subtree queries need recursion; paths make subtree queries fast but a move rewrites every descendant.</p></div>
@@ -2063,6 +2110,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Data &amp; storage</span><span class="cc-no">#16</span> <span class="cc-alias" hidden> social graph followers adjacency list </span></div>
           <h3 class="cc-title">Who follows whom</h3>
           <p class="cc-situ">A social graph with followers, following and mutual connections.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d store follow edges in both directions, sharded by user id, with special handling for accounts with millions of followers, rather than a graph database by default. Expensive queries like friends-of-friends are precomputed.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Adjacency lists in both directions, sharded by user id, with special handling for accounts that have millions of followers; precompute expensive graph queries.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Two writes per edge that must stay consistent, and deep graph queries (friends of friends) get expensive.</p></div>
@@ -2080,6 +2129,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Data &amp; storage</span><span class="cc-no">#17</span> <span class="cc-alias" hidden> migration dual write shadow reads cutover strangler </span></div>
           <h3 class="cc-title">Migrate to a new system without downtime</h3>
           <p class="cc-situ">Replace a legacy service or database while it serves traffic.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d stream changes with CDC into the new system, compare with shadow reads, and move traffic gradually — tenant by tenant — keeping a rollback path, rather than a big-bang cutover weekend.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Dual-write or stream changes with CDC, read from both and compare (shadow reads), move traffic gradually or tenant by tenant, and keep a rollback path until the old system is quiet.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>A long period running two systems, and verification effort, in exchange for a reversible cutover.</p></div>
@@ -2097,6 +2148,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Consistency &amp; correctness</span><span class="cc-no">#18</span> <span class="cc-alias" hidden> double booking reservation lock hold </span></div>
           <h3 class="cc-title">Two people book the last seat or room</h3>
           <p class="cc-situ">Concurrent requests race for one slot.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d let the database decide with a unique constraint or a conditional update on the slot, plus a short hold that expires, rather than checking availability in application code, which races. Under extreme demand I&#x27;d put a queue in front so the database sees an orderly line.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Make the database decide: a unique constraint or a conditional update on the slot, with a short hold (a TTL) while the user pays.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Contention on popular slots, and holds that must expire; extreme demand needs a queue in front.</p></div>
@@ -2114,6 +2167,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Consistency &amp; correctness</span><span class="cc-no">#19</span> <span class="cc-alias" hidden> oversell inventory stock hot row </span></div>
           <h3 class="cc-title">A flash sale on one product</h3>
           <p class="cc-situ">One row that everybody wants at the same moment.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d guard stock with a conditional decrement — only if stock is above zero — and put a queue in front that answers &#x27;accepted, processing&#x27;, rather than reading stock and then writing, which oversells. If one row is too hot I&#x27;d split stock into buckets, accepting a fallback when a bucket empties.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A conditional decrement (stock greater than zero) is the guard against overselling. Split stock into buckets to spread the lock, and put a queue in front that answers “accepted, processing”.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Buckets need a fallback when one empties, and a queue adds delay. On one core the bucket gain was modest; it grows with more cores.</p></div>
@@ -2131,6 +2186,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Consistency &amp; correctness</span><span class="cc-no">#20</span> <span class="cc-alias" hidden> idempotency key dedupe exactly-once </span></div>
           <h3 class="cc-title">A retried request must not repeat its effect</h3>
           <p class="cc-situ">A client retries a payment or a send after a timeout.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d require an idempotency key on the request and store it with a unique constraint, so a retry returns the first result, rather than hoping clients don&#x27;t retry. I&#x27;d keep keys for a window and reject the same key with a different payload.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>The client sends an idempotency key. A unique constraint on it makes the second attempt return the first result.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>You store keys for a window and must handle a request that is still in flight; a key reused with a different payload should be rejected.</p></div>
@@ -2148,6 +2205,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Consistency &amp; correctness</span><span class="cc-no">#21</span> <span class="cc-alias" hidden> outbox cdc debezium dual write </span></div>
           <h3 class="cc-title">Update the database and publish an event</h3>
           <p class="cc-situ">A change must reach other systems without being lost or invented.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d write the business change and the event in one transaction with an outbox table, and publish from a relay, rather than writing to the database and then to Kafka, where a crash between the two loses or invents an event. Events can repeat, so consumers dedupe by event id or version.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>The outbox pattern: write the business change and the event in the same transaction, publish at least once from a relay, and make consumers idempotent by event id or version.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Events arrive late by the relay’s interval and can repeat, and the outbox needs cleanup.</p></div>
@@ -2165,6 +2224,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Consistency &amp; correctness</span><span class="cc-no">#22</span> <span class="cc-alias" hidden> saga two-phase commit 2pc ledger transaction </span></div>
           <h3 class="cc-title">Money moves across services</h3>
           <p class="cc-situ">A payment touches several systems that each have their own database.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d model the flow as a saga of local transactions with compensations, or as a double-entry ledger, rather than a distributed two-phase commit, which blocks when a participant is down. I accept that intermediate states are visible and that compensations need their own retries and reconciliation.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A saga of local transactions with compensations (a refund), or a double-entry ledger. Avoid distributed two-phase commit.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Intermediate states are visible and compensations can fail. A ledger is append-only and must be reconciled.</p></div>
@@ -2182,6 +2243,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Consistency &amp; correctness</span><span class="cc-no">#23</span> <span class="cc-alias" hidden> read-your-writes replica lag session consistency </span></div>
           <h3 class="cc-title">The user must see their own write</h3>
           <p class="cc-situ">A user saves a change and the next page load shows the old value.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d route the user&#x27;s next reads to the primary for a short time after they write, or pass a version token so a replica waits until it has caught up, rather than reading every request from the primary. Only the writer needs read-your-writes, so only they pay for it.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Route their next read to the primary or a fresh replica for a short time, or pass a version token so a replica waits until it has caught up.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>More load on the primary and extra complexity; a read may wait.</p></div>
@@ -2199,6 +2262,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Consistency &amp; correctness</span><span class="cc-no">#24</span> <span class="cc-alias" hidden> optimistic concurrency etag if-match lost update version </span></div>
           <h3 class="cc-title">Two users edit the same record</h3>
           <p class="cc-situ">Both open it, both change it, the second save overwrites the first.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use optimistic concurrency: every update carries the version it read, and a stale one is rejected so the client reloads or merges, rather than last-write-wins, which silently loses an edit, or locks held while a user thinks.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Optimistic concurrency: send the version (or an ETag with If-Match) with every update; reject a stale write and let the client reload or merge.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Clients must handle conflicts and retry, but nobody waits on a lock and no edit is lost silently.</p></div>
@@ -2216,6 +2281,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Consistency &amp; correctness</span><span class="cc-no">#25</span> <span class="cc-alias" hidden> unique username email shards reservation </span></div>
           <h3 class="cc-title">A value must be unique across shards</h3>
           <p class="cc-situ">A username or an email that no two accounts may share.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d route uniqueness to the shard that owns a hash of the unique value — or a small reservation table written first — rather than checking every shard, which races.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Route by a hash of the unique value to the one shard that owns uniqueness, or keep a small global reservation table written first.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>A second write and an extra hop, or a central table that can become a bottleneck.</p></div>
@@ -2233,6 +2300,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Consistency &amp; correctness</span><span class="cc-no">#26</span> <span class="cc-alias" hidden> reconciliation drift checksum repair </span></div>
           <h3 class="cc-title">Copies drift apart</h3>
           <p class="cc-situ">The index, the cache, the replica and the warehouse each disagree slightly with the source.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d run a scheduled reconciliation that compares counts and checksums by key range against the source of truth, repairs differences and alerts on the mismatch rate, rather than assuming copies stay in sync — they always drift eventually.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Reconciliation: compare counts and checksums by key range on a schedule, repair from the source of truth, and alert on the mismatch rate.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Extra load and another pipeline to run, in exchange for finding silent divergence.</p></div>
@@ -2250,6 +2319,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#27</span> <span class="cc-alias" hidden> cache ttl cdn stampede </span></div>
           <h3 class="cc-title">Read-heavy hot data</h3>
           <p class="cc-situ">The same items are read far more often than they change.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use cache-aside with a TTL plus jitter and keep the database authoritative, rather than making the cache the source of truth. Events invalidate entries, the TTL catches what events miss, and I&#x27;d protect against a cold cache stampeding the database with request coalescing.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Cache-aside with a TTL and jitter, keeping the source of truth authoritative, plus a CDN for static content.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Stale data and invalidation logic, and a cold cache sends a burst of reads to the database.</p></div>
@@ -2267,6 +2338,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#28</span> <span class="cc-alias" hidden> hot partition celebrity skew </span></div>
           <h3 class="cc-title">One key is hot</h3>
           <p class="cc-situ">A celebrity, a viral product or a shared counter concentrates traffic on one partition.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d split the hot key into N copies with a suffix, add a small in-process cache, and coalesce identical in-flight requests, rather than scaling the whole cluster for one key. Reads may see slightly different copies for a moment and writes touch all of them — acceptable for counters or popular items.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Split the key across N copies with a suffix, put a small local cache in front, and coalesce identical in-flight requests.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Reads may see slightly different copies, writes must update all of them, and there is more complexity.</p></div>
@@ -2284,6 +2357,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#29</span> <span class="cc-alias" hidden> batching coalescing spike bulk import </span></div>
           <h3 class="cc-title">A write burst</h3>
           <p class="cc-situ">A bulk import or a flash sale sends far more writes than the steady rate.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d queue writes, batch them, and coalesce per key so the latest wins, guarded by a version, rather than letting every write hit the database. Bulk and interactive writes get separate lanes. I accept that a write is acknowledged before it&#x27;s applied.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Batch the writes, coalesce updates per key so the latest wins, guard each write by version, and queue in front. Keep separate lanes for bulk and interactive writes.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Writes are acknowledged before they are applied, and latest-wins hides intermediate values.</p></div>
@@ -2301,6 +2376,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#30</span> <span class="cc-alias" hidden> sequence ordering partition key </span></div>
           <h3 class="cc-title">Order within a busy conversation or account</h3>
           <p class="cc-situ">Everyone must see one channel’s messages in the same order.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d give each conversation or account its own sequence number, taken in the same transaction that stores the message, and partition streams by that key, rather than relying on timestamps, which tie and drift. One key&#x27;s writes serialise on its counter, which batching relieves.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Give each key (channel, account) a sequence number taken in the storing transaction, and partition streams by that key.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>One key’s writes serialise on its counter. Batching per key lifts the ceiling.</p></div>
@@ -2318,6 +2395,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#31</span> <span class="cc-alias" hidden> fan-out feed fanout timeline </span></div>
           <h3 class="cc-title">One event goes to millions</h3>
           <p class="cc-situ">A post or an announcement must reach a huge audience.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use hybrid fan-out: precompute feeds for ordinary accounts on write, and merge celebrity posts in at read time, rather than one strategy for all — writing to 50 million followers per post doesn&#x27;t work. Two code paths is the price.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Hybrid fan-out: precompute for ordinary accounts (fan-out on write), compute on read for huge ones, and keep unread state as cursors rather than rows.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Write amplification and storage against read latency, and the hybrid has two code paths.</p></div>
@@ -2335,6 +2414,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#32</span> <span class="cc-alias" hidden> likes views sharded counter </span></div>
           <h3 class="cc-title">Counters at scale</h3>
           <p class="cc-situ">Views and likes arrive faster than a database can count them one by one.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d count in memory or in sharded counters and flush in batches, showing an approximate number now and an exact one from the pipeline later, rather than incrementing one row per event. Exactness in real time is rarely needed and expensive.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Count in memory or in a sharded counter and flush in batches. Show an approximate number now and an exact one later.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Real-time numbers are approximate, and exactness costs a pipeline.</p></div>
@@ -2352,6 +2433,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#33</span> <span class="cc-alias" hidden> cache penetration bloom filter negative caching </span></div>
           <h3 class="cc-title">Requests for things that do not exist hit the database</h3>
           <p class="cc-situ">Bots probe random ids and every one misses the cache.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d cache &#x27;not found&#x27; briefly and put a Bloom filter of existing ids in front, rather than letting every lookup for a missing id reach the database — a common abuse pattern. A new item may look missing for a moment.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Cache the “not found” answer briefly (negative caching) and put a Bloom filter of existing ids in front.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Negative entries can go stale (a new item looks missing for a moment), and a Bloom filter has false positives and needs rebuilding.</p></div>
@@ -2369,6 +2452,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#34</span> <span class="cc-alias" hidden> write-through write-back write-behind cache-aside </span></div>
           <h3 class="cc-title">Choose a cache write strategy</h3>
           <p class="cc-situ">Data is written and read through a cache.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d default to cache-aside for read-heavy data, use write-through only where reads must immediately see writes, and avoid write-behind unless losing recent writes is acceptable.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Cache-aside for most read-heavy data; write-through when reads must see writes immediately; write-behind only when you can tolerate losing recent writes.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Cache-aside can serve stale data, write-through slows writes, and write-behind risks data loss on a crash.</p></div>
@@ -2386,6 +2471,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#35</span> <span class="cc-alias" hidden> replication lag replica </span></div>
           <h3 class="cc-title">Read replicas that lag</h3>
           <p class="cc-situ">A replica is seconds behind after a burst.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d send reads that must be fresh to the primary, or wait for a version token, and drop a replica from rotation beyond a lag threshold, rather than treating replicas as always current.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Send reads that must be fresh to the primary, or wait for a version token, and stop routing to a replica beyond a lag threshold.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>More load on the primary, or added latency waiting for a replica.</p></div>
@@ -2403,6 +2490,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#36</span> <span class="cc-alias" hidden> connection pool pgbouncer exhaustion </span></div>
           <h3 class="cc-title">Database connections run out</h3>
           <p class="cc-situ">Many app instances each open many connections.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d put a transaction pooler like PgBouncer in front, give each service a sized share of connections with timeouts, and keep transactions short, rather than raising max_connections, which costs memory and makes contention worse.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A pooler (transaction pooling), sized limits per service, timeouts, and no long transactions holding connections.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Transaction pooling breaks session features (temporary tables, session settings), and queuing at the pool adds latency under load.</p></div>
@@ -2420,6 +2509,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#37</span> <span class="cc-alias" hidden> priority queue lanes </span></div>
           <h3 class="cc-title">Urgent and bulk work share a queue</h3>
           <p class="cc-situ">A security alert waits behind a 200,000-item announcement.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d give urgent and bulk work separate queues with their own workers, so a security alert never waits behind a batch job, rather than one queue with priority fields. Some reserved capacity sits idle — that&#x27;s the price.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Separate lanes by priority with their own workers, and let the urgent lane reserve or preempt capacity.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>More queues, and capacity reserved for a lane that is often idle.</p></div>
@@ -2437,6 +2528,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#38</span> <span class="cc-alias" hidden> index covering partial slow query explain </span></div>
           <h3 class="cc-title">A query scans too much</h3>
           <p class="cc-situ">A page that was fast at 10,000 rows takes seconds at 100 million.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d look at the query plan, then add the right composite index in the right column order — a covering index for hot queries, a partial index for a small live subset — rather than adding indexes everywhere, since each one costs writes.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>The right composite index in the right order, covering indexes for hot queries, partial indexes for a small “live” subset, and keyset pagination.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Every index costs write time and space, and a partial index over a churning state bloats and needs rebuilding.</p></div>
@@ -2454,6 +2547,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#39</span> <span class="cc-alias" hidden> materialised view aggregation leaderboard </span></div>
           <h3 class="cc-title">Precompute expensive results</h3>
           <p class="cc-situ">A dashboard or a leaderboard recalculates the same aggregate on every view.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d precompute the expensive result into a materialised view or aggregate table, refreshed incrementally, rather than computing it on every request, and say how stale the number may be.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Materialised views or pre-aggregated tables, refreshed incrementally or on a schedule, and served instead of the raw data.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>The numbers are stale by the refresh interval, and you store the aggregate twice.</p></div>
@@ -2471,6 +2566,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#40</span> <span class="cc-alias" hidden> cdn edge cache immutable origin shield </span></div>
           <h3 class="cc-title">Serve static and popular content from the edge</h3>
           <p class="cc-situ">Images, scripts and downloads reach users far from your servers.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d serve static content from a CDN with immutable, content-hashed URLs cached forever, and an origin shield, rather than invalidating mutable URLs, which is slow and unreliable.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A CDN with sensible cache keys and TTLs, immutable content-hash URLs that can be cached forever, and an origin shield in front of your storage.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Invalidation is slow and egress is billed, but latency and origin load drop sharply.</p></div>
@@ -2488,6 +2585,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#41</span> <span class="cc-alias" hidden> waiting room queue flash sale launch </span></div>
           <h3 class="cc-title">A million people arrive at the same second</h3>
           <p class="cc-situ">A ticket sale or a launch far above what you can serve.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d put a virtual waiting room in front, admitting users at a rate the system can take and showing their honest position, rather than letting a million requests hit the core at once. Fairness and bots become product decisions.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A virtual waiting room: admit users at a controlled rate from a queue, protect the core system, and show honest position and time.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>People wait, and fairness and bot resistance become product problems.</p></div>
@@ -2505,6 +2604,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Scaling reads &amp; writes</span><span class="cc-no">#42</span> <span class="cc-alias" hidden> kafka hot partition skew lag </span></div>
           <h3 class="cc-title">One partition in a stream is hot</h3>
           <p class="cc-situ">One key produces most of the traffic and one consumer falls behind.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d pick a finer partition key, or split the hot key with a suffix, or coalesce upstream so only the latest state is published — accepting that splitting gives up ordering across the sub-keys.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Choose a finer key, split the hot key with a suffix, or coalesce upstream so only the latest state is published.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Splitting a key gives up ordering across the sub-keys, and coalescing hides intermediate values.</p></div>
@@ -2522,6 +2623,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Async &amp; real-time</span><span class="cc-no">#43</span> <span class="cc-alias" hidden> polling long polling sse websocket push </span></div>
           <h3 class="cc-title">Live updates to a page</h3>
           <p class="cc-situ">A price, a badge or a message should appear without a refresh.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d choose per feature: SSE for one-way updates like a price, WebSocket when the client also sends, like chat, long polling as a fallback — rather than polling everything, which at two million pages every 5 seconds is 400,000 requests a second. Pushes carry a version, so a missed one is recovered on reconnect.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Choose per feature: SSE for a one-way feed, WebSocket when the client also sends (chat, presence), long polling as the fallback. Treat a push as a hint that carries a version.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Held connections cost memory and need a reconnect protocol; polling costs requests. Two million pages polling every 5 seconds is 400,000 requests a second.</p></div>
@@ -2539,6 +2642,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Async &amp; real-time</span><span class="cc-no">#44</span> <span class="cc-alias" hidden> reconnect storm thundering herd jitter </span></div>
           <h3 class="cc-title">A deploy drops millions of connections</h3>
           <p class="cc-situ">A rollout disconnects everyone and they all reconnect at once.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d drain connections in waves during deploys, add random jitter to reconnects, let the server tell clients when to retry, and make reconnecting cheap, rather than dropping everyone at once and letting them all return in the same second.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Drain in waves, add a random delay to the first reconnect, let the server say how long to wait, refuse early when over capacity, and make a reconnect cheap.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Slower rollouts, and two versions live side by side.</p></div>
@@ -2556,6 +2661,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Async &amp; real-time</span><span class="cc-no">#45</span> <span class="cc-alias" hidden> retry backoff dead-letter dlq circuit breaker </span></div>
           <h3 class="cc-title">A slow or flaky downstream</h3>
           <p class="cc-situ">An email provider or a customer’s webhook endpoint is slow or failing.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d put a queue between us and the downstream and retry with exponential backoff and jitter, with a dead-letter queue and a circuit breaker per destination, rather than calling it inline. Delivery can be late or repeated, so the receiver must be idempotent.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Queue and retry with exponential backoff and jitter, a dead-letter queue, a circuit breaker, and isolation per destination.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Delivery is delayed and duplicates are possible, so receivers must be idempotent.</p></div>
@@ -2573,6 +2680,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Async &amp; real-time</span><span class="cc-no">#46</span> <span class="cc-alias" hidden> notification coalesce dedupe </span></div>
           <h3 class="cc-title">Notify a million people once</h3>
           <p class="cc-situ">A change matches a huge list of watchers or recipients.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d coalesce per key over a short window, fan out in batches with derived ids and ON CONFLICT DO NOTHING, and honour preferences, rather than one send per event, so retries never notify twice. The notification lags by the window, which is fine.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Coalesce per key over a short window, fan out in batches using derived ids and ON CONFLICT DO NOTHING, and honour preferences and per-person limits.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Notifications lag by the window, and a batch is the unit of retry.</p></div>
@@ -2590,6 +2699,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Async &amp; real-time</span><span class="cc-no">#47</span> <span class="cc-alias" hidden> cron scheduler timer delayed job </span></div>
           <h3 class="cc-title">Do something at a scheduled time</h3>
           <p class="cc-situ">Publish an announcement at 09:00, or expire a hold after ten minutes.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d store a row with a due time and let several schedulers claim due rows with FOR UPDATE SKIP LOCKED, rather than one cron process, which is a single point of failure. Two schedulers never take the same row, and the cost is a few seconds of polling delay.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A row with a due time, claimed with FOR UPDATE SKIP LOCKED by several schedulers; one statement flips the state and inserts the single job row.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Latency of a few seconds from polling, and the database is the scheduler.</p></div>
@@ -2607,6 +2718,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Async &amp; real-time</span><span class="cc-no">#48</span> <span class="cc-alias" hidden> ephemeral heartbeat redis </span></div>
           <h3 class="cc-title">Presence and typing indicators</h3>
           <p class="cc-situ">Show who is online and who is typing.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d keep presence and typing in Redis with a short TTL and only subscribe to people on screen, rather than persisting them, because the state is ephemeral and briefly wrong by design. Rate-limiting typing events keeps the traffic small.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Keep ephemeral state in Redis with a short TTL, subscribe only to the people on screen, rate-limit typing events, and never persist them.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>The information is approximate and briefly wrong by design.</p></div>
@@ -2624,6 +2737,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Async &amp; real-time</span><span class="cc-no">#49</span> <span class="cc-alias" hidden> at-least-once at-most-once exactly-once idempotent consumer </span></div>
           <h3 class="cc-title">Choose a message delivery guarantee</h3>
           <p class="cc-situ">A queue can lose, repeat or deliver messages exactly once — in theory.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use at-least-once delivery with idempotent consumers that dedupe by message id in the same transaction as the effect, rather than chasing &#x27;exactly once&#x27;, which across systems is really at-least-once plus idempotence.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Use at-least-once delivery with idempotent consumers (dedupe by message id or version in the same transaction as the effect); use at-most-once only for data you can lose, like telemetry.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Consumers must store state to dedupe, in exchange for no lost messages; true exactly-once across systems is really at-least-once plus idempotence.</p></div>
@@ -2641,6 +2756,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Async &amp; real-time</span><span class="cc-no">#50</span> <span class="cc-alias" hidden> schema evolution registry avro protobuf compatibility </span></div>
           <h3 class="cc-title">Message formats change over time</h3>
           <p class="cc-situ">Producers and consumers are deployed on different days.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d make event changes additive and backward compatible, enforce them with a schema registry, and write tolerant readers that ignore unknown fields, rather than changing a field&#x27;s meaning in place.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Version events, make changes additive and backward compatible, use a schema registry, and write tolerant readers that ignore unknown fields.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>It constrains how you change fields, and you support old and new shapes for a while.</p></div>
@@ -2658,6 +2775,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Async &amp; real-time</span><span class="cc-no">#51</span> <span class="cc-alias" hidden> workflow engine orchestration choreography temporal saga </span></div>
           <h3 class="cc-title">A workflow with several steps, waits and humans</h3>
           <p class="cc-situ">Onboarding, approvals, or a refund that waits for review.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use a workflow engine with durable state, timers and retries for a multi-step process with waits and humans, rather than chaining events with no single place to see each case&#x27;s state.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A workflow engine with durable state, timers and retries (orchestration), or events between services (choreography) with an explicit state record per case.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Orchestration is easy to see and change but depends on the engine; choreography is decoupled but hard to trace.</p></div>
@@ -2675,6 +2794,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Async &amp; real-time</span><span class="cc-no">#52</span> <span class="cc-alias" hidden> ot crdt collaborative real-time editing </span></div>
           <h3 class="cc-title">Several people edit the same document at once</h3>
           <p class="cc-situ">Live co-editing with cursors and instant merging.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use a CRDT or operational transformation with a server relaying operations and storing snapshots, rather than locking the document or last-write-wins, which throws away someone&#x27;s typing.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Operational transformation or a CRDT, with a server relaying operations and storing snapshots; merge concurrent edits automatically.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Complex to build, history grows, and offline merges are hard.</p></div>
@@ -2692,6 +2813,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#53</span> <span class="cc-alias" hidden> timeout circuit breaker bulkhead fallback degrade </span></div>
           <h3 class="cc-title">A dependency is down or slow</h3>
           <p class="cc-situ">One of the services you call stops answering.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d give every call a deadline, retry with backoff and jitter, wrap it in a circuit breaker, isolate it with a bulkhead, and serve a degraded answer — stale beats blank — rather than letting one slow dependency hold threads until everything stalls.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Deadlines and timeouts, retries with backoff and jitter, circuit breakers, bulkheads, and a degraded mode where stale is better than blank.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>More moving parts, and a degraded answer may be wrong for a moment.</p></div>
@@ -2709,6 +2832,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#54</span> <span class="cc-alias" hidden> canary blue-green rollout rollback drain release </span></div>
           <h3 class="cc-title">A deploy must not cause an outage</h3>
           <p class="cc-situ">A bad release should hurt a few users for a few minutes, not everyone.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d release to a canary first, then a staged rollout behind feature flags with fast rollback, rather than deploying everywhere at once. It&#x27;s slower, but a bad release hurts one percent of traffic for minutes instead of everyone.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A canary first, a staged rollout, feature flags, fast rollback, and connections drained in waves.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Slower delivery, and two versions running together.</p></div>
@@ -2726,6 +2851,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#55</span> <span class="cc-alias" hidden> failover rpo rto multi-region disaster </span></div>
           <h3 class="cc-title">A region or zone is lost</h3>
           <p class="cc-situ">A whole data centre stops.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d replicate across zones, write down the RPO and RTO, and rehearse failover, rather than assuming it works. I&#x27;d keep the control plane out of the request path, and accept that asynchronous replication can lose the last seconds on failover.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Replicate across zones, state the recovery point and time objectives (RPO and RTO), rehearse failover, and keep the control plane out of the data path.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Cost, and replication lag means some recent data may be lost on failover.</p></div>
@@ -2743,6 +2870,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#56</span> <span class="cc-alias" hidden> monitoring alerting slo sli metrics observability pager </span></div>
           <h3 class="cc-title">Know it is broken before users do</h3>
           <p class="cc-situ">Something degrades silently at 3 a.m.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d alert on symptoms users feel — success rate, p99 latency, the age of the oldest queue item — rather than on every cause like CPU, and give every alert an owner and a first step. Causes go on dashboards, which keeps the pager quiet and meaningful.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Alert on symptoms — success rate, p99 latency, the age of the oldest queue item. Put causes on dashboards, and give every alert an owner and a first step.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Loose thresholds cause alert fatigue, and high-cardinality metrics cost money.</p></div>
@@ -2760,6 +2889,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#57</span> <span class="cc-alias" hidden> payday precompute pre-scale peak launch </span></div>
           <h3 class="cc-title">A predictable spike</h3>
           <p class="cc-situ">Payday, a launch, or 09:00 on a Monday.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d do the heavy work before the moment — generate everything ahead, pre-scale — and make the release itself one cheap atomic flip, rather than computing at the spike. The cost is preparation and some idle capacity.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Do the heavy work before the moment — generate documents ahead of time — release with a single row flip, pre-scale, and keep the serving path tiny.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Idle capacity or pre-generation cost, and the release must be atomic.</p></div>
@@ -2777,6 +2908,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#58</span> <span class="cc-alias" hidden> feature flag experiment ab test canary kill switch </span></div>
           <h3 class="cc-title">Roll out a feature to some users first</h3>
           <p class="cc-situ">A risky change must be tested on real traffic.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d ship behind feature flags with sticky per-user assignment, ramp by percentage while watching metrics split by flag, and keep a kill switch — rather than a big-bang release. I&#x27;d also delete old flags to avoid flag debt.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Feature flags with sticky per-user assignment, a percentage ramp, a kill switch, and metrics split by flag.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Flag debt (old flags left in the code), more combinations to test, and assignment must stay consistent across services.</p></div>
@@ -2794,6 +2927,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#59</span> <span class="cc-alias" hidden> canary rolling deployment </span></div>
           <h3 class="cc-title">Blue-green, canary or rolling deploy</h3>
           <p class="cc-situ">Choosing how to release.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use rolling deploys for routine changes, a canary for risky ones and blue-green when an instant switch-back matters, keeping database changes compatible with both versions either way.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Rolling for routine changes, canary for risky ones, blue-green when you need an instant switch back — with database changes kept compatible with both versions.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Blue-green doubles capacity while both run, canaries need good metrics, and rolling means mixed versions in flight.</p></div>
@@ -2811,6 +2946,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#60</span> <span class="cc-alias" hidden> config rollout last-known-good </span></div>
           <h3 class="cc-title">Change configuration safely</h3>
           <p class="cc-situ">A bad config value takes everything down.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d treat configuration as code — validated, reviewed and rolled out in stages with a last-known-good fallback — rather than editing it live, since bad config causes outages as often as bad code.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Treat configuration as code: validate, review, roll out in stages, and hot-reload with a last-known-good fallback.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Slower changes, and a config pipeline to run.</p></div>
@@ -2828,6 +2965,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#61</span> <span class="cc-alias" hidden> capacity planning load test headroom </span></div>
           <h3 class="cc-title">Plan capacity and prove it</h3>
           <p class="cc-situ">A launch, a sale or a growing customer.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d model peak from the numbers that matter — requests and connections per second, storage growth — then load test with realistic traffic including the ramp, and keep headroom, rather than trusting averages.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Model peak load from the numbers that matter (requests per second, connections per second, storage growth), load test with realistic traffic including the ramp, and set headroom and alerts.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Testing costs time and money, and an unrealistic test gives false comfort.</p></div>
@@ -2845,6 +2984,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#62</span> <span class="cc-alias" hidden> cost spot tiering egress finops </span></div>
           <h3 class="cc-title">Keep the cloud bill in check</h3>
           <p class="cc-situ">Storage and egress grow faster than users.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d tier cold data, use spot capacity for batch work, cut egress with caching and a CDN, and attribute cost per tenant and feature, so the biggest costs are visible and owned.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Tier cold data to cheaper storage, use spot capacity for batch work, cache and use a CDN to cut egress, and attribute cost per tenant and per feature.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>More moving parts, slower access to cold data, and spot capacity can disappear.</p></div>
@@ -2862,6 +3003,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#63</span> <span class="cc-alias" hidden> active-active multi-region conflict crdt last writer wins </span></div>
           <h3 class="cc-title">Two regions both serve writes</h3>
           <p class="cc-situ">Users worldwide need low-latency writes and survival of a region loss.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d give each key a home region so writes for it go to one place, and only accept multi-region writes with explicit conflict rules, rather than active-active writes everywhere, which turns every record into a conflict risk.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Active-active with a home region per key (fewest conflicts) or conflict resolution — last writer wins, CRDTs or an application merge.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Lower latency and higher availability, in exchange for conflicts, more complex operations and harder reasoning about consistency.</p></div>
@@ -2879,6 +3022,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#64</span> <span class="cc-alias" hidden> graceful shutdown readiness liveness drain kubernetes </span></div>
           <h3 class="cc-title">Restart a node without dropping work</h3>
           <p class="cc-situ">Deploys, scaling and failures continually stop instances.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d separate readiness from liveness, and on shutdown stop taking new work, finish in-flight requests and deregister before exiting, rather than killing the process mid-request during every deploy.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Separate readiness from liveness; on shutdown stop accepting new work, finish in-flight requests, deregister, then exit within a grace period.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Slower deploys and more careful code.</p></div>
@@ -2896,6 +3041,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#65</span> <span class="cc-alias" hidden> dns anycast global load balancer failover geo </span></div>
           <h3 class="cc-title">Send users to the nearest healthy region</h3>
           <p class="cc-situ">Users are spread across the world and a region can fail.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d route users to the nearest healthy region with global load balancing and health checks, keeping DNS TTLs short, rather than one region for everyone. Some cached DNS answers will still be late on failover.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Global load balancing with DNS or anycast, health checks, and short TTLs; fail traffic away from an unhealthy region.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>DNS caching delays failover, and cross-region traffic and duplicated capacity cost money.</p></div>
@@ -2913,6 +3060,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#66</span> <span class="cc-alias" hidden> cardinality sampling retention observability cost </span></div>
           <h3 class="cc-title">Metrics and logs cost more than the system</h3>
           <p class="cc-situ">The observability bill grows faster than traffic.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d sample traces, cap label cardinality, use structured logs with levels and tiered retention, rather than keeping everything at full detail forever, which can cost more than the system itself.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Sampling for traces, cardinality limits on labels, structured logs with levels, tiered retention, and aggregation at the edge.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Less raw detail for old data and rare events.</p></div>
@@ -2930,6 +3079,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#67</span> <span class="cc-alias" hidden> tls certificate expiry rotation renewal </span></div>
           <h3 class="cc-title">Certificates and credentials expire</h3>
           <p class="cc-situ">A certificate or key silently reaches its end date at 3 a.m.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d automate renewal, expose days-to-expiry as a metric with an alert weeks ahead, and rotate with an overlap, rather than calendar reminders — expired certificates are one of the most avoidable outages.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Automate renewal, expose days-to-expiry as a metric, alert well ahead, and rotate with an overlap so old and new both work for a while.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>You build and maintain the automation, and overlap means briefly accepting two credentials.</p></div>
@@ -2947,6 +3098,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Reliability &amp; operations</span><span class="cc-no">#68</span> <span class="cc-alias" hidden> slo sli error budget burn rate </span></div>
           <h3 class="cc-title">Define what “good enough” means</h3>
           <p class="cc-situ">Everyone argues about reliability without a shared target.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d define SLIs like success rate and latency with SLO targets, and alert on error-budget burn, rather than on every blip, using the remaining budget to decide how fast we release.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Set SLIs (success rate, latency) and SLO targets, alert on error-budget burn, and use the remaining budget to decide how fast to release.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>You must agree on the numbers and measure them honestly, and the budget can slow launches.</p></div>
@@ -2964,6 +3117,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#69</span> <span class="cc-alias" hidden> multi-tenant isolation rls row-level security </span></div>
           <h3 class="cc-title">Keep tenants apart</h3>
           <p class="cc-situ">Many customers share one database and one set of services.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d put the tenant id first in every key and every query, back it with row-level security as a second wall, and scope caches by tenant, rather than relying on code review. The largest tenants move to their own cell.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>The tenant id first in every key and every query, composite foreign keys, row-level security as a second wall, tenant-scoped caches, and a cell for the largest.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Wider keys and discipline everywhere, and shared infrastructure still shares fate.</p></div>
@@ -2981,6 +3136,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#70</span> <span class="cc-alias" hidden> idor authorization ownership 404 </span></div>
           <h3 class="cc-title">Never return someone else’s document</h3>
           <p class="cc-situ">A user guesses or changes an id in a URL.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d make the owner part of every lookup — WHERE id = $1 AND owner = $caller — so someone else&#x27;s id returns the same 404 as a missing one, rather than fetching and then checking. That also avoids confirming the document exists.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>The owner is part of the lookup, so a foreign id returns nothing — the same 404 as a missing one. Storage keys carry the tenant prefix.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Every lookup needs the caller’s identity.</p></div>
@@ -2998,6 +3155,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#71</span> <span class="cc-alias" hidden> rate limit token bucket 429 throttle </span></div>
           <h3 class="cc-title">Stop an abusive client</h3>
           <p class="cc-situ">One caller sends far more requests than it should.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d rate-limit per API key with a token bucket in Redis, fair per tenant, returning 429 with Retry-After, rather than limits per server instance, which a client spreads across. The shared counter costs a round trip, so I&#x27;d fail open briefly if Redis is down.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A token bucket per key in Redis (or a sliding window), fair per tenant, with clear 429 responses and a Retry-After header.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Shared counters cost a round trip and can fail, and limits can block legitimate bursts.</p></div>
@@ -3015,6 +3174,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#72</span> <span class="cc-alias" hidden> oauth jwt refresh token session </span></div>
           <h3 class="cc-title">Login, sessions and tokens</h3>
           <p class="cc-situ">Users sign in on many devices and must be signed out when they should be.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d issue short-lived access tokens with refresh tokens, and check revocation only for sensitive actions, rather than long-lived tokens that can&#x27;t be withdrawn or a session lookup on every request. New devices get an extra trust check.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Short-lived access tokens plus refresh tokens, revocation lists or introspection for sensitive actions, and device trust for new sign-ins.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Short lifetimes mean more refreshes, and revocation needs state.</p></div>
@@ -3032,6 +3193,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#73</span> <span class="cc-alias" hidden> kms vault envelope encryption rotation </span></div>
           <h3 class="cc-title">Handle secrets and encryption keys</h3>
           <p class="cc-situ">API keys, database passwords and data-encryption keys.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d keep secrets in a secrets manager and encrypt data with envelope encryption — data keys wrapped by a KMS master key — rather than keys in config files. I&#x27;d cache data keys to avoid a KMS call per request.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A secrets manager and a KMS; envelope encryption (data keys wrapped by a master key); short-lived credentials; automatic rotation.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Extra latency and a hard dependency on the key service (so cache data keys), and rotating keys means re-encrypting or re-wrapping data.</p></div>
@@ -3049,6 +3212,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#74</span> <span class="cc-alias" hidden> gdpr erasure crypto-shredding privacy </span></div>
           <h3 class="cc-title">Delete a user’s data on request</h3>
           <p class="cc-situ">A person invokes their right to erasure.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d delete or anonymise the user&#x27;s data everywhere it was copied — search, caches, analytics — and use crypto-shredding for data I can&#x27;t rewrite, like backups, rather than only deleting the main row. Legal holds and shared data are the exceptions to plan for.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Delete or anonymise their references everywhere, including derived copies (search, analytics, caches, backups by expiry), and use crypto-shredding — deleting the key — for data you cannot reach.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Shared, deduplicated chunks stay while others use them, and immutable logs conflict with deletion, so plan retention and legal holds.</p></div>
@@ -3066,6 +3231,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#75</span> <span class="cc-alias" hidden> data residency region sovereignty </span></div>
           <h3 class="cc-title">Data must stay in a region</h3>
           <p class="cc-situ">Regulation or a contract requires data to remain in one country.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d pin each tenant to a home region and route by tenant, keeping its data and metadata there, rather than one global database. Global features read region-local copies, which makes cross-region reports harder.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Pin each tenant to a home region, route by tenant, keep metadata and data together in that region, and make global features read from region-local stores.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Cross-region features (global search, cross-tenant reports) get harder, and you run more regions.</p></div>
@@ -3083,6 +3250,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#76</span> <span class="cc-alias" hidden> risk scoring abuse bot </span></div>
           <h3 class="cc-title">Spot fraud and abuse</h3>
           <p class="cc-situ">Fake sign-ups, stolen cards, scraped data.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d layer it: cheap rules and rate limits at the edge, a real-time risk score, step-up verification for risky actions, and human review for the uncertain middle — rather than one model blocking outright, because false positives cost real customers.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Rules and rate limits at the edge, a risk score from features computed in near real time, step-up verification for risky actions, and human review for the middle band.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>False positives block real customers and false negatives cost money, and scoring adds latency to the request path.</p></div>
@@ -3100,6 +3269,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#77</span> <span class="cc-alias" hidden> audit log append-only </span></div>
           <h3 class="cc-title">Keep a trustworthy audit trail</h3>
           <p class="cc-situ">Someone must prove who changed what, and when.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d write an append-only audit row in the same transaction as the change — actor, action, target, time — rather than logging asynchronously, which can lose entries on a crash. Restricting who can read it matters as much as writing it.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>An append-only log with actor, action, target and time, written in the same transaction as the change (or through an outbox), optionally hash-chained, with restricted read access.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Storage growth, personal data in the log, and an extra write on every change.</p></div>
@@ -3117,6 +3288,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#78</span> <span class="cc-alias" hidden> replay nonce timestamp </span></div>
           <h3 class="cc-title">Stop a captured request from being replayed</h3>
           <p class="cc-situ">An attacker records a valid request and sends it again.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d require a timestamp plus a nonce, rejecting anything old or already seen, and use one-time tokens for sensitive actions, rather than relying on TLS alone. Payments additionally carry an idempotency key.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A timestamp plus a nonce checked against recent values, one-time tokens for sensitive actions, and idempotency for payments.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>You store recent nonces and must tolerate clock skew.</p></div>
@@ -3134,6 +3307,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#79</span> <span class="cc-alias" hidden> rbac abac rebac authorization policy permissions </span></div>
           <h3 class="cc-title">Decide who can do what</h3>
           <p class="cc-situ">Roles, sharing and per-resource permissions across a product.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d start with roles, add relationship-based checks for sharing, and route every decision through one policy point with cached results, rather than permission checks scattered through the code.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>RBAC for simple roles, ABAC for attribute rules, and relationship-based checks for sharing (a folder, a document); one policy decision point, with results cached and invalidated by change events.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>RBAC explodes into many roles as needs grow, while richer models cost complexity and latency.</p></div>
@@ -3151,6 +3326,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#80</span> <span class="cc-alias" hidden> mtls zero trust internal auth token </span></div>
           <h3 class="cc-title">Service-to-service calls must be authenticated</h3>
           <p class="cc-situ">Internal traffic is not automatically trustworthy.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d authenticate service calls with mutual TLS or short-lived signed tokens scoped to an audience, rather than trusting the internal network, since an attacker inside one service shouldn&#x27;t reach all of them.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Mutual TLS or short-lived signed tokens with an audience, and least-privilege scopes per service.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Certificate and token management, and a little latency.</p></div>
@@ -3168,6 +3345,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Security, identity &amp; tenancy</span><span class="cc-no">#81</span> <span class="cc-alias" hidden> malware scan content type xss quarantine upload security </span></div>
           <h3 class="cc-title">Users upload files you do not trust</h3>
           <p class="cc-situ">Documents, images and archives from the internet.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d limit size, check the real content type, quarantine until a scan passes, process images in a sandbox and serve uploads from a separate domain, rather than trusting the file extension.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Enforce size limits, sniff the real content type, scan asynchronously and quarantine until clean, resize images in a sandbox, and serve from a separate domain as attachments.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Files are not available instantly, and scanning costs money.</p></div>
@@ -3185,6 +3364,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Files, media &amp; sync</span><span class="cc-no">#82</span> <span class="cc-alias" hidden> resumable chunked multipart upload </span></div>
           <h3 class="cc-title">Upload a huge file over a flaky network</h3>
           <p class="cc-situ">A multi-gigabyte file and a connection that drops every few minutes.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d split the file into chunks with hashes, ask the server which are missing, and upload those in parallel straight to object storage with presigned URLs, then commit once — rather than one long upload that restarts from zero on a dropped connection.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Chunk it, hash each chunk, ask the server which chunks are missing, upload those in parallel straight to object storage, then commit once.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Metadata per chunk and a two-step commit; a small delay per file.</p></div>
@@ -3202,6 +3383,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Files, media &amp; sync</span><span class="cc-no">#83</span> <span class="cc-alias" hidden> offline sync conflict journal cursor </span></div>
           <h3 class="cc-title">Sync across devices that go offline</h3>
           <p class="cc-situ">A laptop edits files on a plane and reconnects later.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d keep a journal per namespace with a cursor per device, and make each commit carry the version it was based on, so a conflicting edit is detected and both versions are kept — rather than last-write-wins, which silently loses work.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A per-namespace journal and a cursor. Each commit carries its base version, and a guarded update detects conflicts and keeps both versions.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Conflicted copies for users to reconcile, and a journal to compact.</p></div>
@@ -3219,6 +3402,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Files, media &amp; sync</span><span class="cc-no">#84</span> <span class="cc-alias" hidden> hls dash transcode abr cdn </span></div>
           <h3 class="cc-title">Stream video</h3>
           <p class="cc-situ">Play a large uploaded video quickly on any connection.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d transcode into a bitrate ladder of short segments with a manifest and serve them from a CDN, publishing the lowest rendition first so the video is watchable early, rather than one file the player must download. It costs CPU and storage per rendition.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Transcode in parallel into a bitrate ladder, package as short segments with a manifest, and serve from a CDN. Publish the lowest rendition first so it is watchable early.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Heavy CPU and storage (about 2 GB an hour for a four-rung ladder at the bitrates tested), and a trade between start-up speed and quality.</p></div>
@@ -3236,6 +3421,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Files, media &amp; sync</span><span class="cc-no">#85</span> <span class="cc-alias" hidden> dedupe content addressed hash refcount </span></div>
           <h3 class="cc-title">Store identical data once</h3>
           <p class="cc-situ">Many users store the same bytes.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d store content-addressed chunks keyed by hash with reference counts and a grace period before deletion, rather than storing every copy, accepting the privacy side channel and planning around it.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Content-addressed chunks keyed by hash, with refcounts and a grace period before garbage collection.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Large storage savings, but a privacy side channel if the server says “already have it”, and conflicts with per-user encryption.</p></div>
@@ -3253,6 +3440,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Files, media &amp; sync</span><span class="cc-no">#86</span> <span class="cc-alias" hidden> range request resume etag if-range </span></div>
           <h3 class="cc-title">Download a huge file reliably</h3>
           <p class="cc-situ">A multi-gigabyte file over a flaky connection.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d support range requests with ETag and If-Range so downloads resume, and verify a hash per chunk, rather than restarting a 10 GB download from zero after a dropped connection.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Range requests, resume with an ETag and If-Range, parallel ranges, and verify a hash per chunk.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>More requests and client complexity.</p></div>
@@ -3270,6 +3459,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Files, media &amp; sync</span><span class="cc-no">#87</span> <span class="cc-alias" hidden> thumbnail resize variants image processing </span></div>
           <h3 class="cc-title">Turn an uploaded image into many sizes</h3>
           <p class="cc-situ">Thumbnails, previews and responsive variants.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d generate the common sizes once, asynchronously, named by content hash and size and cached at the CDN, and resize rare sizes on demand behind the cache.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Generate variants asynchronously once, name them by content hash and size, cache at the CDN; or resize on demand behind a cache.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Pre-generating costs storage for variants nobody may view; on-demand costs CPU on first request.</p></div>
@@ -3287,6 +3478,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Files, media &amp; sync</span><span class="cc-no">#88</span> <span class="cc-alias" hidden> signed url share link expiry revoke </span></div>
           <h3 class="cc-title">Share a file with a link that expires</h3>
           <p class="cc-situ">Send a link to someone outside the organisation.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d issue a share token that maps to a permission and hand out short-lived signed URLs for the bytes, rather than one long-lived public URL, so a link can be revoked by deleting the token.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A share token that resolves to a permission, short-lived signed URLs for the bytes, optional password and expiry, and revocation by deleting the token.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Short expiries are safe but annoying, and revocation needs a lookup on every access.</p></div>
@@ -3304,6 +3497,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Distributed building blocks</span><span class="cc-no">#89</span> <span class="cc-alias" hidden> consistent hashing ring virtual nodes sharding rebalancing </span></div>
           <h3 class="cc-title">Spread data over many nodes and add nodes without reshuffling everything</h3>
           <p class="cc-situ">A cache or store outgrows one machine, and machines come and go.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d place keys and nodes on a hash ring with virtual nodes, rather than key mod N, because adding a node with mod N moves almost every key, while the ring moves about 1/N of them. Virtual nodes keep the load even.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Consistent hashing with virtual nodes: keys and nodes sit on a ring, a key belongs to the next node clockwise, and each node owns many small ranges.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Adding or removing a node moves only about 1/N of the keys, but clients need the ring, and virtual nodes add bookkeeping. Without them the load is uneven.</p></div>
@@ -3321,6 +3516,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Distributed building blocks</span><span class="cc-no">#90</span> <span class="cc-alias" hidden> sharding range hash partition key hotspot </span></div>
           <h3 class="cc-title">Choose how to split data: by range or by hash</h3>
           <p class="cc-situ">A table or a stream needs partitioning.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d hash-partition when access is by key and load must be even, and range-partition when queries scan ordered ranges like time — or combine them, hash of tenant then time range. I&#x27;d never range-partition on a timestamp alone, because every write lands on the last partition.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Hash partitioning for even load and point lookups; range partitioning for ordered scans and time windows; a compound key (a hash of the tenant, a range of time) to get some of both.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Hashing spreads load but makes range scans expensive. Range keeps scans cheap, but a monotonically increasing key such as a timestamp sends every write to the last partition.</p></div>
@@ -3338,6 +3535,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Distributed building blocks</span><span class="cc-no">#91</span> <span class="cc-alias" hidden> quorum replication raft paxos durability </span></div>
           <h3 class="cc-title">Data must survive the loss of a node</h3>
           <p class="cc-situ">A replica, or a whole node, dies while requests keep arriving.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d replicate to three nodes and use quorums — write to two, read from two — so every read overlaps the latest write, rather than writing to one and hoping. Larger quorums cost latency; smaller ones risk stale reads.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Replicate to N nodes and use quorums: write to W, read from R, with W + R greater than N so a read overlaps the latest write. Or use a leader with synchronous followers.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Larger W or R buys consistency at the cost of latency and availability. W + R at or below N is faster but can read stale data.</p></div>
@@ -3355,6 +3554,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Distributed building blocks</span><span class="cc-no">#92</span> <span class="cc-alias" hidden> leader election lease raft zookeeper etcd fencing </span></div>
           <h3 class="cc-title">Exactly one node must do the job</h3>
           <p class="cc-situ">A scheduler, a compactor or a partition owner must never run twice at once.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d elect a leader with a lease in etcd or ZooKeeper and pass a fencing token with every write, so a deposed leader&#x27;s late write is rejected, rather than trusting the lease alone — a paused process can wake up still thinking it leads.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Elect a leader with a lease in a consensus store (etcd, ZooKeeper) and use a fencing token: every write carries an increasing number and the resource rejects an older one.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Failover takes as long as the lease, and you depend on the consensus service being available.</p></div>
@@ -3372,6 +3573,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Distributed building blocks</span><span class="cc-no">#93</span> <span class="cc-alias" hidden> distributed lock redlock mutex lease </span></div>
           <h3 class="cc-title">Mutual exclusion across services</h3>
           <p class="cc-situ">Two services must not change the same thing at the same moment.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d avoid a distributed lock if a conditional update or unique constraint can make the decision, because locks expire mid-work and holders die. If I must lock, I&#x27;d use a lease with a fencing token and keep the critical section short.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Avoid the lock: use a conditional write, a unique constraint or an optimistic version check. If you must lock, take a lease with a fencing token and keep the critical section short.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Locks add failure modes — expiry in the middle of work, a dead holder, clock trouble — and cap throughput.</p></div>
@@ -3389,6 +3592,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Distributed building blocks</span><span class="cc-no">#94</span> <span class="cc-alias" hidden> lamport logical clock version vector </span></div>
           <h3 class="cc-title">Order events across machines with no shared clock</h3>
           <p class="cc-situ">Two services stamp events, and their clocks differ.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d give each key a sequence number from one owner, rather than ordering by wall-clock timestamps from different machines, which drift and tie. When there&#x27;s no single owner, version vectors at least detect concurrent updates.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Order by a sequence assigned by one owner per key, or use logical clocks (Lamport) and version vectors to detect concurrent updates.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>A sequence costs a serialisation point per key. Version vectors grow with the number of writers and detect conflicts without resolving them.</p></div>
@@ -3406,6 +3611,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Distributed building blocks</span><span class="cc-no">#95</span> <span class="cc-alias" hidden> snowflake uuid uuidv7 sequence </span></div>
           <h3 class="cc-title">Generate unique ids on many machines</h3>
           <p class="cc-situ">Millions of new rows a second across many services.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use time-ordered 64-bit ids — Snowflake-style or UUIDv7 — rather than random UUIDs, which scatter index writes, or a database sequence, which is a single bottleneck. I&#x27;d accept the dependency on clocks and unique machine ids.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A time-ordered 64-bit id (a Snowflake-style timestamp, machine and counter) or UUIDv7 for sortable ids; a random UUID when order does not matter; a database sequence only when one writer is fine.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Time-ordered ids keep indexes compact but depend on clocks and machine ids. Random UUIDs are simple but scatter index writes. A sequence is a bottleneck.</p></div>
@@ -3423,6 +3630,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Distributed building blocks</span><span class="cc-no">#96</span> <span class="cc-alias" hidden> service discovery registry dns consul </span></div>
           <h3 class="cc-title">Find other services when addresses keep changing</h3>
           <p class="cc-situ">Instances start, stop and move all day.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use a service registry with health checks and let clients or a mesh balance across healthy instances, rather than hard-coded addresses or long-TTL DNS. Registry entries can be stale, so callers still need retries and timeouts.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A service registry with health checks, and either client-side load balancing or a proxy or mesh that watches the registry. DNS with short TTLs for coarse discovery.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>The registry can be stale, so callers must retry and tolerate dead entries, and client-side balancing spreads logic across every client.</p></div>
@@ -3440,6 +3649,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Distributed building blocks</span><span class="cc-no">#97</span> <span class="cc-alias" hidden> failure detector gossip heartbeat phi accrual </span></div>
           <h3 class="cc-title">Detect a dead node without false alarms</h3>
           <p class="cc-situ">A node stops answering. Is it dead or only slow?</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use heartbeats with an adaptive timeout and require confirmation from more than one observer before declaring a node dead, rather than a fixed short timeout, which flags slow nodes as dead and triggers needless failovers.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Heartbeats with a timeout that adapts to observed latency (phi-accrual style), confirmed by several observers or by gossip before anyone acts.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>A short timeout detects failure fast but flags slow nodes as dead and triggers needless failovers. A long one is safe but slow.</p></div>
@@ -3457,6 +3668,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Analytics &amp; pipelines</span><span class="cc-no">#98</span> <span class="cc-alias" hidden> hyperloglog hll cardinality distinct </span></div>
           <h3 class="cc-title">Count unique users at scale</h3>
           <p class="cc-situ">Daily active users across billions of events.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use a HyperLogLog per day — a few kilobytes that estimate distinct users within about 1% and merge across shards — rather than storing every user id in a set, as long as the business accepts an estimate.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A HyperLogLog sketch: a fixed few kilobytes per counter that estimates distinct counts and can be merged across shards and days.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>It is an estimate — Redis’s implementation quotes a standard error of about 0.8% — and you cannot list who was counted or remove someone.</p></div>
@@ -3474,6 +3687,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Analytics &amp; pipelines</span><span class="cc-no">#99</span> <span class="cc-alias" hidden> heavy hitters count-min sketch trending </span></div>
           <h3 class="cc-title">Find the top-K or trending items</h3>
           <p class="cc-situ">The 100 most searched terms in the last hour.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d count in sliding windows with a count-min sketch, keep a small heap of the leaders per shard, and merge the shard results, rather than exact counts on every event. Slight overcounting of rare items is acceptable for &#x27;trending&#x27;.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Count in sliding windows with a count-min sketch (or exact counts on a sample), keep a small heap of the leaders, and merge the per-shard results.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Approximate counts overestimate rare items slightly, and windows add memory and complexity.</p></div>
@@ -3491,6 +3706,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Analytics &amp; pipelines</span><span class="cc-no">#100</span> <span class="cc-alias" hidden> lambda kappa architecture flink spark </span></div>
           <h3 class="cc-title">Stream processing or batch</h3>
           <p class="cc-situ">Numbers must be fresh and also right.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d run the low-latency path as a stream and keep the log replayable so a batch or replay can recompute the truth, rather than two independent code paths that drift. Both paths are idempotent so a replay is safe.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Use a stream for low-latency results and a batch job, or a replay of the log, to recompute the truth. Make both idempotent, or run one streaming pipeline that can replay history.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Two code paths can drift apart. Replaying one log keeps a single path but needs a retained log and enough compute.</p></div>
@@ -3508,6 +3725,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Analytics &amp; pipelines</span><span class="cc-no">#101</span> <span class="cc-alias" hidden> watermark windowing late data flink </span></div>
           <h3 class="cc-title">Events arrive late and out of order</h3>
           <p class="cc-situ">A mobile client uploads yesterday’s events today.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d window by event time and close windows with a watermark plus a bounded allowed lateness, rather than by arrival time, which misplaces anything delayed in the pipeline. Stragglers after the lateness become corrections.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Group by event time, not arrival time, with windows closed by a watermark, and allow a bounded lateness with corrections for stragglers.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>A longer allowed lateness makes results more complete but later and costs state. A shorter one is fast and drops or patches late data.</p></div>
@@ -3525,6 +3744,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Analytics &amp; pipelines</span><span class="cc-no">#102</span> <span class="cc-alias" hidden> olap warehouse columnar cdc etl </span></div>
           <h3 class="cc-title">Analytics queries would slow production</h3>
           <p class="cc-situ">A dashboard query scans billions of rows on the primary database.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d stream changes with CDC into a columnar warehouse and run analytics there, rather than heavy queries on the production database. Dashboards read pre-aggregated tables, and minutes of staleness is the accepted cost.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Stream changes with CDC into a columnar warehouse or OLAP store and run analytics there. Serve dashboards from pre-aggregated tables.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>The data is minutes stale, you run another pipeline, and it costs more storage.</p></div>
@@ -3542,6 +3763,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Analytics &amp; pipelines</span><span class="cc-no">#103</span> <span class="cc-alias" hidden> backfill reprocess replay </span></div>
           <h3 class="cc-title">Reprocess or backfill history safely</h3>
           <p class="cc-situ">A bug corrupted a column, or a new field must be filled for old rows.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d backfill in a separate idempotent job that walks key ranges in small batches, throttles itself and writes to a new column, then switch reads — rather than one big UPDATE that locks the table. It&#x27;s slower but production keeps serving and I can roll back.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Write a separate, idempotent backfill that processes key ranges in small batches, throttles itself and writes to a new column or table; then switch reads and remove the old.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>It takes time and temporary storage, but production keeps serving and you can roll back.</p></div>
@@ -3559,6 +3782,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Analytics &amp; pipelines</span><span class="cc-no">#104</span> <span class="cc-alias" hidden> event sourcing cqrs audit </span></div>
           <h3 class="cc-title">Keep the full history as the source of truth</h3>
           <p class="cc-situ">Auditors want every change; teams want to rebuild views.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use event sourcing only when the history itself is the product — audits, ledgers — storing immutable events and building read models from them. Otherwise I&#x27;d keep a normal table with an outbox, because event sourcing brings schema evolution and eventual consistency.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Event sourcing: store immutable events as the truth and build read models (CQRS) from them, taking snapshots periodically to keep rebuilds short.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Powerful history and rebuilds, but eventual consistency between the write and read sides, event schema evolution and a steeper learning curve.</p></div>
@@ -3576,6 +3801,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Analytics &amp; pipelines</span><span class="cc-no">#105</span> <span class="cc-alias" hidden> telemetry iot time-series ingestion downsample </span></div>
           <h3 class="cc-title">Millions of devices report every few seconds</h3>
           <p class="cc-situ">Location pings or sensor readings pour in continuously.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d batch at the device, ingest through a partitioned log into a time-series store, and downsample old data with retention, rather than writing every reading straight into a relational table.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Batch at the device, ingest through a partitioned log, write to a time-series store, downsample old data and set a retention period.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Some latency for efficiency, and detail is lost as data is downsampled.</p></div>
@@ -3593,6 +3820,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Analytics &amp; pipelines</span><span class="cc-no">#106</span> <span class="cc-alias" hidden> dedupe stream idempotent window </span></div>
           <h3 class="cc-title">Duplicate events in a stream</h3>
           <p class="cc-situ">Producers retry and brokers redeliver.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d deduplicate by event id in a windowed state store, or make the sink idempotent by key and version, rather than assuming the stream delivers once — it doesn&#x27;t.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Deduplicate by event id in a state store with a time window, or make the sink idempotent by key and version.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>State to store and a window during which duplicates are caught.</p></div>
@@ -3610,6 +3839,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Analytics &amp; pipelines</span><span class="cc-no">#107</span> <span class="cc-alias" hidden> csv bulk import staging validation </span></div>
           <h3 class="cc-title">Import a big CSV safely</h3>
           <p class="cc-situ">A customer uploads 200,000 rows to create or update records.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d validate and report first — matched, unknown, duplicate — stage the rows, then apply them in batches with idempotent keys, rather than importing straight into live tables, so a re-run never doubles anything.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Validate and report first (matched, unknown, duplicate), stage the rows in a table, apply them in batches with idempotent keys, and allow a re-run.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Staging storage and a two-step experience, in exchange for no half-imported surprises.</p></div>
@@ -3627,6 +3858,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#108</span> <span class="cc-alias" hidden> pagination cursor keyset offset </span></div>
           <h3 class="cc-title">Page through a list that keeps changing</h3>
           <p class="cc-situ">A feed or an admin table gains rows while someone scrolls.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use keyset pagination — 50 rows after this sort key and id — rather than OFFSET, which gets slower with depth and skips or repeats rows when the list changes. I give up jumping to page 37.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Keyset (cursor) pagination: “give me 50 after this (sort key, id)” rather than OFFSET.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>No jump to page 37, and the cursor is opaque — but pages are stable and cost the same at any depth (in the chat test, a page 300,000 deep took 0.029 ms against 0.022 ms for the first).</p></div>
@@ -3644,6 +3877,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#109</span> <span class="cc-alias" hidden> dataloader batching graphql n+1 </span></div>
           <h3 class="cc-title">Avoid the N+1 calls</h3>
           <p class="cc-situ">A list of 50 items triggers 50 follow-up calls for details.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d collect the ids and fetch them in one batch call — a DataLoader — or join in the query, rather than one call per item, which turns one page into hundreds of round trips. The batch adds a tiny wait.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Batch: collect the ids and fetch them in one call (a DataLoader-style batcher), or join in the query, or offer an aggregated endpoint.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Batching adds a small wait and more code, and one slow item can delay the whole batch.</p></div>
@@ -3661,6 +3896,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#110</span> <span class="cc-alias" hidden> async job long-running export 202 polling </span></div>
           <h3 class="cc-title">A request takes minutes</h3>
           <p class="cc-situ">A user asks for a year of data as a file.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d return 202 with a job id, do the work in the background and let the client poll or get a webhook, rather than holding the HTTP request open for minutes, which timeouts and proxies break. The job state needs storage and expiry.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Return 202 with a job id, do the work asynchronously, let the client poll (or notify by webhook or SSE), and expire the result.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>You store job state and results, handle expiry and cancellation, and the user waits without a live answer.</p></div>
@@ -3678,6 +3915,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#111</span> <span class="cc-alias" hidden> versioning deprecation backward compatible </span></div>
           <h3 class="cc-title">Change an API without breaking clients</h3>
           <p class="cc-situ">Hundreds of integrations you do not control.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d make changes additive and backward-compatible wherever possible, version only the breaking ones, and track usage per client before retiring anything, rather than changing the contract in place. Running two versions costs effort.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Prefer additive, backward-compatible changes; version the breaking ones; publish a deprecation window with usage metrics per client; run old and new side by side.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Supporting two versions costs code and tests, and some clients never migrate.</p></div>
@@ -3695,6 +3934,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#112</span> <span class="cc-alias" hidden> hmac signature replay </span></div>
           <h3 class="cc-title">Verify that a webhook is genuine and not replayed</h3>
           <p class="cc-situ">Anyone can post to your callback URL.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d sign the raw body with HMAC including a timestamp, reject old timestamps and dedupe by event id on the receiver, rather than trusting the source IP. Secrets need rotation with two valid at once.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Sign the body with an HMAC and include a timestamp. The receiver rejects bad signatures and old timestamps, and dedupes by event id.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Secret distribution and rotation, tolerance for clock skew, and receivers must store recent event ids.</p></div>
@@ -3712,6 +3953,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#113</span> <span class="cc-alias" hidden> retry storm amplification budget </span></div>
           <h3 class="cc-title">Retries multiply across layers</h3>
           <p class="cc-situ">Each of five services retries three times, so one failure becomes 243 calls.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d retry at one layer only, with a retry budget and backoff with jitter, and propagate a deadline, rather than retrying at every layer, which multiplies one failure into dozens of calls and makes an outage worse.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Retry at one layer only, with a retry budget (a fraction of recent calls), exponential backoff with jitter, and a propagated deadline so nobody works on a request the caller has abandoned.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Less resilience at inner layers, and budgets need tuning.</p></div>
@@ -3729,6 +3972,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#114</span> <span class="cc-alias" hidden> backpressure load shedding 429 503 retry-after </span></div>
           <h3 class="cc-title">Overload: shed load on purpose</h3>
           <p class="cc-situ">Demand exceeds capacity and everything gets slow.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d shed load early — 429 or 503 with Retry-After — and protect critical traffic with priorities, rather than queueing everything, because an unbounded queue just converts overload into huge latency for everyone.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Reject early and cheaply (429 or 503 with Retry-After), protect critical traffic with priorities, cap concurrency, and prefer a fast failure to a queue that grows without bound.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Some users see errors during the overload, but the rest stay fast. A growing queue hides the problem until latency explodes.</p></div>
@@ -3746,6 +3991,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#115</span> <span class="cc-alias" hidden> fair queue weighted round robin noisy neighbour </span></div>
           <h3 class="cc-title">Fairness between tenants in a shared queue</h3>
           <p class="cc-situ">One customer floods a queue and delays everyone else.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d give each tenant its own lane and serve lanes in weighted turns with per-tenant quotas, rather than one FIFO queue, where the biggest tenant&#x27;s backlog delays everyone. The largest tenants get a dedicated lane.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Per-tenant lanes served by weighted round-robin (fair turns), per-tenant quotas, and a dedicated lane for the largest.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>More queues and a scheduler to run, and a strict fair share can leave capacity idle.</p></div>
@@ -3763,6 +4010,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#116</span> <span class="cc-alias" hidden> bulk api partial failure multi-status </span></div>
           <h3 class="cc-title">A batch request where some items fail</h3>
           <p class="cc-situ">A bulk endpoint receives 1,000 items and 12 are invalid.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d return a per-item result and make each item idempotent, so the caller retries only the failures, with an all-or-nothing mode for callers who need it, rather than failing the whole batch for one bad item.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Return a per-item result (a multi-status style response), make each item idempotent, and offer an all-or-nothing mode when the caller needs it.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Clients must handle partial results, and the server tracks item state.</p></div>
@@ -3780,6 +4029,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#117</span> <span class="cc-alias" hidden> webhook polling streaming events replay </span></div>
           <h3 class="cc-title">Let customers know when something changes</h3>
           <p class="cc-situ">Integrations want to react to your events.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d offer webhooks for events, with event ids and a way to replay missed ones, and polling as the simple fallback, rather than webhooks alone, because receivers go down.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Webhooks for events, polling as the simple fallback, and streaming for high volume; give each an event id, a cursor and a way to replay missed events.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Webhooks push complexity to the receiver, polling wastes requests, and streaming needs long-lived connections.</p></div>
@@ -3797,6 +4048,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">API &amp; integration</span><span class="cc-no">#118</span> <span class="cc-alias" hidden> graphql depth cost limit query complexity </span></div>
           <h3 class="cc-title">Clients can ask for too much</h3>
           <p class="cc-situ">A flexible query language lets one request ask for a million rows.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d limit query depth and cost, cap pagination, and prefer persisted queries for our own apps, rather than letting any client ask for everything, which turns a flexible API into a denial-of-service vector.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Query depth and cost limits, pagination caps, persisted queries or allowlists, and timeouts.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>It restricts the flexibility that made the API attractive.</p></div>
@@ -3814,6 +4067,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#119</span> <span class="cc-alias" hidden> dst timezone utc </span></div>
           <h3 class="cc-title">Time zones and daylight saving</h3>
           <p class="cc-situ">A meeting at 09:00 local time, every Monday.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d store instants in UTC with the user&#x27;s zone id, but store future local events as local time plus zone, rather than converting everything to UTC up front — when zone rules change, a 9 a.m. meeting must stay at 9 a.m.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Store instants in UTC plus the zone id. For recurring events store the local time and the zone, and convert at display time.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Conversion code everywhere, and future local times can shift if the zone rules change.</p></div>
@@ -3831,6 +4086,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#120</span> <span class="cc-alias" hidden> rrule calendar recurrence </span></div>
           <h3 class="cc-title">Recurring events</h3>
           <p class="cc-situ">Every second Tuesday, except holidays, edited from one occurrence onward.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d store the recurrence rule and expand it on read for the visible window, with exceptions as overrides, rather than materialising every future occurrence, which goes stale when the rule changes and never ends.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Store the recurrence rule (an RRULE) and expand it on read for a window; store exceptions and edits as overrides.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Expanding on read costs CPU; materialising occurrences costs storage and must stay in step with the rule.</p></div>
@@ -3848,6 +4105,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#121</span> <span class="cc-alias" hidden> currency cents decimal rounding float </span></div>
           <h3 class="cc-title">Money</h3>
           <p class="cc-situ">Prices, taxes, splits and refunds.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d store money as integer minor units with a currency code, never floats, round with an explicit rule, and allocate leftover cents deliberately — floats lose cents, and those errors surface in reconciliation.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Store integer minor units (cents) with a currency code, round by an explicit rule, and allocate remainders deliberately.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Conversions and formatting everywhere, and some currencies have no minor unit or three decimals.</p></div>
@@ -3865,6 +4124,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#122</span> <span class="cc-alias" hidden> clock skew ntp monotonic </span></div>
           <h3 class="cc-title">Clocks disagree between servers</h3>
           <p class="cc-situ">A record “from the future”, or timestamps out of order.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d order events by a sequence or version from one owner, and use monotonic clocks for durations, rather than comparing wall-clock times from different servers, which can be skewed by seconds.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Order by sequence or version, use monotonic clocks for durations, and sync time while tolerating skew.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Ordering is less human-readable, and you need a sequence owner.</p></div>
@@ -3882,6 +4143,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#123</span> <span class="cc-alias" hidden> unicode utf-8 collation normalisation </span></div>
           <h3 class="cc-title">Text is harder than it looks</h3>
           <p class="cc-situ">Usernames, search, sorting and length limits.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d normalise text to NFC, compare usernames with a case-insensitive collation, and reject confusable characters in identifiers, rather than raw string equality, which lets two visually identical names exist.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Normalise Unicode (NFC), compare with a case-insensitive collation, count limits in bytes or code points as storage needs, and reject confusable characters in identifiers.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Normalisation can surprise users (two different inputs become the same name), and collation changes affect indexes.</p></div>
@@ -3899,6 +4162,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#124</span> <span class="cc-alias" hidden> int64 bigint precision javascript </span></div>
           <h3 class="cc-title">Large numbers in JSON</h3>
           <p class="cc-situ">A 64-bit id arrives in a browser.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d send 64-bit ids as strings in JSON, because JavaScript numbers lose precision above 2^53 and silently change the id — clients treat ids as opaque anyway.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Send 64-bit ids as strings, because JavaScript numbers lose precision above 2^53.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Clients must treat ids as opaque strings, and sorting numerically needs care.</p></div>
@@ -3916,6 +4181,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#125</span> <span class="cc-alias" hidden> deleted flag retention </span></div>
           <h3 class="cc-title">Soft delete or hard delete</h3>
           <p class="cc-situ">Users delete things, and want them back — or want them gone.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d soft-delete recoverable data with a flag and a retention job that hard-deletes later, with partial unique indexes, rather than either alone. For erasure requests it&#x27;s a real delete, everywhere.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Soft delete with a flag and a retention job for recoverable data, hard delete for erasure, and make every query and unique constraint aware of the flag.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Every query must filter deleted rows, unique keys need a partial index, and a forgotten filter leaks deleted data.</p></div>
@@ -3933,6 +4200,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#126</span> <span class="cc-alias" hidden> batch backfill throttle </span></div>
           <h3 class="cc-title">A bulk operation touches millions of rows</h3>
           <p class="cc-situ">Recalculate a column, or delete old records.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d process the bulk change in small key-ordered batches with short transactions and throttling, each batch repeatable, rather than one giant transaction that locks rows and makes replicas fall behind.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Process in small key-ordered batches with short transactions, throttle, and make each batch repeatable.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>The whole operation is not atomic and takes longer, but locks stay short and replicas keep up.</p></div>
@@ -3950,6 +4219,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#127</span> <span class="cc-alias" hidden> int32 overflow bigint sequence </span></div>
           <h3 class="cc-title">Ids run out</h3>
           <p class="cc-situ">A 32-bit integer key reaches 2,147,483,647.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use 64-bit ids from day one and watch the sequence as a metric, rather than 32-bit ids, because running out of ids is a hard outage and migrating a primary key late is painful.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Use 64-bit ids from the start, or migrate before the table is half full; watch the sequence value as a metric.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>More storage per key and index, and a migration if you started small.</p></div>
@@ -3967,6 +4238,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#128</span> <span class="cc-alias" hidden> spf dkim dmarc deliverability bounce unsubscribe </span></div>
           <h3 class="cc-title">Send email that actually reaches the inbox</h3>
           <p class="cc-situ">Transactional and bulk mail both land in spam.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d set up SPF, DKIM and DMARC, keep transactional and bulk email on separate streams, handle bounces automatically and warm up new senders — deliverability is earned, not configured once.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Set up SPF, DKIM and DMARC, keep transactional and bulk on separate streams, handle bounces and complaints automatically, and always include unsubscribe.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Operational work and warm-up time for new sending addresses.</p></div>
@@ -3984,6 +4257,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">Edge cases: time, money &amp; text</span><span class="cc-no">#129</span> <span class="cc-alias" hidden> histogram percentile average ratio metrics </span></div>
           <h3 class="cc-title">An average or a percentage that lies</h3>
           <p class="cc-situ">A dashboard shows “average latency” and a “conversion rate”.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d store counts and sums, which merge, compute ratios at read time, and take percentiles from histograms, rather than averaging averages or percentiles, which gives confident wrong numbers.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Store counts and sums (which merge), compute ratios at read time, and take percentiles from histograms, not averages of percentiles.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>More stored data and slightly more complex queries.</p></div>
@@ -4001,6 +4276,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">AI &amp; LLM systems</span><span class="cc-no">#130</span> <span class="cc-alias" hidden> rag retrieval augmented generation embeddings vector search llm </span></div>
           <h3 class="cc-title">Answer questions from your own documents</h3>
           <p class="cc-situ">An assistant must answer from company documents, not from memory.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d use retrieval-augmented generation: chunk and embed the documents, retrieve with vector plus keyword search, rerank, and answer only from the passages with citations — rather than fine-tuning, which goes stale and can&#x27;t cite.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Retrieval-augmented generation (RAG): chunk the documents, embed the chunks, retrieve with vector search combined with keyword search, rerank, and pass the best passages, with citations, to the model.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>The index lags the documents, retrieval can miss the right passage, and every answer costs tokens and latency.</p></div>
@@ -4018,6 +4295,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">AI &amp; LLM systems</span><span class="cc-no">#131</span> <span class="cc-alias" hidden> streaming llm sse tokens </span></div>
           <h3 class="cc-title">Show tokens as they arrive</h3>
           <p class="cc-situ">A model takes 20 seconds to finish an answer.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d stream tokens over SSE and cancel generation when the client disconnects, rather than waiting for the full answer, which makes users stare at a spinner and wastes compute after they leave.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Stream the response over SSE or WebSocket, and cancel generation when the client disconnects.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Long-held connections and partial results to handle, and a retry restarts the answer.</p></div>
@@ -4035,6 +4314,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">AI &amp; LLM systems</span><span class="cc-no">#132</span> <span class="cc-alias" hidden> llm cost cache routing tokens </span></div>
           <h3 class="cc-title">Control model cost and latency</h3>
           <p class="cc-situ">Traffic grows and the bill grows faster.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d cache repeated requests, route simple tasks to smaller models, and cap tokens per request and per tenant, rather than sending everything to the largest model. Routing mistakes cost quality, so I&#x27;d measure them.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Cache identical and near-identical requests, route simple tasks to smaller models, batch where latency allows, and cap tokens per request and per tenant.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Quality drops when routing is wrong, a semantic cache can return a slightly wrong answer, and limits annoy heavy users.</p></div>
@@ -4052,6 +4333,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">AI &amp; LLM systems</span><span class="cc-no">#133</span> <span class="cc-alias" hidden> llm rate limit fallback provider </span></div>
           <h3 class="cc-title">The model provider is slow or rate-limited</h3>
           <p class="cc-situ">The API returns errors or timeouts.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d set timeouts, keep a fallback model or provider, queue non-interactive work, and degrade gracefully — showing search results instead of a summary — rather than letting the user wait on a slow provider.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Timeouts, a fallback model or provider, a queue for non-interactive work, and graceful degradation (a search result instead of a summary).</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Fallbacks can behave differently, and you carry two integrations.</p></div>
@@ -4069,6 +4352,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">AI &amp; LLM systems</span><span class="cc-no">#134</span> <span class="cc-alias" hidden> agent tools mcp prompt injection least privilege </span></div>
           <h3 class="cc-title">An agent can call tools that change things</h3>
           <p class="cc-situ">An assistant can send emails or move money.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d give the agent least-privilege credentials per tool and per user, an allowlist of actions, human approval for irreversible ones, and an audit log of every call — rather than broad credentials, because a model can be talked into misuse.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Least-privilege credentials per tool and per user, an allowlist of actions, human approval for irreversible ones, and an audit log of every call.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Friction from approvals and more plumbing.</p></div>
@@ -4086,6 +4371,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">AI &amp; LLM systems</span><span class="cc-no">#135</span> <span class="cc-alias" hidden> llm evals hallucination grounding guardrails citations </span></div>
           <h3 class="cc-title">Keep a model’s answers grounded and measured</h3>
           <p class="cc-situ">An assistant is confident and sometimes wrong.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d keep a golden set of questions to evaluate offline, require citations from retrieved passages, add guardrails, and track feedback online, rather than judging the model on a few hand-picked examples.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>A golden set of questions for offline evaluation, citations from retrieved passages, guardrails on what it may answer, and online feedback tracked over time.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Building and maintaining evaluations costs time, and stricter guardrails refuse more.</p></div>
@@ -4103,6 +4390,8 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
           <div class="cc-top"><span class="cc-cat">AI &amp; LLM systems</span><span class="cc-no">#136</span> <span class="cc-alias" hidden> pii redaction llm privacy prompt </span></div>
           <h3 class="cc-title">Sensitive data in prompts</h3>
           <p class="cc-situ">Customer records end up in a prompt sent to a model provider.</p>
+          <button type="button" class="cc-reveal">Show how to answer</button>
+          <div class="cc-say"><div class="cc-label">Say it in the interview</div><p>“I&#x27;d redact or tokenise personal data before it reaches the model, retrieve only what the asker is allowed to see, and log carefully, rather than sending raw data and hoping the provider keeps it safe.”</p></div>
           <div class="cc-pair">
             <div class="cc-box cc-approach"><div class="cc-label">Approach</div><p>Redact or tokenise personal data, retrieve only what the asker may see, keep tenant data separate, and log carefully.</p></div>
             <div class="cc-box cc-trade"><div class="cc-label">Trade-off</div><p>Redaction can degrade answers, and logs become a data-protection risk.</p></div>
@@ -4118,7 +4407,7 @@ GET  /urls/{short_code}/stats             → {click_count, created_at}</div>
         </article>
         </div>
         <div id="cc-empty" class="cc-empty" hidden><strong>No case matches.</strong> Try fewer words, or pick All. This catalog has 136 cases and keeps growing.</div>
-        <p class="tight" style="font-size:12.5px; color:var(--ink-faint); margin-top:14px;">How to use it in an interview: name the case in the interviewer's words, give the approach in one breath, then <em>immediately</em> say the trade-off and one edge case. The "See" links open the worked example where the approach is built and, where marked, measured.</p>
+        <p class="tight" style="font-size:12.5px; color:var(--ink-faint); margin-top:14px;">How to use it: in <strong>Interview lines</strong>, read every answer as you would say it; in <strong>Practice</strong>, read the situation, answer out loud, then reveal. In the room: name the case in the interviewer's words, give the choice and why it beats the alternative in one breath, then <em>immediately</em> say the trade-off and one edge case. The "See" links open the worked example where the approach is built and, where marked, measured.</p>
       </div>
     </section>
 
@@ -28759,6 +29048,14 @@ Interviewer: "That's about right."</div>        <p style="margin:8px 0 0;">What 
     cat=b.getAttribute('data-cat'); chips.forEach(function(x){ x.setAttribute('aria-pressed', x===b?'true':'false'); }); apply();
   }); });
   q.addEventListener('input',apply);
+  var modes=[].slice.call(root.querySelectorAll('.cc-mode'));
+  modes.forEach(function(b){ b.addEventListener('click',function(){
+    var m=b.getAttribute('data-mode'); modes.forEach(function(x){ x.setAttribute('aria-pressed', x===b?'true':'false'); });
+    root.classList.remove('cc-m-full','cc-m-lines','cc-m-practice'); root.classList.add('cc-m-'+m);
+    cards.forEach(function(c){ c.classList.remove('cc-shown'); });
+    exp.hidden=(m!=='full');
+  }); });
+  root.addEventListener('click',function(e){ var r=e.target.closest&&e.target.closest('.cc-reveal'); if(r){ r.closest('.cc-card').classList.add('cc-shown'); } });
   exp.addEventListener('click',function(){
     var open=exp.getAttribute('data-open')!=='1';
     cards.forEach(function(c){ var d=c.querySelector('details'); if(d) d.open=open; });
